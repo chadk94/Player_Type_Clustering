@@ -5,8 +5,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
 import pandas
-import requests
-from bs4 import BeautifulSoup
 from nba_api.stats.library.parameters import SeasonTypeAllStar, PlayerOrTeamAbbreviation
 from sklearn.cluster import KMeans
 from nba_api.stats.endpoints import LeagueGameLog, SynergyPlayTypes, PlayerDashPtShots, shotchartdetail, ShotChartDetail
@@ -15,12 +13,7 @@ from nba_api.stats.static.players import get_players
 from nba_api.live.nba.endpoints import scoreboard
 from nba_api.stats.static import teams
 from nba_api.stats.endpoints import commonteamroster
-import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
 from sklearn.preprocessing import StandardScaler
-from webdriver_manager.chrome import ChromeDriverManager
 import pandas as pd
 
 
