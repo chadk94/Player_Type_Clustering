@@ -757,7 +757,7 @@ def main():
                         pass
                 return ''
 
-            if '% Diff' in comparison_df.index:
+            if 'Avg % Diff from Expected' in comparison_df.index:
                 styled_df = comparison_df.style.format("{:.2f}").apply(
                     lambda row: [color_cells(val, row.name) for val in row], axis=1
                 )
