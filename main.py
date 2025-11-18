@@ -657,21 +657,25 @@ def main():
     # =====================================================
     with tab2:
         st.subheader("Cluster Performance Overview")
+        default_off_cluster = None
+        default_def_cluster = None
 
         # Auto-select clusters based on selected player
         if selected_player != "All":
-            player_data = merged[merged['PLAYER_NAME'] == selected_player].iloc[0]
-            default_off_cluster = player_data['OffCluster'] if pd.notna(player_data['OffCluster']) else None
-            default_def_cluster = player_data['DefCluster'] if pd.notna(player_data['DefCluster']) else None
-        else:
-            default_off_cluster = None
-            default_def_cluster = None
+            player_data = merged[merged['PLAYER_NAME'] == selected_player]
+            if not player_data.empty:
+                player_data = player_data.iloc[0]
+                default_off_cluster = player_data['OffCluster'] if pd.notna(player_data['OffCluster']) else None
+                default_def_cluster = player_data['DefCluster'] if pd.notna(player_data['DefCluster']) else None
+            else:
+                default_off_cluster = None
+                default_def_cluster = None
 
         # Allow user to select both offensive and defensive clusters
         col1, col2 = st.columns(2)
 
         with col1:
-            off_cluster_options = sorted(df_filtered['OffCluster'].dropna().unique())
+            off_cluster_options = sorted(merged['OffCluster'].dropna().unique())
             if default_off_cluster is not None and default_off_cluster in off_cluster_options:
                 default_off_index = off_cluster_options.index(default_off_cluster)
             else:
@@ -680,7 +684,7 @@ def main():
                                                  index=default_off_index, key="off_analysis")
 
         with col2:
-            def_cluster_options = sorted(df_filtered['DefCluster'].dropna().unique())
+            def_cluster_options = sorted(merged['DefCluster'].dropna().unique())
             if default_def_cluster is not None and default_def_cluster in def_cluster_options:
                 default_def_index = def_cluster_options.index(default_def_cluster)
             else:
