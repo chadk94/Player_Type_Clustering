@@ -680,8 +680,12 @@ def main():
                 default_off_index = off_cluster_options.index(default_off_cluster)
             else:
                 default_off_index = 0
-            selected_off_analysis = st.selectbox("Offensive Cluster for Analysis", off_cluster_options,
-                                                 index=default_off_index, key="off_analysis")
+            selected_off_analysis = st.selectbox(
+                "Offensive Cluster for Analysis",
+                off_cluster_options,
+                index=default_off_index,
+                key=f"off_analysis_{selected_player}"  # Add key with player name
+            )
 
         with col2:
             def_cluster_options = sorted(merged['DefCluster'].dropna().unique())
@@ -689,8 +693,12 @@ def main():
                 default_def_index = def_cluster_options.index(default_def_cluster)
             else:
                 default_def_index = 0
-            selected_def_analysis = st.selectbox("Defensive Cluster for Analysis", def_cluster_options,
-                                                 index=default_def_index, key="def_analysis")
+            selected_def_analysis = st.selectbox(
+                "Defensive Cluster for Analysis",
+                def_cluster_options,
+                index=default_def_index,
+                key=f"def_analysis_{selected_player}"  # Add key with player name
+            )
 
         # Get data for both clusters
         df_off_cluster = merged[(merged['OffCluster'] == selected_off_analysis) &
