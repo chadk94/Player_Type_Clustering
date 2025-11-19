@@ -576,22 +576,63 @@ def load_data():
 
 def main():
     merged = load_data()
-    teams = sorted(merged['TEAM_ABBREVIATION'].unique())
-    selected_team = st.sidebar.selectbox("Team", teams, index=None, placeholder="Select a team...")
+    st.title("🏀 NBA Player Archetype Dashboard (2024–25 Season)")
 
-    opponents = sorted(merged['TEAM_ABBREVIATION'].unique())
-    selected_opp = st.sidebar.selectbox("Opponent", opponents, index=None, placeholder="Select an opponent...")
+    st.sidebar.header("Filters")
 
-    players = sorted(merged['PLAYER_NAME'].unique())
-    selected_player = st.sidebar.selectbox("Player", players, index=None, placeholder="Select a player...")
+    col1, col2 = st.sidebar.columns([4, 1])
+    with col1:
+        teams = sorted(merged['TEAM_ABBREVIATION'].unique())
+        selected_team = st.selectbox("Team", ["All"] + teams, key='team_filter')
+    with col2:
+        st.write("")  # Spacing
+        if st.button("✕", key="clear_team"):
+            st.session_state.team_filter = "All"
+            st.rerun()
 
-    off_clusters = sorted(merged['OffCluster'].dropna().unique())
-    selected_off_cluster = st.sidebar.selectbox("Offensive Cluster", off_clusters, index=None,
-                                                placeholder="Select a cluster...")
+    # Opponent filter with clear button
+    col1, col2 = st.sidebar.columns([4, 1])
+    with col1:
+        opponents = sorted(merged['TEAM_ABBREVIATION'].unique())
+        selected_opp = st.selectbox("Opponent", ["All"] + opponents, key='opp_filter')
+    with col2:
+        st.write("")  # Spacing
+        if st.button("✕", key="clear_opp"):
+            st.session_state.opp_filter = "All"
+            st.rerun()
 
-    def_clusters = sorted(merged['DefCluster'].dropna().unique())
-    selected_def_cluster = st.sidebar.selectbox("Defensive Cluster", def_clusters, index=None,
-                                                placeholder="Select a cluster...")
+    # Player filter with clear button
+    col1, col2 = st.sidebar.columns([4, 1])
+    with col1:
+        players = sorted(merged['PLAYER_NAME'].unique())
+        selected_player = st.selectbox("Player", ["All"] + players, key='player_filter')
+    with col2:
+        st.write("")  # Spacing
+        if st.button("✕", key="clear_player"):
+            st.session_state.player_filter = "All"
+            st.rerun()
+
+    # Offensive Cluster filter with clear button
+    col1, col2 = st.sidebar.columns([4, 1])
+    with col1:
+        off_clusters = sorted(merged['OffCluster'].dropna().unique())
+        selected_off_cluster = st.selectbox("Offensive Cluster", ["All"] + off_clusters, key='off_cluster_filter')
+    with col2:
+        st.write("")  # Spacing
+        if st.button("✕", key="clear_off"):
+            st.session_state.off_cluster_filter = "All"
+            st.rerun()
+
+    # Defensive Cluster filter with clear button
+    col1, col2 = st.sidebar.columns([4, 1])
+    with col1:
+        def_clusters = sorted(merged['DefCluster'].dropna().unique())
+        selected_def_cluster = st.selectbox("Defensive Cluster", ["All"] + def_clusters, key='def_cluster_filter')
+    with col2:
+        st.write("")  # Spacing
+        if st.button("✕", key="clear_def"):
+            st.session_state.def_cluster_filter = "All"
+            st.rerun()
 
     min_date, max_date = merged['GAME_DATE'].min(), merged['GAME_DATE'].max()
     selected_date = st.sidebar.date_input("Game Date Range", [min_date, max_date])
