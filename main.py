@@ -813,8 +813,8 @@ def main():
             # If opponent is selected, calculate % differences
             if selected_opp != "All":
                 # Add opponent team column
-                df_off_cluster['OPP_TEAM'] = df_off_cluster['MATCHUP'].apply(lambda x: x.split()[-1])
-                df_def_cluster['OPP_TEAM'] = df_def_cluster['MATCHUP'].apply(lambda x: x.split()[-1])
+                df_off_cluster.loc[:, 'OPP_TEAM'] = df_off_cluster['MATCHUP'].apply(lambda x: x.split()[-1])
+                df_def_cluster.loc[:, 'OPP_TEAM'] = df_def_cluster['MATCHUP'].apply(lambda x: x.split()[-1])
 
                 # Filter by opponent
                 df_off_vs_team = df_off_cluster[df_off_cluster['OPP_TEAM'] == selected_opp]
@@ -831,24 +831,68 @@ def main():
                 has_def_history = False
 
                 # Calculate offensive cluster % diff if data exists
+                prior_mean = 0.0  # Prior belief: no difference from season average (0%)
+                prior_weight = 3.0  # Weight of the prior
+
+                # Calculate offensive cluster % diff with game-by-game Bayesian approach
                 if not df_off_vs_team_valid.empty:
                     has_off_history = True
-                    df_off_vs_team_per36 = df_off_vs_team_valid[offensive_stats].div(df_off_vs_team_valid['MIN'],
-                                                                                     axis=0) * 36
-                    avg_vs_team_per36_off = df_off_vs_team_per36.mean()
-                    pct_diff_off = (
-                                (avg_vs_team_per36_off - season_avg_per36_off[offensive_stats]) / season_avg_per36_off[
-                            offensive_stats] * 100)
 
-                # Calculate defensive cluster % diff if data exists
+                    # Sort by game date to process chronologically
+                    df_off_vs_team_valid_sorted = df_off_vs_team_valid.sort_values('GAME_DATE')
+
+                    # Calculate per-36 stats for each game
+                    df_off_vs_team_per36 = df_off_vs_team_valid_sorted[offensive_stats].div(
+                        df_off_vs_team_valid_sorted['MIN'], axis=0) * 36
+
+                    # Calculate percentage difference for each game
+                    game_pct_diffs_off = (
+                            (df_off_vs_team_per36 - season_avg_per36_off[offensive_stats]) /
+                            season_avg_per36_off[offensive_stats] * 100
+                    )
+
+                    # Bayesian sequential update for EACH STAT
+                    pct_diff_off = pd.Series(index=offensive_stats, dtype=float)
+
+                    for stat in offensive_stats:
+                        bayesian_estimate = prior_mean
+                        total_weight = prior_weight
+
+                        for game_pct_diff in game_pct_diffs_off[stat].values:
+                            bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
+                            total_weight += 1
+
+                        pct_diff_off[stat] = bayesian_estimate
+
+                # Calculate defensive cluster % diff with game-by-game Bayesian approach
                 if not df_def_vs_team_valid.empty:
                     has_def_history = True
-                    df_def_vs_team_per36 = df_def_vs_team_valid[defensive_stats].div(df_def_vs_team_valid['MIN'],
-                                                                                     axis=0) * 36
-                    avg_vs_team_per36_def = df_def_vs_team_per36.mean()
-                    pct_diff_def = (
-                                (avg_vs_team_per36_def - season_avg_per36_def[defensive_stats]) / season_avg_per36_def[
-                            defensive_stats] * 100)
+
+                    # Sort by game date to process chronologically
+                    df_def_vs_team_valid_sorted = df_def_vs_team_valid.sort_values('GAME_DATE')
+
+                    # Calculate per-36 stats for each game
+                    df_def_vs_team_per36 = df_def_vs_team_valid_sorted[defensive_stats].div(
+                        df_def_vs_team_valid_sorted['MIN'], axis=0) * 36
+
+                    # Calculate percentage difference for each game
+                    game_pct_diffs_def = (
+                            (df_def_vs_team_per36 - season_avg_per36_def[defensive_stats]) /
+                            season_avg_per36_def[defensive_stats] * 100
+                    )
+
+                    # Bayesian sequential update for EACH STAT
+                    pct_diff_def = pd.Series(index=defensive_stats, dtype=float)
+
+                    for stat in defensive_stats:
+                        bayesian_estimate = prior_mean
+                        total_weight = prior_weight
+
+                        for game_pct_diff in game_pct_diffs_def[stat].values:
+                            bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
+                            total_weight += 1
+
+                        pct_diff_def[stat] = bayesian_estimate
 
                 # Combine the % diffs
                 avg_pct_diff_combined = pd.Series(index=all_counting_stats, dtype=float)
@@ -870,21 +914,25 @@ def main():
                         comparison_data = {
                             "Season Avg (per 36)": pd.concat(
                                 [season_avg_per36_off[offensive_stats], season_avg_per36_def[defensive_stats]]),
-                            f"vs {selected_opp} (per 36)": pd.concat([avg_vs_team_per36_off, avg_vs_team_per36_def]),
+                            f"vs {selected_opp} (per 36)": pd.concat([
+                                season_avg_per36_off[offensive_stats] * (1 + pct_diff_off / 100),
+                                season_avg_per36_def[defensive_stats] * (1 + pct_diff_def / 100)
+                            ]),
                             "Avg % Diff": avg_pct_diff_combined
                         }
                     elif has_off_history:
                         st.info("⚠️ No defensive cluster history vs this opponent. Showing offensive stats only.")
                         comparison_data = {
                             "Season Avg (per 36)": season_avg_per36_off[offensive_stats],
-                            f"vs {selected_opp} (per 36)": avg_vs_team_per36_off,
+                            f"vs {selected_opp} (per 36)": season_avg_per36_off[offensive_stats] * (1 + pct_diff_off / 100),
                             "Avg % Diff": pct_diff_off
                         }
                     elif has_def_history:
                         st.info("⚠️ No offensive cluster history vs this opponent. Showing defensive stats only.")
                         comparison_data = {
                             "Season Avg (per 36)": season_avg_per36_def[defensive_stats],
-                            f"vs {selected_opp} (per 36)": avg_vs_team_per36_def,
+                            f"vs {selected_opp} (per 36)": season_avg_per36_def[defensive_stats] * (1 + pct_diff_def / 100)
+,
                             "Avg % Diff": pct_diff_def
                         }
 
@@ -963,11 +1011,41 @@ def main():
                     how='outer',
                     suffixes=('_off', '_def')
                 )
+                # Calculate median minutes from last 10 games for the slider
+                if selected_player != "All":
+                    # Get the specific player's last 10 games
+                    player_games = merged[merged['PLAYER_NAME'] == selected_player].copy()
+                    player_games = player_games.sort_values('GAME_DATE', ascending=False).head(10)
+
+                    if not player_games.empty:
+                        median_min = player_games['MIN'].median()
+                        default_min = round(median_min, 1)
+                    else:
+                        default_min = 30.0  # fallback default
+
+                    # Add minutes slider
+                    st.subheader("Adjust Minutes")
+                    selected_minutes = st.slider(
+                        "Minutes per game:",
+                        min_value=0.0,
+                        max_value=48.0,
+                        value=default_min,
+                        step=0.5,
+                        help=f"Default is median of last 10 games ({default_min:.1f} min)"
+                    )
+
+                    # Calculate the minutes multiplier
+                    minutes_multiplier = selected_minutes / default_min if default_min > 0 else 1.0
+                else:
+                    # For "All" players, use their season average (no adjustment)
+                    minutes_multiplier = 1.0
+                    selected_minutes = None
 
                 if all_players.empty:
                     st.warning("No players found in the selected clusters.")
                 else:
                     # Calculate projections for each player
+
                     players_to_project = []
 
                     for idx, player_row in all_players.iterrows():
@@ -981,11 +1059,17 @@ def main():
 
                         # Use whichever MIN is available (prefer off, then def)
                         if not pd.isna(player_row.get('MIN_off')):
-                            projected_row['AVG_MIN'] = player_row['MIN_off']
+                            base_minutes = player_row['MIN_off']
                         elif not pd.isna(player_row.get('MIN_def')):
-                            projected_row['AVG_MIN'] = player_row['MIN_def']
+                            base_minutes = player_row['MIN_def']
                         else:
                             continue
+                        if selected_player != "All" and player_name == selected_player:
+                            projected_row['AVG_MIN'] = selected_minutes
+                            actual_multiplier = minutes_multiplier
+                        else:
+                            projected_row['AVG_MIN'] = base_minutes
+                            actual_multiplier = 1.0
 
                         # Process offensive stats if player has offensive cluster
                         if not pd.isna(player_row.get('MIN_off')):
@@ -994,7 +1078,7 @@ def main():
 
                                 # Apply the % change from the offensive cluster's performance vs this opponent
                                 pct_change = avg_pct_diff_combined[stat] if stat in avg_pct_diff_combined.index else 0
-                                projected_value = season_avg * (1 + pct_change / 100)
+                                projected_value = season_avg * (1 + pct_change / 100) * actual_multiplier
 
                                 projected_row[f'{stat}_Season'] = season_avg
                                 projected_row[f'{stat}_Projected'] = projected_value
@@ -1013,7 +1097,7 @@ def main():
 
                                 # Apply the % change from the defensive cluster's performance vs this opponent
                                 pct_change = avg_pct_diff_combined[stat] if stat in avg_pct_diff_combined.index else 0
-                                projected_value = season_avg * (1 + pct_change / 100)
+                                projected_value = season_avg * (1 + pct_change / 100) * actual_multiplier
 
                                 projected_row[f'{stat}_Season'] = season_avg
                                 projected_row[f'{stat}_Projected'] = projected_value
@@ -1103,8 +1187,14 @@ def main():
             else:
                 st.info("Select an opponent to see cluster performance analysis and projections.")
 
-            st.caption(f"Games in offensive cluster sample: {len(df_off_cluster):,}")
-            st.caption(f"Games in defensive cluster sample: {len(df_def_cluster):,}")
+            games_off = len(df_off_cluster) if selected_opp == "All" else len(
+                df_off_cluster[df_off_cluster['OPP_TEAM'] == selected_opp])
+            st.caption(f"Games in offensive cluster sample: {games_off:,}")
+
+            # For defensive cluster
+            games_def = len(df_def_cluster) if selected_opp == "All" else len(
+                df_def_cluster[df_def_cluster['OPP_TEAM'] == selected_opp])
+            st.caption(f"Games in defensive cluster sample: {games_def:,}")
 
 
 if __name__ == '__main__':
