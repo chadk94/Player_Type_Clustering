@@ -580,15 +580,49 @@ def main():
 
     st.sidebar.header("Filters")
 
+    # Initialize session state for filters if not exists
+    if 'team_filter' not in st.session_state:
+        st.session_state.team_filter = "All"
+    if 'opp_filter' not in st.session_state:
+        st.session_state.opp_filter = "All"
+    if 'player_filter' not in st.session_state:
+        st.session_state.player_filter = "All"
+    if 'off_cluster_filter' not in st.session_state:
+        st.session_state.off_cluster_filter = "All"
+    if 'def_cluster_filter' not in st.session_state:
+        st.session_state.def_cluster_filter = "All"
+
+    # Function to clear all filters (used as callback)
+    def clear_all_filters():
+        st.session_state.team_filter = "All"
+        st.session_state.opp_filter = "All"
+        st.session_state.player_filter = "All"
+        st.session_state.off_cluster_filter = "All"
+        st.session_state.def_cluster_filter = "All"
+
+    # Handle individual clear button clicks BEFORE creating widgets
+    if 'clear_team' in st.session_state and st.session_state.clear_team:
+        st.session_state.team_filter = "All"
+    if 'clear_opp' in st.session_state and st.session_state.clear_opp:
+        st.session_state.opp_filter = "All"
+    if 'clear_player' in st.session_state and st.session_state.clear_player:
+        st.session_state.player_filter = "All"
+    if 'clear_off' in st.session_state and st.session_state.clear_off:
+        st.session_state.off_cluster_filter = "All"
+    if 'clear_def' in st.session_state and st.session_state.clear_def:
+        st.session_state.def_cluster_filter = "All"
+
+    # Clear all filters button (BEFORE widgets, using on_click callback)
+    st.sidebar.button("🔄 Clear All Filters", on_click=clear_all_filters)
+
+    # Team filter with clear button
     col1, col2 = st.sidebar.columns([4, 1])
     with col1:
         teams = sorted(merged['TEAM_ABBREVIATION'].unique())
         selected_team = st.selectbox("Team", ["All"] + teams, key='team_filter')
     with col2:
         st.write("")  # Spacing
-        if st.button("✕", key="clear_team"):
-            st.session_state.team_filter = "All"
-            st.rerun()
+        st.button("✕", key="clear_team")
 
     # Opponent filter with clear button
     col1, col2 = st.sidebar.columns([4, 1])
@@ -597,9 +631,7 @@ def main():
         selected_opp = st.selectbox("Opponent", ["All"] + opponents, key='opp_filter')
     with col2:
         st.write("")  # Spacing
-        if st.button("✕", key="clear_opp"):
-            st.session_state.opp_filter = "All"
-            st.rerun()
+        st.button("✕", key="clear_opp")
 
     # Player filter with clear button
     col1, col2 = st.sidebar.columns([4, 1])
@@ -608,9 +640,7 @@ def main():
         selected_player = st.selectbox("Player", ["All"] + players, key='player_filter')
     with col2:
         st.write("")  # Spacing
-        if st.button("✕", key="clear_player"):
-            st.session_state.player_filter = "All"
-            st.rerun()
+        st.button("✕", key="clear_player")
 
     # Offensive Cluster filter with clear button
     col1, col2 = st.sidebar.columns([4, 1])
@@ -619,9 +649,7 @@ def main():
         selected_off_cluster = st.selectbox("Offensive Cluster", ["All"] + off_clusters, key='off_cluster_filter')
     with col2:
         st.write("")  # Spacing
-        if st.button("✕", key="clear_off"):
-            st.session_state.off_cluster_filter = "All"
-            st.rerun()
+        st.button("✕", key="clear_off")
 
     # Defensive Cluster filter with clear button
     col1, col2 = st.sidebar.columns([4, 1])
@@ -630,9 +658,7 @@ def main():
         selected_def_cluster = st.selectbox("Defensive Cluster", ["All"] + def_clusters, key='def_cluster_filter')
     with col2:
         st.write("")  # Spacing
-        if st.button("✕", key="clear_def"):
-            st.session_state.def_cluster_filter = "All"
-            st.rerun()
+        st.button("✕", key="clear_def")
 
     min_date, max_date = merged['GAME_DATE'].min(), merged['GAME_DATE'].max()
     selected_date = st.sidebar.date_input("Game Date Range", [min_date, max_date])
