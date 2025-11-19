@@ -576,24 +576,22 @@ def load_data():
 
 def main():
     merged = load_data()
-    st.title("🏀 NBA Player Archetype Dashboard (2024–25 Season)")
-
-    st.sidebar.header("Filters")
-
     teams = sorted(merged['TEAM_ABBREVIATION'].unique())
-    selected_team = st.sidebar.selectbox("Team", ["All"] + teams)
+    selected_team = st.sidebar.selectbox("Team", teams, index=None, placeholder="Select a team...")
 
-    Opponents = sorted(merged['TEAM_ABBREVIATION'].unique())
-    selected_opp = st.sidebar.selectbox("Opponent", ["All"] + teams)
+    opponents = sorted(merged['TEAM_ABBREVIATION'].unique())
+    selected_opp = st.sidebar.selectbox("Opponent", opponents, index=None, placeholder="Select an opponent...")
 
     players = sorted(merged['PLAYER_NAME'].unique())
-    selected_player = st.sidebar.selectbox("Player", ["All"] + players)
+    selected_player = st.sidebar.selectbox("Player", players, index=None, placeholder="Select a player...")
 
     off_clusters = sorted(merged['OffCluster'].dropna().unique())
-    selected_off_cluster = st.sidebar.selectbox("Offensive Cluster", ["All"] + off_clusters)
+    selected_off_cluster = st.sidebar.selectbox("Offensive Cluster", off_clusters, index=None,
+                                                placeholder="Select a cluster...")
 
     def_clusters = sorted(merged['DefCluster'].dropna().unique())
-    selected_def_cluster = st.sidebar.selectbox("Defensive Cluster", ["All"] + def_clusters)
+    selected_def_cluster = st.sidebar.selectbox("Defensive Cluster", def_clusters, index=None,
+                                                placeholder="Select a cluster...")
 
     min_date, max_date = merged['GAME_DATE'].min(), merged['GAME_DATE'].max()
     selected_date = st.sidebar.date_input("Game Date Range", [min_date, max_date])
