@@ -794,8 +794,8 @@ def main():
                 st.markdown("- " + "\n- ".join(def_players))
 
             # Define stat categories
-            offensive_stats = ['PTS', 'AST', 'FGM', 'FGA', 'FG3M', 'FG3A', 'FTM', 'FTA']
-            defensive_stats = ['OREB', 'DREB', 'REB', 'STL', 'BLK', 'TOV', 'PF']
+            offensive_stats = ['PTS', 'AST','OREB',  'FGM', 'FGA', 'FG3M', 'FG3A', 'FTM', 'FTA','TOV']
+            defensive_stats = ['DREB', 'REB', 'STL', 'BLK',  'PF']
             all_counting_stats = offensive_stats + defensive_stats
 
             MIN_THRESHOLD = 5
@@ -1098,10 +1098,16 @@ def main():
                                 # Apply the % change from the defensive cluster's performance vs this opponent
                                 pct_change = avg_pct_diff_combined[stat] if stat in avg_pct_diff_combined.index else 0
                                 projected_value = season_avg * (1 + pct_change / 100) * actual_multiplier
-
+                                if stat=='REB':
+                                    proj_value=((1+avg_pct_diff_combined['DREB']/100)*player_row['DREB'])+(player_row['OREB']*(1+avg_pct_diff_combined['DREB']/100))*actual_multiplier
                                 projected_row[f'{stat}_Season'] = season_avg
                                 projected_row[f'{stat}_Projected'] = projected_value
                                 projected_row[f'{stat}_Diff'] = projected_value - season_avg
+                                if stat =='REB':
+                                    projected_row[f'{stat}_Season'] = player_row['DREB']+player_row['OREB']
+                                    projected_row[f'{stat}_Projected'] = proj_value
+                                    projected_row[f'{stat}_Diff'] = proj_value - (player_row['DREB']+player_row['OREB'])
+
                         else:
                             # Player doesn't have defensive cluster, set to NaN or 0
                             for stat in defensive_stats:
