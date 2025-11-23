@@ -17,7 +17,7 @@ from sklearn.preprocessing import StandardScaler
 import pandas as pd
 
 
-def get_shot_chart_data(player_id, season='2024-25'):
+def get_shot_chart_data(player_id, season='2025-26'):
     """Get detailed shot chart data for a player."""
     try:
         time.sleep(1)
@@ -26,7 +26,7 @@ def get_shot_chart_data(player_id, season='2024-25'):
         shot_chart = ShotChartDetail(
             player_id=player_id,
             team_id=0,
-            season_nullable='2024-25',
+            season_nullable='2025-26',
             season_type_all_star='Regular Season',
             context_measure_simple='FGA'  # Specify the context measure
         ).get_data_frames()[0]
@@ -220,7 +220,7 @@ def cluster_players_off(data, n_clusters):
     # Add cluster labels to the dataset
     result_data = clean_data.copy()
     result_data['Cluster'] = clusters
-    result_data = result_data[result_data['SEASON_ID'] == 22024]
+    result_data = result_data[result_data['SEASON_ID'] == 22025]
     # Create cluster visualization
     plt.figure(figsize=(12, 8))
 
@@ -387,7 +387,7 @@ def cluster_players_def(data, n_clusters):
     # Add cluster labels to the dataset
     result_data = clean_data.copy()
     result_data['Cluster'] = clusters
-    result_data = result_data[result_data['SEASON_ID'] == 22024]
+    result_data = result_data[result_data['SEASON_ID'] == 22025]
     # Create cluster visualization
     plt.figure(figsize=(12, 8))
 
@@ -454,15 +454,15 @@ def get_player_box(seasontype="Regular Season"):
     # returns all player box scores for the season
     time.sleep(1)
     playerbox = LeagueGameLog(player_or_team_abbreviation='P', season_type_all_star=seasontype,
-                              season=['2022-23']).get_data_frames()[0]
+                              season=['2023-24']).get_data_frames()[0]
     time.sleep(1)
     playerbox = pandas.concat(
         [playerbox, LeagueGameLog(player_or_team_abbreviation='P', season_type_all_star=seasontype,
-                                  season=['2023-24']).get_data_frames()[0]])
+                                  season=['2024-25']).get_data_frames()[0]])
     time.sleep(1)
     playerbox = pandas.concat([playerbox,
                                LeagueGameLog(player_or_team_abbreviation='P', season_type_all_star=seasontype,
-                                             season=['2024-25']).get_data_frames()[0]])
+                                             season=['2025-26']).get_data_frames()[0]])
 
     print(playerbox.columns)
     # 10 wnba 00 nba 20 g league
@@ -539,6 +539,15 @@ def basic_clustering(data):
 
 
 def create_clusters():
+    data = get_player_box()
+    print ("got data")
+    player_averages = box_to_avg(data)
+    print ("converetd to avg")
+    print (player_averages)
+    player_averages = add_height_weight_pos(player_averages)
+    print ("added height weight")
+    enhanced_data = enhance_player_data(player_averages)
+    enhanced_data.to_csv('player_data.csv', index=False)
     enhanced_data = pd.read_csv("player_data.csv")
     clustered_data = cluster_players_off(enhanced_data, None)
     clustered_data.to_csv('player_clusters_detailed.csv', index=False)
@@ -1204,4 +1213,5 @@ def main():
 
 
 if __name__ == '__main__':
+    #create_clusters()
     main()
