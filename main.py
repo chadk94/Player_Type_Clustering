@@ -1113,21 +1113,31 @@ def main():
                         # Process defensive stats if player has defensive cluster
                         if not pd.isna(player_row.get('MIN_def')):
                             for stat in defensive_stats:
-                                season_avg = player_row[stat]
+                                if stat == 'REB':
+                                    # Handle rebounds specially using OREB and DREB components
+                                    season_avg = player_row['DREB'] + player_row['OREB']
 
-                                # Apply the % change from the defensive cluster's performance vs this opponent
-                                pct_change = avg_pct_diff_combined[stat] if stat in avg_pct_diff_combined.index else 0
-                                projected_value = season_avg * (1 + pct_change / 100) * actual_multiplier
-                                if stat=='REB':
-                                    proj_value=((1+avg_pct_diff_combined['DREB']/100)*player_row['DREB'])+(player_row['OREB']*(1+avg_pct_diff_combined['OREB']/100))*actual_multiplier
+                                    # Apply matchup adjustments to each component separately
+                                    dreb_pct = avg_pct_diff_combined[
+                                        'DREB'] if 'DREB' in avg_pct_diff_combined.index else 0
+                                    oreb_pct = avg_pct_diff_combined[
+                                        'OREB'] if 'OREB' in avg_pct_diff_combined.index else 0
+
+                                    projected_value = (
+                                                              player_row['DREB'] * (1 + dreb_pct / 100) +
+                                                              player_row['OREB'] * (1 + oreb_pct / 100)
+                                                      ) * actual_multiplier
+                                else:
+                                    # Handle all other stats normally
+                                    season_avg = player_row[stat]
+                                    pct_change = avg_pct_diff_combined[
+                                        stat] if stat in avg_pct_diff_combined.index else 0
+                                    projected_value = season_avg * (1 + pct_change / 100) * actual_multiplier
+
+                                # Store results (same for all stats)
                                 projected_row[f'{stat}_Season'] = season_avg
                                 projected_row[f'{stat}_Projected'] = projected_value
                                 projected_row[f'{stat}_Diff'] = projected_value - season_avg
-                                if stat =='REB':
-                                    projected_row[f'{stat}_Season'] = player_row['DREB']+player_row['OREB']
-                                    projected_row[f'{stat}_Projected'] = proj_value
-                                    projected_row[f'{stat}_Diff'] = proj_value - (player_row['DREB']+player_row['OREB'])
-
                         else:
                             # Player doesn't have defensive cluster, set to NaN or 0
                             for stat in defensive_stats:
