@@ -1224,5 +1224,5 @@ def main():
 
 
 if __name__ == '__main__':
-    create_clusters()
+    #create_clusters()
     main()
