@@ -190,7 +190,18 @@ def cluster_players_off(data, n_clusters):
         ax2.set_title('Silhouette Analysis')
 
         # Find optimal clusters from silhouette
-        optimal_clusters_sil = min_clusters + np.argmax(silhouette_scores)
+        min_silhouette_improvement = 0.01  # Only add clusters if silhouette improves by at least 0.02
+
+        # Find optimal with improvement threshold
+        optimal_clusters_sil = min_clusters
+        peak_score = silhouette_scores[0]
+
+        for i, score in enumerate(silhouette_scores[1:], start=1):
+            if score > peak_score + min_silhouette_improvement:
+                optimal_clusters_sil = min_clusters + i
+                peak_score = score
+
+        # Update visualization to show threshold-adjusted optimal
         ax2.axvline(x=optimal_clusters_sil, color='r', linestyle='--', alpha=0.7)
         ax2.text(optimal_clusters_sil + 0.1, ax2.get_ylim()[0] + 0.7 * (ax2.get_ylim()[1] - ax2.get_ylim()[0]),
                  f'Optimal: {optimal_clusters_sil}', color='r')
@@ -198,17 +209,17 @@ def cluster_players_off(data, n_clusters):
         plt.tight_layout()
         plt.show()
 
-        # Choose the optimal number of clusters
-        # If silhouette and elbow methods disagree, prefer silhouette
+        # For interpretability in basketball, prefer fewer clusters when close
         if abs(optimal_clusters_sil - elbow_value) <= 1:
-            n_clusters = optimal_clusters_sil
+            n_clusters = min(optimal_clusters_sil, elbow_value)
+            print(f"Elbow and Silhouette methods agree (within 1): choosing {n_clusters} clusters")
         else:
-            # If they disagree by more than 1, take silhouette with a note
             n_clusters = optimal_clusters_sil
             print(f"Note: Elbow method suggests {elbow_value} clusters, "
                   f"while Silhouette suggests {optimal_clusters_sil}. "
-                  f"Choosing {n_clusters} based on Silhouette score.")
+                  f"Choosing {n_clusters} based on Silhouette score with improvement threshold.")
 
+        print(f"\nFinal selection: {n_clusters} clusters")
         print(f"Optimal number of clusters: {n_clusters}")
 
     # Perform k-means clustering with the determined number of clusters
@@ -539,15 +550,15 @@ def basic_clustering(data):
 
 
 def create_clusters():
-    data = get_player_box()
-    print ("got data")
-    player_averages = box_to_avg(data)
-    print ("converetd to avg")
-    print (player_averages)
-    player_averages = add_height_weight_pos(player_averages)
-    print ("added height weight")
-    enhanced_data = enhance_player_data(player_averages)
-    enhanced_data.to_csv('player_data.csv', index=False)
+    # data = get_player_box()
+    # print ("got data")
+    # player_averages = box_to_avg(data)
+    # print ("converetd to avg")
+    # print (player_averages)
+    # player_averages = add_height_weight_pos(player_averages)
+    # print ("added height weight")
+    # enhanced_data = enhance_player_data(player_averages)
+    # enhanced_data.to_csv('player_data.csv', index=False)
     enhanced_data = pd.read_csv("player_data.csv")
     clustered_data = cluster_players_off(enhanced_data, None)
     clustered_data.to_csv('player_clusters_detailed.csv', index=False)
@@ -1108,7 +1119,7 @@ def main():
                                 pct_change = avg_pct_diff_combined[stat] if stat in avg_pct_diff_combined.index else 0
                                 projected_value = season_avg * (1 + pct_change / 100) * actual_multiplier
                                 if stat=='REB':
-                                    proj_value=((1+avg_pct_diff_combined['DREB']/100)*player_row['DREB'])+(player_row['OREB']*(1+avg_pct_diff_combined['DREB']/100))*actual_multiplier
+                                    proj_value=((1+avg_pct_diff_combined['DREB']/100)*player_row['DREB'])+(player_row['OREB']*(1+avg_pct_diff_combined['OREB']/100))*actual_multiplier
                                 projected_row[f'{stat}_Season'] = season_avg
                                 projected_row[f'{stat}_Projected'] = projected_value
                                 projected_row[f'{stat}_Diff'] = projected_value - season_avg
@@ -1213,5 +1224,5 @@ def main():
 
 
 if __name__ == '__main__':
-    #create_clusters()
+    create_clusters()
     main()
