@@ -932,29 +932,43 @@ def main():
 
                     if has_off_history and has_def_history:
                         # Calculate season averages and projections for offensive stats
-                        season_avg_off = season_avg_per36_off[offensive_stats]
-                        proj_vs_opp_off = season_avg_per36_off[offensive_stats] * (1 + pct_diff_off / 100)
+                        season_avg_off = season_avg_per36_off[offensive_stats].copy()
+                        proj_vs_opp_off = season_avg_per36_off[offensive_stats].copy()
 
                         # Calculate season averages and projections for defensive stats
                         season_avg_def = season_avg_per36_def[defensive_stats].copy()
                         proj_vs_opp_def = season_avg_per36_def[defensive_stats].copy()
 
-                        # Handle each defensive stat
+                        # Handle offensive stats
+                        for stat in offensive_stats:
+                            if stat == 'OREB':
+                                # Just normal projection, but we'll use it for REB later
+                                pct_change = pct_diff_off[stat] if stat in pct_diff_off.index else 0
+                                proj_vs_opp_off.loc[stat] = season_avg_per36_off[stat] * (1 + pct_change / 100)
+                            else:
+                                pct_change = pct_diff_off[stat] if stat in pct_diff_off.index else 0
+                                proj_vs_opp_off.loc[stat] = season_avg_per36_off[stat] * (1 + pct_change / 100)
+
+                        # Handle defensive stats
                         for stat in defensive_stats:
                             if stat == 'REB':
-                                # Season avg: OREB + DREB
-                                season_avg_def.loc[stat] = season_avg_per36_def['OREB'] + season_avg_per36_def['DREB']
+                                # Season avg: OREB (from offensive) + DREB (from defensive)
+                                season_avg_def.loc[stat] = season_avg_per36_off['OREB'] + season_avg_per36_def['DREB']
 
-                                # Projection: adjust components separately
+                                # Projection: use adjusted OREB from offensive + adjusted DREB from defensive
                                 dreb_pct = pct_diff_def['DREB'] if 'DREB' in pct_diff_def.index else 0
-                                oreb_pct = pct_diff_def['OREB'] if 'OREB' in pct_diff_def.index else 0
+                                oreb_pct = pct_diff_off['OREB'] if 'OREB' in pct_diff_off.index else 0
 
                                 proj_vs_opp_def.loc[stat] = (
                                         season_avg_per36_def['DREB'] * (1 + dreb_pct / 100) +
-                                        season_avg_per36_def['OREB'] * (1 + oreb_pct / 100)
+                                        season_avg_per36_off['OREB'] * (1 + oreb_pct / 100)
                                 )
+                            elif stat == 'DREB':
+                                # Normal projection for DREB
+                                pct_change = pct_diff_def[stat] if stat in pct_diff_def.index else 0
+                                proj_vs_opp_def.loc[stat] = season_avg_per36_def[stat] * (1 + pct_change / 100)
                             else:
-                                # Normal projection for other stats
+                                # Normal projection for other defensive stats
                                 pct_change = pct_diff_def[stat] if stat in pct_diff_def.index else 0
                                 proj_vs_opp_def.loc[stat] = season_avg_per36_def[stat] * (1 + pct_change / 100)
 
@@ -963,6 +977,7 @@ def main():
                             f"vs {selected_opp} (per 36)": pd.concat([proj_vs_opp_off, proj_vs_opp_def]),
                             "Avg % Diff": avg_pct_diff_combined
                         }
+
                     elif has_off_history:
                         st.info("⚠️ No defensive cluster history vs this opponent. Showing offensive stats only.")
                         comparison_data = {
