@@ -37,45 +37,65 @@ def get_shot_chart_data(player_id, season='2025-26'):
         }
 
         # Paint touches
-        paint_shots = shot_chart[shot_chart['SHOT_ZONE_BASIC'].isin(['Restricted Area', 'In The Paint (Non-RA)'])]
-        shot_profile['paint_shots_per_game'] = len(paint_shots) / 82  # normalized to per game
-        shot_profile['paint_fg_pct'] = paint_shots['SHOT_MADE_FLAG'].mean() if len(paint_shots) > 0 else 0
+        try:
+            # Get actual games played
+            games_played = shot_chart['GAME_ID'].nunique() if len(shot_chart) > 0 else 0
 
-        # Corner 3s
-        corner_3s = shot_chart[shot_chart['SHOT_ZONE_BASIC'] == 'Corner 3']
-        shot_profile['corner_3_per_game'] = len(corner_3s) / 82
-        shot_profile['corner_3_pct'] = corner_3s['SHOT_MADE_FLAG'].mean() if len(corner_3s) > 0 else 0
+            if games_played == 0:
+                return None
 
-        # Mid-range
-        midrange = shot_chart[shot_chart['SHOT_ZONE_BASIC'] == 'Mid-Range']
-        shot_profile['midrange_per_game'] = len(midrange) / 82
-        shot_profile['midrange_pct'] = midrange['SHOT_MADE_FLAG'].mean() if len(midrange) > 0 else 0
+            # Paint shots
+            paint_shots = shot_chart[shot_chart['SHOT_ZONE_BASIC'].isin(['Restricted Area', 'In The Paint (Non-RA)'])]
+            shot_profile['paint_shots_per_game'] = len(paint_shots) / games_played
+            shot_profile['paint_fg_pct'] = paint_shots['SHOT_MADE_FLAG'].mean() if len(paint_shots) > 0 else 0
 
-        # Above break 3s
-        above_break_3s = shot_chart[shot_chart['SHOT_ZONE_BASIC'] == 'Above the Break 3']
-        shot_profile['above_break_3_per_game'] = len(above_break_3s) / 82
-        shot_profile['above_break_3_pct'] = above_break_3s['SHOT_MADE_FLAG'].mean() if len(above_break_3s) > 0 else 0
+            # Corner 3s - catches all variations
+            corner_3s = shot_chart[shot_chart['SHOT_ZONE_BASIC'].isin(['Corner 3', 'Left Corner 3', 'Right Corner 3'])]
+            shot_profile['corner_3_per_game'] = len(corner_3s) / games_played
+            shot_profile['corner_3_pct'] = corner_3s['SHOT_MADE_FLAG'].mean() if len(corner_3s) > 0 else 0
 
-        # Distance metrics
-        shot_profile['avg_shot_distance'] = shot_chart['SHOT_DISTANCE'].mean()
-        shot_profile['max_shot_distance'] = shot_chart['SHOT_DISTANCE'].max()
+            # Mid-range
+            midrange = shot_chart[shot_chart['SHOT_ZONE_BASIC'] == 'Mid-Range']
+            shot_profile['midrange_per_game'] = len(midrange) / games_played
+            shot_profile['midrange_pct'] = midrange['SHOT_MADE_FLAG'].mean() if len(midrange) > 0 else 0
 
-        # Shot clock analysis
-        if 'SHOT_CLOCK' in shot_chart.columns:
-            shot_profile['avg_shot_clock'] = shot_chart['SHOT_CLOCK'].mean()
-            shot_profile['early_shot_clock_freq'] = len(shot_chart[shot_chart['SHOT_CLOCK'] >= 15]) / len(shot_chart)
+            # Above break 3s
+            above_break_3s = shot_chart[shot_chart['SHOT_ZONE_BASIC'] == 'Above the Break 3']
+            shot_profile['above_break_3_per_game'] = len(above_break_3s) / games_played
+            shot_profile['above_break_3_pct'] = above_break_3s['SHOT_MADE_FLAG'].mean() if len(
+                above_break_3s) > 0 else 0
 
-        # Pressure shots
-        if 'PERIOD' in shot_chart.columns:
-            clutch_shots = shot_chart[
-                (shot_chart['PERIOD'] >= 4) &
-                (shot_chart['MINUTES_REMAINING'] <= 5)
-                ]
-            shot_profile['clutch_fg_pct'] = clutch_shots['SHOT_MADE_FLAG'].mean() if len(clutch_shots) > 0 else 0
-        return pd.DataFrame([shot_profile])
-    except:
+            # Distance metrics
+            shot_profile['avg_shot_distance'] = shot_chart['SHOT_DISTANCE'].mean()
+            shot_profile['max_shot_distance'] = shot_chart['SHOT_DISTANCE'].max()
+
+            # Shot clock analysis
+            if 'SHOT_CLOCK' in shot_chart.columns:
+                valid_shot_clock = shot_chart['SHOT_CLOCK'].notna()
+                shot_profile['avg_shot_clock'] = shot_chart.loc[valid_shot_clock, 'SHOT_CLOCK'].mean()
+                shot_profile['early_shot_clock_freq'] = (
+                    len(shot_chart[shot_chart['SHOT_CLOCK'] >= 15]) / len(shot_chart)
+                    if len(shot_chart) > 0 else 0
+                )
+
+            # Pressure shots
+            if 'PERIOD' in shot_chart.columns and 'MINUTES_REMAINING' in shot_chart.columns:
+                clutch_shots = shot_chart[
+                    (shot_chart['PERIOD'] >= 4) &
+                    (shot_chart['MINUTES_REMAINING'] <= 5)
+                    ]
+                shot_profile['clutch_fg_pct'] = clutch_shots['SHOT_MADE_FLAG'].mean() if len(clutch_shots) > 0 else 0
+
+            # Add metadata for tracking
+            shot_profile['games_played'] = games_played
+            shot_profile['total_shots'] = len(shot_chart)
+
+            return pd.DataFrame([shot_profile])
+        except Exception as e:
+            print(f"Error processing shot chart: {e}")
+            return None
+    except Exception as e:
         return None
-
 
 def enhance_player_data(player_averages, min_games=10):
     """Add shot chart data to player averages."""
@@ -550,15 +570,15 @@ def basic_clustering(data):
 
 
 def create_clusters():
-    # data = get_player_box()
-    # print ("got data")
-    # player_averages = box_to_avg(data)
-    # print ("converetd to avg")
-    # print (player_averages)
-    # player_averages = add_height_weight_pos(player_averages)
-    # print ("added height weight")
-    # enhanced_data = enhance_player_data(player_averages)
-    # enhanced_data.to_csv('player_data.csv', index=False)
+    data = get_player_box()
+    print ("got data")
+    player_averages = box_to_avg(data)
+    print ("converetd to avg")
+    print (player_averages)
+    player_averages = add_height_weight_pos(player_averages)
+    print ("added height weight")
+    enhanced_data = enhance_player_data(player_averages)
+    enhanced_data.to_csv('player_data.csv', index=False)
     enhanced_data = pd.read_csv("player_data.csv")
     clustered_data = cluster_players_off(enhanced_data, None)
     clustered_data.to_csv('player_clusters_detailed.csv', index=False)
