@@ -1493,7 +1493,7 @@ def main():
                     g = 255
                     b = 0
 
-                return f'background-color: rgb({r}, {g}, {b}); color: black; font-weight: bold;'
+                return f'rgb({r}, {g}, {b})'
 
 
             # =====================================================
@@ -1502,12 +1502,9 @@ def main():
             if not off_cluster_results and not def_cluster_results:
                 st.warning(f"No cluster data available vs {selected_opp} with {MIN_THRESHOLD}+ minutes.")
             else:
-                # Store cluster-to-players mapping for display below table
-                cluster_players_map = {}
-
                 # Create table data
                 table_rows = []
-                pct_columns = []  # Track which columns contain percentages for styling
+                cluster_tooltip_map = {}  # Map cluster numbers to player tooltips
 
                 # Process offensive stats
                 for stat in offensive_stats:
@@ -1535,54 +1532,77 @@ def main():
 
                     # Add best clusters
                     for i, (cluster, pct, players) in enumerate(best_3, 1):
-                        row[f'Best #{i} Cluster'] = cluster
+                        row[f'Best #{i} Cluster'] = int(cluster)
                         row[f'Best #{i} %'] = pct
-                        cluster_players_map[f"Off-{cluster}"] = players
-                        if f'Best #{i} %' not in pct_columns:
-                            pct_columns.append(f'Best #{i} %')
+                        cluster_tooltip_map[f"off_best_{i}_{stat}"] = ', '.join(players)
 
                     # Add worst clusters
                     for i, (cluster, pct, players) in enumerate(worst_3, 1):
-                        row[f'Worst #{i} Cluster'] = cluster
+                        row[f'Worst #{i} Cluster'] = int(cluster)
                         row[f'Worst #{i} %'] = pct
-                        cluster_players_map[f"Off-{cluster}"] = players
-                        if f'Worst #{i} %' not in pct_columns:
-                            pct_columns.append(f'Worst #{i} %')
+                        cluster_tooltip_map[f"off_worst_{i}_{stat}"] = ', '.join(players)
 
                     table_rows.append(row)
 
-                # Display offensive stats table
+                # Display offensive stats table with HTML tooltips
                 if table_rows:
                     st.markdown("### Offensive Stats")
+                    st.markdown("*Hover over cluster numbers to see player examples*")
+
                     off_stats_df = pd.DataFrame(table_rows)
 
-                    # Apply styling to percentage columns
-                    styled_off = off_stats_df.style.format({col: '{:+.1f}%' for col in pct_columns})
+                    # Build HTML table manually with tooltips
+                    html = '<table style="width:100%; border-collapse: collapse; font-size: 14px;">'
 
-                    # Apply heatmap to percentage columns
-                    for col in pct_columns:
-                        styled_off = styled_off.applymap(get_heatmap_color, subset=[col])
+                    # Header
+                    html += '<thead><tr style="background-color: #f0f0f0;">'
+                    for col in off_stats_df.columns:
+                        html += f'<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">{col}</th>'
+                    html += '</tr></thead>'
 
-                    st.dataframe(styled_off, use_container_width=True, height=600)
+                    # Body
+                    html += '<tbody>'
+                    for idx, row in off_stats_df.iterrows():
+                        html += '<tr>'
+                        stat = row['Stat']
 
-                    # Display cluster examples in expandable sections
-                    st.markdown("#### 📋 Offensive Cluster Examples")
-                    off_clusters_used = set()
-                    for i in range(1, 4):
-                        off_clusters_used.update(off_stats_df[f'Best #{i} Cluster'].values)
-                        off_clusters_used.update(off_stats_df[f'Worst #{i} Cluster'].values)
-                    off_clusters_used = sorted(off_clusters_used)
+                        for col_idx, col in enumerate(off_stats_df.columns):
+                            val = row[col]
 
-                    cols = st.columns(3)
-                    for idx, cluster in enumerate(off_clusters_used):
-                        with cols[idx % 3]:
-                            with st.expander(f"Offensive Cluster {cluster}"):
-                                players = cluster_players_map.get(f"Off-{cluster}", [])
-                                st.write(", ".join(players))
+                            # Apply styling
+                            style = 'border: 1px solid #ddd; padding: 8px;'
+
+                            # Check if this is a percentage column
+                            if '% ' in col or col.endswith('%'):
+                                color = get_heatmap_color(val)
+                                style += f' background-color: {color}; color: black; font-weight: bold;'
+                                html += f'<td style="{style}">{val:+.1f}%</td>'
+
+                            # Check if this is a cluster column
+                            elif 'Cluster' in col:
+                                # Determine tooltip key
+                                if 'Best' in col:
+                                    cluster_num = col.split('#')[1].split()[0]
+                                    tooltip_key = f"off_best_{cluster_num}_{stat}"
+                                else:  # Worst
+                                    cluster_num = col.split('#')[1].split()[0]
+                                    tooltip_key = f"off_worst_{cluster_num}_{stat}"
+
+                                tooltip = cluster_tooltip_map.get(tooltip_key, '')
+                                html += f'<td style="{style}"><span title="{tooltip}" style="cursor: help; text-decoration: underline dotted;">{int(val)}</span></td>'
+
+                            else:
+                                html += f'<td style="{style}">{val}</td>'
+
+                        html += '</tr>'
+                    html += '</tbody></table>'
+
+                    st.markdown(html, unsafe_allow_html=True)
+                    st.markdown("---")
 
                 # Process defensive stats
                 table_rows = []
-                pct_columns = []
+                cluster_tooltip_map = {}
 
                 for stat in defensive_stats:
                     if not def_cluster_results:
@@ -1609,56 +1629,78 @@ def main():
 
                     # Add best clusters
                     for i, (cluster, pct, players) in enumerate(best_3, 1):
-                        row[f'Best #{i} Cluster'] = cluster
+                        row[f'Best #{i} Cluster'] = int(cluster)
                         row[f'Best #{i} %'] = pct
-                        cluster_players_map[f"Def-{cluster}"] = players
-                        if f'Best #{i} %' not in pct_columns:
-                            pct_columns.append(f'Best #{i} %')
+                        cluster_tooltip_map[f"def_best_{i}_{stat}"] = ', '.join(players)
 
                     # Add worst clusters
                     for i, (cluster, pct, players) in enumerate(worst_3, 1):
-                        row[f'Worst #{i} Cluster'] = cluster
+                        row[f'Worst #{i} Cluster'] = int(cluster)
                         row[f'Worst #{i} %'] = pct
-                        cluster_players_map[f"Def-{cluster}"] = players
-                        if f'Worst #{i} %' not in pct_columns:
-                            pct_columns.append(f'Worst #{i} %')
+                        cluster_tooltip_map[f"def_worst_{i}_{stat}"] = ', '.join(players)
 
                     table_rows.append(row)
 
-                # Display defensive stats table
+                # Display defensive stats table with HTML tooltips
                 if table_rows:
-                    st.markdown("---")
                     st.markdown("### Defensive Stats")
+                    st.markdown("*Hover over cluster numbers to see player examples*")
+
                     def_stats_df = pd.DataFrame(table_rows)
 
-                    # Apply styling to percentage columns
-                    styled_def = def_stats_df.style.format({col: '{:+.1f}%' for col in pct_columns})
+                    # Build HTML table manually with tooltips
+                    html = '<table style="width:100%; border-collapse: collapse; font-size: 14px;">'
 
-                    # Apply heatmap to percentage columns
-                    for col in pct_columns:
-                        styled_def = styled_def.applymap(get_heatmap_color, subset=[col])
+                    # Header
+                    html += '<thead><tr style="background-color: #f0f0f0;">'
+                    for col in def_stats_df.columns:
+                        html += f'<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">{col}</th>'
+                    html += '</tr></thead>'
 
-                    st.dataframe(styled_def, use_container_width=True, height=400)
+                    # Body
+                    html += '<tbody>'
+                    for idx, row in def_stats_df.iterrows():
+                        html += '<tr>'
+                        stat = row['Stat']
 
-                    # Display cluster examples in expandable sections
-                    st.markdown("#### 📋 Defensive Cluster Examples")
-                    def_clusters_used = set()
-                    for i in range(1, 4):
-                        def_clusters_used.update(def_stats_df[f'Best #{i} Cluster'].values)
-                        def_clusters_used.update(def_stats_df[f'Worst #{i} Cluster'].values)
-                    def_clusters_used = sorted(def_clusters_used)
+                        for col_idx, col in enumerate(def_stats_df.columns):
+                            val = row[col]
 
-                    cols = st.columns(3)
-                    for idx, cluster in enumerate(def_clusters_used):
-                        with cols[idx % 3]:
-                            with st.expander(f"Defensive Cluster {cluster}"):
-                                players = cluster_players_map.get(f"Def-{cluster}", [])
-                                st.write(", ".join(players))
+                            # Apply styling
+                            style = 'border: 1px solid #ddd; padding: 8px;'
+
+                            # Check if this is a percentage column
+                            if '% ' in col or col.endswith('%'):
+                                color = get_heatmap_color(val)
+                                style += f' background-color: {color}; color: black; font-weight: bold;'
+                                html += f'<td style="{style}">{val:+.1f}%</td>'
+
+                            # Check if this is a cluster column
+                            elif 'Cluster' in col:
+                                # Determine tooltip key
+                                if 'Best' in col:
+                                    cluster_num = col.split('#')[1].split()[0]
+                                    tooltip_key = f"def_best_{cluster_num}_{stat}"
+                                else:  # Worst
+                                    cluster_num = col.split('#')[1].split()[0]
+                                    tooltip_key = f"def_worst_{cluster_num}_{stat}"
+
+                                tooltip = cluster_tooltip_map.get(tooltip_key, '')
+                                html += f'<td style="{style}"><span title="{tooltip}" style="cursor: help; text-decoration: underline dotted;">{int(val)}</span></td>'
+
+                            else:
+                                html += f'<td style="{style}">{val}</td>'
+
+                        html += '</tr>'
+                    html += '</tbody></table>'
+
+                    st.markdown(html, unsafe_allow_html=True)
 
                 st.caption(
                     f"*Analysis based on games with {MIN_THRESHOLD}+ minutes. % differences calculated using Bayesian approach with game-by-game updates.*")
                 st.caption(
-                    f"*Heatmap scale: -25% (red) to +25% (green). Click cluster expanders below tables to see player examples.*")
+                    f"*Heatmap scale: -25% (red) to +25% (green). Hover over cluster numbers to see player examples.*"
+                )
 if __name__ == '__main__':
     #create_clusters()
     main()
