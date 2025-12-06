@@ -725,7 +725,7 @@ def main():
     # =====================================================
     # 🔹 Tabs that share this filtered dataset
     # =====================================================
-    tab1, tab2 = st.tabs(["📊 Player Stats", "🧠 Clustering Overview"])
+    tab1, tab2, tab3 = st.tabs(["📊 Player Stats", "🧠 Clustering Overview","Team Best/Worst Cluster Performance"])
 
     # =====================================================
     # 🟦 TAB 1 — Player Stats
@@ -1324,6 +1324,252 @@ def main():
             games_def = len(df_def_cluster) if selected_opp == "All" else len(
                 df_def_cluster[df_def_cluster['OPP_TEAM'] == selected_opp])
             st.caption(f"Games in defensive cluster sample: {games_def:,}")
+# =====================================================
+# 🟦 TAB 3 — Team Cluster Matchup Analysis
+# =====================================================
+    with tab3:
+        st.subheader("Team Cluster Matchup Analysis")
+
+        if selected_opp == "All":
+            st.warning("⚠️ Please select a specific opponent team to view cluster matchup analysis.")
+        else:
+            st.markdown(f"### 📊 Best & Worst Clusters vs {selected_opp}")
+            st.markdown(f"*Showing which clusters perform best/worst against {selected_opp}*")
+
+            # Define stat categories (same as Tab 2)
+            offensive_stats = ['PTS', 'AST', 'OREB', 'FGM', 'FGA', 'FG3M', 'FG3A', 'FTM', 'FTA', 'TOV']
+            defensive_stats = ['DREB', 'REB', 'STL', 'BLK', 'PF']
+
+            MIN_THRESHOLD = 5
+            prior_mean = 0.0
+            prior_weight = 3.0
+
+            # Get all unique clusters
+            all_off_clusters = sorted(merged['OffCluster'].dropna().unique())
+            all_def_clusters = sorted(merged['DefCluster'].dropna().unique())
+
+            # =====================================================
+            # Calculate % diff for each offensive cluster vs selected opponent
+            # =====================================================
+            off_cluster_results = {}
+
+            for cluster in all_off_clusters:
+                df_cluster = merged[(merged['OffCluster'] == cluster) &
+                                   (merged['GAME_DATE'] >= min_date) &
+                                   (merged['GAME_DATE'] <= max_date)]
+
+                if df_cluster.empty:
+                    continue
+
+                # Calculate season averages
+                df_valid = df_cluster[df_cluster['MIN'] >= MIN_THRESHOLD]
+                df_per36 = df_valid[offensive_stats].div(df_valid['MIN'], axis=0) * 36
+                season_avg_per36 = df_per36.mean()
+
+                # Filter vs opponent
+                df_cluster.loc[:, 'OPP_TEAM'] = df_cluster['MATCHUP'].apply(lambda x: x.split()[-1])
+                df_vs_team = df_cluster[df_cluster['OPP_TEAM'] == selected_opp]
+                df_vs_team_valid = df_vs_team[df_vs_team['MIN'] >= MIN_THRESHOLD]
+
+                if not df_vs_team_valid.empty:
+                    # Sort by game date
+                    df_vs_team_valid_sorted = df_vs_team_valid.sort_values('GAME_DATE')
+
+                    # Calculate per-36 for each game
+                    df_vs_team_per36 = df_vs_team_valid_sorted[offensive_stats].div(
+                        df_vs_team_valid_sorted['MIN'], axis=0) * 36
+
+                    # Calculate percentage difference for each game
+                    game_pct_diffs = (
+                        (df_vs_team_per36 - season_avg_per36[offensive_stats]) /
+                        season_avg_per36[offensive_stats] * 100
+                    )
+
+                    # Bayesian sequential update for each stat
+                    pct_diffs = {}
+                    for stat in offensive_stats:
+                        bayesian_estimate = prior_mean
+                        total_weight = prior_weight
+
+                        for game_pct_diff in game_pct_diffs[stat].values:
+                            bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
+                            total_weight += 1
+
+                        pct_diffs[stat] = bayesian_estimate
+
+                    # Get player examples
+                    cluster_players = df_cluster['PLAYER_NAME'].unique()
+                    player_examples = list(np.random.choice(cluster_players, min(3, len(cluster_players)), replace=False))
+
+                    off_cluster_results[cluster] = {
+                        'pct_diffs': pct_diffs,
+                        'players': player_examples
+                    }
+
+            # =====================================================
+            # Calculate % diff for each defensive cluster vs selected opponent
+            # =====================================================
+            def_cluster_results = {}
+
+            for cluster in all_def_clusters:
+                df_cluster = merged[(merged['DefCluster'] == cluster) &
+                                   (merged['GAME_DATE'] >= min_date) &
+                                   (merged['GAME_DATE'] <= max_date)]
+
+                if df_cluster.empty:
+                    continue
+
+                # Calculate season averages
+                df_valid = df_cluster[df_cluster['MIN'] >= MIN_THRESHOLD]
+                df_per36 = df_valid[defensive_stats].div(df_valid['MIN'], axis=0) * 36
+                season_avg_per36 = df_per36.mean()
+
+                # Filter vs opponent
+                df_cluster.loc[:, 'OPP_TEAM'] = df_cluster['MATCHUP'].apply(lambda x: x.split()[-1])
+                df_vs_team = df_cluster[df_cluster['OPP_TEAM'] == selected_opp]
+                df_vs_team_valid = df_vs_team[df_vs_team['MIN'] >= MIN_THRESHOLD]
+
+                if not df_vs_team_valid.empty:
+                    # Sort by game date
+                    df_vs_team_valid_sorted = df_vs_team_valid.sort_values('GAME_DATE')
+
+                    # Calculate per-36 for each game
+                    df_vs_team_per36 = df_vs_team_valid_sorted[defensive_stats].div(
+                        df_vs_team_valid_sorted['MIN'], axis=0) * 36
+
+                    # Calculate percentage difference for each game
+                    game_pct_diffs = (
+                        (df_vs_team_per36 - season_avg_per36[defensive_stats]) /
+                        season_avg_per36[defensive_stats] * 100
+                    )
+
+                    # Bayesian sequential update for each stat
+                    pct_diffs = {}
+                    for stat in defensive_stats:
+                        bayesian_estimate = prior_mean
+                        total_weight = prior_weight
+
+                        for game_pct_diff in game_pct_diffs[stat].values:
+                            bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
+                            total_weight += 1
+
+                        pct_diffs[stat] = bayesian_estimate
+
+                    # Get player examples
+                    cluster_players = df_cluster['PLAYER_NAME'].unique()
+                    player_examples = list(np.random.choice(cluster_players, min(3, len(cluster_players)), replace=False))
+
+                    def_cluster_results[cluster] = {
+                        'pct_diffs': pct_diffs,
+                        'players': player_examples
+                    }
+
+            # =====================================================
+            # Build the results table
+            # =====================================================
+            if not off_cluster_results and not def_cluster_results:
+                st.warning(f"No cluster data available vs {selected_opp} with {MIN_THRESHOLD}+ minutes.")
+            else:
+                # Create table data
+                table_rows = []
+
+                # Process offensive stats
+                for stat in offensive_stats:
+                    if not off_cluster_results:
+                        continue
+
+                    # Get all clusters with this stat
+                    cluster_pcts = [(cluster, data['pct_diffs'][stat], data['players'])
+                                   for cluster, data in off_cluster_results.items()
+                                   if stat in data['pct_diffs']]
+
+                    if not cluster_pcts:
+                        continue
+
+                    # Sort by % diff
+                    cluster_pcts_sorted = sorted(cluster_pcts, key=lambda x: x[1], reverse=True)
+
+                    # Get top 3 best and top 3 worst
+                    best_3 = cluster_pcts_sorted[:3]
+                    worst_3 = cluster_pcts_sorted[-3:]
+                    worst_3.reverse()  # Show worst first
+
+                    # Format best clusters
+                    best_str = ""
+                    for cluster, pct, players in best_3:
+                        best_str += f"**Cluster {cluster}** ({pct:+.1f}%)\n"
+                        best_str += f"*{', '.join(players)}*\n\n"
+
+                    # Format worst clusters
+                    worst_str = ""
+                    for cluster, pct, players in worst_3:
+                        worst_str += f"**Cluster {cluster}** ({pct:+.1f}%)\n"
+                        worst_str += f"*{', '.join(players)}*\n\n"
+
+                    table_rows.append({
+                        'Stat': stat,
+                        'Type': 'Offensive',
+                        'Top 3 Best Clusters': best_str.strip(),
+                        'Top 3 Worst Clusters': worst_str.strip()
+                    })
+
+                # Process defensive stats
+                for stat in defensive_stats:
+                    if not def_cluster_results:
+                        continue
+
+                    # Get all clusters with this stat
+                    cluster_pcts = [(cluster, data['pct_diffs'][stat], data['players'])
+                                   for cluster, data in def_cluster_results.items()
+                                   if stat in data['pct_diffs']]
+
+                    if not cluster_pcts:
+                        continue
+
+                    # Sort by % diff
+                    cluster_pcts_sorted = sorted(cluster_pcts, key=lambda x: x[1], reverse=True)
+
+                    # Get top 3 best and top 3 worst
+                    best_3 = cluster_pcts_sorted[:3]
+                    worst_3 = cluster_pcts_sorted[-3:]
+                    worst_3.reverse()  # Show worst first
+
+                    # Format best clusters
+                    best_str = ""
+                    for cluster, pct, players in best_3:
+                        best_str += f"**Cluster {cluster}** ({pct:+.1f}%)\n"
+                        best_str += f"*{', '.join(players)}*\n\n"
+
+                    # Format worst clusters
+                    worst_str = ""
+                    for cluster, pct, players in worst_3:
+                        worst_str += f"**Cluster {cluster}** ({pct:+.1f}%)\n"
+                        worst_str += f"*{', '.join(players)}*\n\n"
+
+                    table_rows.append({
+                        'Stat': stat,
+                        'Type': 'Defensive',
+                        'Top 3 Best Clusters': best_str.strip(),
+                        'Top 3 Worst Clusters': worst_str.strip()
+                    })
+
+                # Create DataFrame
+                if table_rows:
+                    results_df = pd.DataFrame(table_rows)
+
+                    # Display the table
+                    st.markdown("### Offensive Stats")
+                    off_stats_df = results_df[results_df['Type'] == 'Offensive'][['Stat', 'Top 3 Best Clusters', 'Top 3 Worst Clusters']]
+                    st.dataframe(off_stats_df, use_container_width=True, height=600)
+
+                    st.markdown("---")
+                    st.markdown("### Defensive Stats")
+                    def_stats_df = results_df[results_df['Type'] == 'Defensive'][['Stat', 'Top 3 Best Clusters', 'Top 3 Worst Clusters']]
+                    st.dataframe(def_stats_df, use_container_width=True, height=400)
+
+                    st.caption(f"*Analysis based on games with {MIN_THRESHOLD}+ minutes. % differences calculated using Bayesian approach with game-by-game updates.*")
+                else:
+                    st.warning(f"No cluster matchup data available for the selected filters.")
 
 
 if __name__ == '__main__':
