@@ -1060,6 +1060,7 @@ def main():
                 # We need to aggregate from merged dataset to get season averages per player
 
                 # Group by player to get season averages for offensive stats
+                # Group by player to get season averages for offensive stats
                 off_players_season = merged[
                     (merged['OffCluster'] == selected_off_analysis) &
                     (merged['GAME_DATE'] >= min_date) &
@@ -1081,6 +1082,27 @@ def main():
                     **{stat: 'mean' for stat in defensive_stats}
                 }).reset_index()
 
+                # NEW: Get player season averages WITHOUT minutes filter for projections
+                off_players_no_min_filter = merged[
+                    (merged['OffCluster'] == selected_off_analysis) &
+                    (merged['GAME_DATE'] >= min_date) &
+                    (merged['GAME_DATE'] <= max_date)
+                    # NO MIN_THRESHOLD here
+                    ].groupby('PLAYER_NAME').agg({
+                    'MIN': 'mean',
+                    **{stat: 'mean' for stat in offensive_stats}
+                }).reset_index()
+
+                def_players_no_min_filter = merged[
+                    (merged['DefCluster'] == selected_def_analysis) &
+                    (merged['GAME_DATE'] >= min_date) &
+                    (merged['GAME_DATE'] <= max_date)
+                    # NO MIN_THRESHOLD here
+                    ].groupby('PLAYER_NAME').agg({
+                    'MIN': 'mean',
+                    **{stat: 'mean' for stat in defensive_stats}
+                }).reset_index()
+
                 # Merge to get players who have EITHER cluster (outer join)
                 # This way each player brings their own cluster's stats
                 all_players = off_players_season.merge(
@@ -1089,6 +1111,15 @@ def main():
                     how='outer',
                     suffixes=('_off', '_def')
                 )
+
+                # NEW: Merge the no-filter versions for projections
+                all_players_for_projection = off_players_no_min_filter.merge(
+                    def_players_no_min_filter,
+                    on='PLAYER_NAME',
+                    how='outer',
+                    suffixes=('_off', '_def')
+                )
+
                 # Calculate median minutes from last 10 games for the slider
                 if selected_player != "All":
                     # Get the specific player's last 10 games
@@ -1119,14 +1150,16 @@ def main():
                     minutes_multiplier = 1.0
                     selected_minutes = None
 
-                if all_players.empty:
+                # CHANGED: Use all_players_for_projection instead of all_players
+                if all_players_for_projection.empty:
                     st.warning("No players found in the selected clusters.")
                 else:
                     # Calculate projections for each player
 
                     players_to_project = []
 
-                    for idx, player_row in all_players.iterrows():
+                    # CHANGED: Iterate over all_players_for_projection
+                    for idx, player_row in all_players_for_projection.iterrows():
                         player_name = player_row['PLAYER_NAME']
 
                         projected_row = {
@@ -1280,7 +1313,6 @@ def main():
 
             else:
                 st.info("Select an opponent to see cluster performance analysis and projections.")
-
             games_off = len(df_off_cluster) if selected_opp == "All" else len(
                 df_off_cluster[df_off_cluster['OPP_TEAM'] == selected_opp])
             st.caption(f"Games in offensive cluster sample: {games_off:,}")
