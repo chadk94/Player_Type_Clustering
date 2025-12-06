@@ -737,7 +737,7 @@ def main():
         else:
             st.dataframe(
                 df_filtered[['PLAYER_NAME', 'TEAM_ABBREVIATION', 'GAME_DATE',
-                             'MATCHUP', 'PTS', 'REB', 'AST', 'FG3A', 'FTA', 'OffCluster', 'DefCluster']]
+                             'MATCHUP', 'MIN','PTS', 'REB', 'AST', 'FG3A', 'FTA', 'OffCluster', 'DefCluster']]
                 .sort_values('GAME_DATE', ascending=False)
                 .reset_index(drop=True)
             )
