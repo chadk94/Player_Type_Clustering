@@ -1324,6 +1324,8 @@ def main():
             games_def = len(df_def_cluster) if selected_opp == "All" else len(
                 df_def_cluster[df_def_cluster['OPP_TEAM'] == selected_opp])
             st.caption(f"Games in defensive cluster sample: {games_def:,}")
+
+
 # =====================================================
 # 🟦 TAB 3 — Team Cluster Matchup Analysis
 # =====================================================
@@ -1355,8 +1357,8 @@ def main():
 
             for cluster in all_off_clusters:
                 df_cluster = merged[(merged['OffCluster'] == cluster) &
-                                   (merged['GAME_DATE'] >= min_date) &
-                                   (merged['GAME_DATE'] <= max_date)]
+                                    (merged['GAME_DATE'] >= min_date) &
+                                    (merged['GAME_DATE'] <= max_date)]
 
                 if df_cluster.empty:
                     continue
@@ -1381,8 +1383,8 @@ def main():
 
                     # Calculate percentage difference for each game
                     game_pct_diffs = (
-                        (df_vs_team_per36 - season_avg_per36[offensive_stats]) /
-                        season_avg_per36[offensive_stats] * 100
+                            (df_vs_team_per36 - season_avg_per36[offensive_stats]) /
+                            season_avg_per36[offensive_stats] * 100
                     )
 
                     # Bayesian sequential update for each stat
@@ -1413,8 +1415,8 @@ def main():
 
             for cluster in all_def_clusters:
                 df_cluster = merged[(merged['DefCluster'] == cluster) &
-                                   (merged['GAME_DATE'] >= min_date) &
-                                   (merged['GAME_DATE'] <= max_date)]
+                                    (merged['GAME_DATE'] >= min_date) &
+                                    (merged['GAME_DATE'] <= max_date)]
 
                 if df_cluster.empty:
                     continue
@@ -1439,8 +1441,8 @@ def main():
 
                     # Calculate percentage difference for each game
                     game_pct_diffs = (
-                        (df_vs_team_per36 - season_avg_per36[defensive_stats]) /
-                        season_avg_per36[defensive_stats] * 100
+                            (df_vs_team_per36 - season_avg_per36[defensive_stats]) /
+                            season_avg_per36[defensive_stats] * 100
                     )
 
                     # Bayesian sequential update for each stat
@@ -1464,6 +1466,36 @@ def main():
                         'players': player_examples
                     }
 
+
+            # =====================================================
+            # Helper function for heatmap coloring
+            # =====================================================
+            def get_heatmap_color(pct_value):
+                """
+                Returns RGB color string based on percentage value
+                Scale from -25% (red) to +25% (green)
+                """
+                # Clamp value between -25 and 25
+                clamped = max(-25, min(25, pct_value))
+
+                # Normalize to 0-1 scale
+                normalized = (clamped + 25) / 50
+
+                # Red to Green gradient
+                if normalized < 0.5:
+                    # Red to Yellow (increase green)
+                    r = 255
+                    g = int(255 * (normalized * 2))
+                    b = 0
+                else:
+                    # Yellow to Green (decrease red)
+                    r = int(255 * (2 - normalized * 2))
+                    g = 255
+                    b = 0
+
+                return f'background-color: rgb({r}, {g}, {b}); color: black; font-weight: bold;'
+
+
             # =====================================================
             # Build the results table
             # =====================================================
@@ -1472,6 +1504,7 @@ def main():
             else:
                 # Create table data
                 table_rows = []
+                pct_columns = []  # Track which columns contain percentages for styling
 
                 # Process offensive stats
                 for stat in offensive_stats:
@@ -1480,8 +1513,8 @@ def main():
 
                     # Get all clusters with this stat
                     cluster_pcts = [(cluster, data['pct_diffs'][stat], data['players'])
-                                   for cluster, data in off_cluster_results.items()
-                                   if stat in data['pct_diffs']]
+                                    for cluster, data in off_cluster_results.items()
+                                    if stat in data['pct_diffs']]
 
                     if not cluster_pcts:
                         continue
@@ -1492,36 +1525,55 @@ def main():
                     # Get top 3 best and top 3 worst
                     best_3 = cluster_pcts_sorted[:3]
                     worst_3 = cluster_pcts_sorted[-3:]
-                    worst_3.reverse()  # Show worst first
+                    worst_3.reverse()  # Show worst first in order
 
-                    # Format best clusters
-                    best_str = ""
-                    for cluster, pct, players in best_3:
-                        best_str += f"**Cluster {cluster}** ({pct:+.1f}%)\n"
-                        best_str += f"*{', '.join(players)}*\n\n"
+                    # Build row
+                    row = {'Stat': stat}
 
-                    # Format worst clusters
-                    worst_str = ""
-                    for cluster, pct, players in worst_3:
-                        worst_str += f"**Cluster {cluster}** ({pct:+.1f}%)\n"
-                        worst_str += f"*{', '.join(players)}*\n\n"
+                    # Add best clusters
+                    for i, (cluster, pct, players) in enumerate(best_3, 1):
+                        row[f'Best #{i} Cluster'] = cluster
+                        row[f'Best #{i} %'] = pct
+                        row[f'Best #{i} Examples'] = ', '.join(players)
+                        if f'Best #{i} %' not in pct_columns:
+                            pct_columns.append(f'Best #{i} %')
 
-                    table_rows.append({
-                        'Stat': stat,
-                        'Type': 'Offensive',
-                        'Top 3 Best Clusters': best_str.strip(),
-                        'Top 3 Worst Clusters': worst_str.strip()
-                    })
+                    # Add worst clusters
+                    for i, (cluster, pct, players) in enumerate(worst_3, 1):
+                        row[f'Worst #{i} Cluster'] = cluster
+                        row[f'Worst #{i} %'] = pct
+                        row[f'Worst #{i} Examples'] = ', '.join(players)
+                        if f'Worst #{i} %' not in pct_columns:
+                            pct_columns.append(f'Worst #{i} %')
+
+                    table_rows.append(row)
+
+                # Display offensive stats table
+                if table_rows:
+                    st.markdown("### Offensive Stats")
+                    off_stats_df = pd.DataFrame(table_rows)
+
+                    # Apply styling to percentage columns
+                    styled_off = off_stats_df.style.format({col: '{:+.1f}%' for col in pct_columns})
+
+                    # Apply heatmap to percentage columns
+                    for col in pct_columns:
+                        styled_off = styled_off.applymap(get_heatmap_color, subset=[col])
+
+                    st.dataframe(styled_off, use_container_width=True, height=600)
 
                 # Process defensive stats
+                table_rows = []
+                pct_columns = []
+
                 for stat in defensive_stats:
                     if not def_cluster_results:
                         continue
 
                     # Get all clusters with this stat
                     cluster_pcts = [(cluster, data['pct_diffs'][stat], data['players'])
-                                   for cluster, data in def_cluster_results.items()
-                                   if stat in data['pct_diffs']]
+                                    for cluster, data in def_cluster_results.items()
+                                    if stat in data['pct_diffs']]
 
                     if not cluster_pcts:
                         continue
@@ -1532,45 +1584,47 @@ def main():
                     # Get top 3 best and top 3 worst
                     best_3 = cluster_pcts_sorted[:3]
                     worst_3 = cluster_pcts_sorted[-3:]
-                    worst_3.reverse()  # Show worst first
+                    worst_3.reverse()  # Show worst first in order
 
-                    # Format best clusters
-                    best_str = ""
-                    for cluster, pct, players in best_3:
-                        best_str += f"**Cluster {cluster}** ({pct:+.1f}%)\n"
-                        best_str += f"*{', '.join(players)}*\n\n"
+                    # Build row
+                    row = {'Stat': stat}
 
-                    # Format worst clusters
-                    worst_str = ""
-                    for cluster, pct, players in worst_3:
-                        worst_str += f"**Cluster {cluster}** ({pct:+.1f}%)\n"
-                        worst_str += f"*{', '.join(players)}*\n\n"
+                    # Add best clusters
+                    for i, (cluster, pct, players) in enumerate(best_3, 1):
+                        row[f'Best #{i} Cluster'] = cluster
+                        row[f'Best #{i} %'] = pct
+                        row[f'Best #{i} Examples'] = ', '.join(players)
+                        if f'Best #{i} %' not in pct_columns:
+                            pct_columns.append(f'Best #{i} %')
 
-                    table_rows.append({
-                        'Stat': stat,
-                        'Type': 'Defensive',
-                        'Top 3 Best Clusters': best_str.strip(),
-                        'Top 3 Worst Clusters': worst_str.strip()
-                    })
+                    # Add worst clusters
+                    for i, (cluster, pct, players) in enumerate(worst_3, 1):
+                        row[f'Worst #{i} Cluster'] = cluster
+                        row[f'Worst #{i} %'] = pct
+                        row[f'Worst #{i} Examples'] = ', '.join(players)
+                        if f'Worst #{i} %' not in pct_columns:
+                            pct_columns.append(f'Worst #{i} %')
 
-                # Create DataFrame
+                    table_rows.append(row)
+
+                # Display defensive stats table
                 if table_rows:
-                    results_df = pd.DataFrame(table_rows)
-
-                    # Display the table
-                    st.markdown("### Offensive Stats")
-                    off_stats_df = results_df[results_df['Type'] == 'Offensive'][['Stat', 'Top 3 Best Clusters', 'Top 3 Worst Clusters']]
-                    st.dataframe(off_stats_df, use_container_width=True, height=600)
-
                     st.markdown("---")
                     st.markdown("### Defensive Stats")
-                    def_stats_df = results_df[results_df['Type'] == 'Defensive'][['Stat', 'Top 3 Best Clusters', 'Top 3 Worst Clusters']]
-                    st.dataframe(def_stats_df, use_container_width=True, height=400)
+                    def_stats_df = pd.DataFrame(table_rows)
 
-                    st.caption(f"*Analysis based on games with {MIN_THRESHOLD}+ minutes. % differences calculated using Bayesian approach with game-by-game updates.*")
-                else:
-                    st.warning(f"No cluster matchup data available for the selected filters.")
+                    # Apply styling to percentage columns
+                    styled_def = def_stats_df.style.format({col: '{:+.1f}%' for col in pct_columns})
 
+                    # Apply heatmap to percentage columns
+                    for col in pct_columns:
+                        styled_def = styled_def.applymap(get_heatmap_color, subset=[col])
+
+                    st.dataframe(styled_def, use_container_width=True, height=400)
+
+                st.caption(
+                    f"*Analysis based on games with {MIN_THRESHOLD}+ minutes. % differences calculated using Bayesian approach with game-by-game updates.*")
+                st.caption(f"*Heatmap scale: -25% (red) to +25% (green)*")
 
 if __name__ == '__main__':
     #create_clusters()
