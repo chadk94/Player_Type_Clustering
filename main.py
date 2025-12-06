@@ -983,6 +983,9 @@ def main():
                                         season_avg_per36_def['DREB'] * (1 + dreb_pct / 100) +
                                         season_avg_per36_off['OREB'] * (1 + oreb_pct / 100)
                                 )
+                                avg_pct_diff_combined['REB'] = ((proj_vs_opp_def.loc[stat] / season_avg_def.loc[
+                                    stat]) - 1) * 100
+
                             elif stat == 'DREB':
                                 # Normal projection for DREB
                                 pct_change = pct_diff_def[stat] if stat in pct_diff_def.index else 0
