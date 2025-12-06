@@ -1567,9 +1567,11 @@ def main():
 
                     # Display cluster examples in expandable sections
                     st.markdown("#### 📋 Offensive Cluster Examples")
-                    off_clusters_used = sorted(set([off_stats_df[f'Best #{i} Cluster'].values for i in range(1, 4)] +
-                                                   [off_stats_df[f'Worst #{i} Cluster'].values for i in range(1, 4)]))
-                    off_clusters_used = sorted(set([item for sublist in off_clusters_used for item in sublist]))
+                    off_clusters_used = set()
+                    for i in range(1, 4):
+                        off_clusters_used.update(off_stats_df[f'Best #{i} Cluster'].values)
+                        off_clusters_used.update(off_stats_df[f'Worst #{i} Cluster'].values)
+                    off_clusters_used = sorted(off_clusters_used)
 
                     cols = st.columns(3)
                     for idx, cluster in enumerate(off_clusters_used):
@@ -1640,9 +1642,11 @@ def main():
 
                     # Display cluster examples in expandable sections
                     st.markdown("#### 📋 Defensive Cluster Examples")
-                    def_clusters_used = sorted(set([def_stats_df[f'Best #{i} Cluster'].values for i in range(1, 4)] +
-                                                   [def_stats_df[f'Worst #{i} Cluster'].values for i in range(1, 4)]))
-                    def_clusters_used = sorted(set([item for sublist in def_clusters_used for item in sublist]))
+                    def_clusters_used = set()
+                    for i in range(1, 4):
+                        def_clusters_used.update(def_stats_df[f'Best #{i} Cluster'].values)
+                        def_clusters_used.update(def_stats_df[f'Worst #{i} Cluster'].values)
+                    def_clusters_used = sorted(def_clusters_used)
 
                     cols = st.columns(3)
                     for idx, cluster in enumerate(def_clusters_used):
