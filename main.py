@@ -1502,6 +1502,9 @@ def main():
             if not off_cluster_results and not def_cluster_results:
                 st.warning(f"No cluster data available vs {selected_opp} with {MIN_THRESHOLD}+ minutes.")
             else:
+                # Store cluster-to-players mapping for display below table
+                cluster_players_map = {}
+
                 # Create table data
                 table_rows = []
                 pct_columns = []  # Track which columns contain percentages for styling
@@ -1534,7 +1537,7 @@ def main():
                     for i, (cluster, pct, players) in enumerate(best_3, 1):
                         row[f'Best #{i} Cluster'] = cluster
                         row[f'Best #{i} %'] = pct
-                        row[f'Best #{i} Examples'] = ', '.join(players)
+                        cluster_players_map[f"Off-{cluster}"] = players
                         if f'Best #{i} %' not in pct_columns:
                             pct_columns.append(f'Best #{i} %')
 
@@ -1542,7 +1545,7 @@ def main():
                     for i, (cluster, pct, players) in enumerate(worst_3, 1):
                         row[f'Worst #{i} Cluster'] = cluster
                         row[f'Worst #{i} %'] = pct
-                        row[f'Worst #{i} Examples'] = ', '.join(players)
+                        cluster_players_map[f"Off-{cluster}"] = players
                         if f'Worst #{i} %' not in pct_columns:
                             pct_columns.append(f'Worst #{i} %')
 
@@ -1561,6 +1564,19 @@ def main():
                         styled_off = styled_off.applymap(get_heatmap_color, subset=[col])
 
                     st.dataframe(styled_off, use_container_width=True, height=600)
+
+                    # Display cluster examples in expandable sections
+                    st.markdown("#### 📋 Offensive Cluster Examples")
+                    off_clusters_used = sorted(set([off_stats_df[f'Best #{i} Cluster'].values for i in range(1, 4)] +
+                                                   [off_stats_df[f'Worst #{i} Cluster'].values for i in range(1, 4)]))
+                    off_clusters_used = sorted(set([item for sublist in off_clusters_used for item in sublist]))
+
+                    cols = st.columns(3)
+                    for idx, cluster in enumerate(off_clusters_used):
+                        with cols[idx % 3]:
+                            with st.expander(f"Offensive Cluster {cluster}"):
+                                players = cluster_players_map.get(f"Off-{cluster}", [])
+                                st.write(", ".join(players))
 
                 # Process defensive stats
                 table_rows = []
@@ -1593,7 +1609,7 @@ def main():
                     for i, (cluster, pct, players) in enumerate(best_3, 1):
                         row[f'Best #{i} Cluster'] = cluster
                         row[f'Best #{i} %'] = pct
-                        row[f'Best #{i} Examples'] = ', '.join(players)
+                        cluster_players_map[f"Def-{cluster}"] = players
                         if f'Best #{i} %' not in pct_columns:
                             pct_columns.append(f'Best #{i} %')
 
@@ -1601,7 +1617,7 @@ def main():
                     for i, (cluster, pct, players) in enumerate(worst_3, 1):
                         row[f'Worst #{i} Cluster'] = cluster
                         row[f'Worst #{i} %'] = pct
-                        row[f'Worst #{i} Examples'] = ', '.join(players)
+                        cluster_players_map[f"Def-{cluster}"] = players
                         if f'Worst #{i} %' not in pct_columns:
                             pct_columns.append(f'Worst #{i} %')
 
@@ -1622,10 +1638,23 @@ def main():
 
                     st.dataframe(styled_def, use_container_width=True, height=400)
 
+                    # Display cluster examples in expandable sections
+                    st.markdown("#### 📋 Defensive Cluster Examples")
+                    def_clusters_used = sorted(set([def_stats_df[f'Best #{i} Cluster'].values for i in range(1, 4)] +
+                                                   [def_stats_df[f'Worst #{i} Cluster'].values for i in range(1, 4)]))
+                    def_clusters_used = sorted(set([item for sublist in def_clusters_used for item in sublist]))
+
+                    cols = st.columns(3)
+                    for idx, cluster in enumerate(def_clusters_used):
+                        with cols[idx % 3]:
+                            with st.expander(f"Defensive Cluster {cluster}"):
+                                players = cluster_players_map.get(f"Def-{cluster}", [])
+                                st.write(", ".join(players))
+
                 st.caption(
                     f"*Analysis based on games with {MIN_THRESHOLD}+ minutes. % differences calculated using Bayesian approach with game-by-game updates.*")
-                st.caption(f"*Heatmap scale: -25% (red) to +25% (green)*")
-
+                st.caption(
+                    f"*Heatmap scale: -25% (red) to +25% (green). Click cluster expanders below tables to see player examples.*")
 if __name__ == '__main__':
     #create_clusters()
     main()
