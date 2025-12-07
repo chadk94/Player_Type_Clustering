@@ -1613,6 +1613,7 @@ def main():
 
                     # Add best clusters
                     for i, (cluster, pct, players) in enumerate(best_3, 1):
+                        cluster = int(cluster)
                         row[f'Best #{i} Cluster'] = cluster
                         row[f'Best #{i} %'] = pct
                         cluster_players_map[f"Def-{cluster}"] = players
@@ -1621,6 +1622,7 @@ def main():
 
                     # Add worst clusters
                     for i, (cluster, pct, players) in enumerate(worst_3, 1):
+                        cluster = int(cluster)
                         row[f'Worst #{i} Cluster'] = cluster
                         row[f'Worst #{i} %'] = pct
                         cluster_players_map[f"Def-{cluster}"] = players
