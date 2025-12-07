@@ -1609,7 +1609,6 @@ def main():
 
                     # Add best clusters
                     for i, (cluster, pct, players) in enumerate(best_3, 1):
-                        cluster=int(cluster)
                         row[f'Best #{i} Cluster'] = cluster
                         row[f'Best #{i} %'] = pct
                         cluster_players_map[f"Def-{cluster}"] = players
@@ -1631,6 +1630,13 @@ def main():
                     st.markdown("---")
                     st.markdown("### Defensive Stats")
                     def_stats_df = pd.DataFrame(table_rows)
+
+                    # Convert cluster columns to int
+                    cluster_cols = [col for col in def_stats_df.columns if 'Cluster' in col]
+                    def_stats_df[cluster_cols] = def_stats_df[cluster_cols].astype(int)
+
+                    # Round percentage columns
+                    def_stats_df[pct_columns] = def_stats_df[pct_columns].round(1)
 
                     # Apply styling to percentage columns
                     styled_def = def_stats_df.style.format({col: '{:+.1f}%' for col in pct_columns})
@@ -1655,7 +1661,6 @@ def main():
                             with st.expander(f"Defensive Cluster {cluster}"):
                                 players = cluster_players_map.get(f"Def-{cluster}", [])
                                 st.write(", ".join(players))
-
                 st.caption(
                     f"*Analysis based on games with {MIN_THRESHOLD}+ minutes. % differences calculated using Bayesian approach with game-by-game updates.*")
                 st.caption(
