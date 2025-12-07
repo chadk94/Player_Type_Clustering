@@ -1558,6 +1558,8 @@ def main():
 
                     # Apply styling to percentage columns
                     styled_off = off_stats_df.style.format({col: '{:+.1f}%' for col in pct_columns})
+                    cluster_cols = [col for col in off_stats_df.columns if 'Cluster' in col]
+                    off_stats_df[cluster_cols] = off_stats_df[cluster_cols].astype(int)
 
                     # Apply heatmap to percentage columns
                     for col in pct_columns:
