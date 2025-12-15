@@ -1716,11 +1716,10 @@ def main():
                 st.info("No games scheduled for today.")
             else:
                 st.success(f"Found {len(todays_players)} players in today's games")
-
                 # Merge with our cluster data to get player clusters and stats
                 todays_players_merged = todays_players.merge(
                     merged[['PLAYER_ID', 'PLAYER_NAME', 'OffCluster', 'DefCluster']].drop_duplicates('PLAYER_ID'),
-                    on='PLAYER_NAME',
+                    on='PLAYER_ID',
                     how='inner'
                 )
                 if todays_players_merged.empty:
