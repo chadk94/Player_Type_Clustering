@@ -2058,7 +2058,16 @@ def main():
                         st.dataframe(styled_proj, use_container_width=True, hide_index=True)
 
                         st.caption(f"💡 Projections based on {selected_minutes:.1f} minutes")
-                        st.caption(f"📊 Using Off Cluster {off_cluster} and Def Cluster {def_cluster}"
+                        st.caption(
+                            f"📊 Using Off Cluster {off_cluster} and Def Cluster {def_cluster} historical performance vs {opponent}")
+                    else:
+                        st.warning(f"No season stats found for {selected_today_player}")
+
+        except Exception as e:
+            st.error(f"Error loading today's games: {str(e)}")
+            st.exception(e)
+            st.info("Make sure the NBA API is accessible and there are games scheduled today.")
+            
 if __name__ == '__main__':
     #create_clusters()
     main()
