@@ -2059,6 +2059,6 @@ def main():
 
                         st.caption(f"💡 Projections based on {selected_minutes:.1f} minutes")
                         st.caption(f"📊 Using Off Cluster {off_cluster} and Def Cluster {def_cluster}"
-    if __name__ == '__main__':
+if __name__ == '__main__':
     #create_clusters()
     main()
