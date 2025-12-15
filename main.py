@@ -1904,7 +1904,7 @@ def main():
                             min_games = st.slider("Min games vs opponent:", 1, 10, 1)
 
                         with col2:
-                            show_negative = st.checkbox("Show negative matchups too", value=False)
+                            show_negative = st.checkbox("Show negative matchups too", value=True)
 
                         # Apply filters
                         filtered_df = matchups_df.copy()
