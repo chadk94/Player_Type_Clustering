@@ -16,6 +16,178 @@ from nba_api.stats.endpoints import commonteamroster
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
 
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def load_todays_matchups(min_date, max_date):
+    """Load and calculate today's matchup data with caching"""
+
+    # Get today's games and players
+    todays_players = build_player_list()
+
+    if todays_players.empty:
+        return None
+
+    # Clean up the OPP column
+    todays_players['OPP'] = todays_players['OPP'].str.strip("[]'\"")
+
+    # Merge with cluster data
+    todays_players_merged = todays_players.merge(
+        merged[['PLAYER_ID', 'PLAYER_NAME', 'OffCluster', 'DefCluster']].drop_duplicates('PLAYER_ID'),
+        on='PLAYER_ID',
+        how='inner'
+    )
+
+    if todays_players_merged.empty:
+        return None
+
+    # Calculate matchup scores
+    matchup_scores = []
+    MIN_THRESHOLD = 5
+    offensive_stats = ['PTS', 'AST', 'OREB', 'FGM', 'FGA', 'FG3M', 'FG3A', 'FTM', 'FTA', 'TOV']
+    defensive_stats = ['DREB', 'REB', 'STL', 'BLK', 'PF']
+
+    # Pre-filter merged data by date range once
+    merged_filtered = merged[
+        (merged['GAME_DATE'] >= min_date) &
+        (merged['GAME_DATE'] <= max_date)
+        ].copy()
+
+    # Pre-calculate cluster averages for all clusters
+    cluster_stats_cache = {}
+
+    for idx, player_row in todays_players_merged.iterrows():
+        player_id = player_row['PLAYER_ID']
+        player_name = player_row['PLAYER_NAME']
+        opponent = player_row['OPP']
+        off_cluster = player_row['OffCluster']
+        def_cluster = player_row['DefCluster']
+        is_home = player_row['Home']
+
+        if pd.isna(off_cluster) or pd.isna(def_cluster):
+            continue
+
+        # Use cached cluster data if available
+        cache_key_off = f"off_{off_cluster}"
+        cache_key_def = f"def_{def_cluster}"
+
+        if cache_key_off not in cluster_stats_cache:
+            df_off_cluster = merged_filtered[merged_filtered['OffCluster'] == off_cluster]
+            df_off_valid = df_off_cluster[df_off_cluster['MIN'] >= MIN_THRESHOLD]
+            df_off_per36 = df_off_valid[offensive_stats].div(df_off_valid['MIN'], axis=0) * 36
+            season_avg_per36_off = df_off_per36.mean()
+            df_off_cluster['OPP_TEAM'] = df_off_cluster['MATCHUP'].apply(lambda x: x.split()[-1])
+            cluster_stats_cache[cache_key_off] = {
+                'df': df_off_cluster,
+                'season_avg': season_avg_per36_off
+            }
+
+        if cache_key_def not in cluster_stats_cache:
+            df_def_cluster = merged_filtered[merged_filtered['DefCluster'] == def_cluster]
+            df_def_valid = df_def_cluster[df_def_cluster['MIN'] >= MIN_THRESHOLD]
+            df_def_per36 = df_def_valid[defensive_stats].div(df_def_valid['MIN'], axis=0) * 36
+            season_avg_per36_def = df_def_per36.mean()
+            df_def_cluster['OPP_TEAM'] = df_def_cluster['MATCHUP'].apply(lambda x: x.split()[-1])
+            cluster_stats_cache[cache_key_def] = {
+                'df': df_def_cluster,
+                'season_avg': season_avg_per36_def
+            }
+
+        # Get from cache
+        df_off_cluster = cluster_stats_cache[cache_key_off]['df']
+        season_avg_per36_off = cluster_stats_cache[cache_key_off]['season_avg']
+        df_def_cluster = cluster_stats_cache[cache_key_def]['df']
+        season_avg_per36_def = cluster_stats_cache[cache_key_def]['season_avg']
+
+        if df_off_cluster.empty or df_def_cluster.empty:
+            continue
+
+        # Filter by opponent
+        df_off_vs_team = df_off_cluster[df_off_cluster['OPP_TEAM'] == opponent]
+        df_def_vs_team = df_def_cluster[df_def_cluster['OPP_TEAM'] == opponent]
+
+        df_off_vs_team_valid = df_off_vs_team[df_off_vs_team['MIN'] >= MIN_THRESHOLD]
+        df_def_vs_team_valid = df_def_vs_team[df_def_vs_team['MIN'] >= MIN_THRESHOLD]
+
+        # Calculate Bayesian percentage differences
+        prior_mean = 0.0
+        prior_weight = 3.0
+
+        pct_diff_off = pd.Series(0.0, index=offensive_stats)
+        pct_diff_def = pd.Series(0.0, index=defensive_stats)
+        has_off_history = False
+        has_def_history = False
+
+        # Offensive cluster Bayesian calculation
+        if not df_off_vs_team_valid.empty:
+            has_off_history = True
+            df_off_vs_team_valid_sorted = df_off_vs_team_valid.sort_values('GAME_DATE')
+            df_off_vs_team_per36 = df_off_vs_team_valid_sorted[offensive_stats].div(
+                df_off_vs_team_valid_sorted['MIN'], axis=0) * 36
+
+            game_pct_diffs_off = (
+                    (df_off_vs_team_per36 - season_avg_per36_off[offensive_stats]) /
+                    season_avg_per36_off[offensive_stats] * 100
+            )
+
+            for stat in offensive_stats:
+                bayesian_estimate = prior_mean
+                total_weight = prior_weight
+                for game_pct_diff in game_pct_diffs_off[stat].values:
+                    bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
+                    total_weight += 1
+                pct_diff_off[stat] = bayesian_estimate
+
+        # Defensive cluster Bayesian calculation
+        if not df_def_vs_team_valid.empty:
+            has_def_history = True
+            df_def_vs_team_valid_sorted = df_def_vs_team_valid.sort_values('GAME_DATE')
+            df_def_vs_team_per36 = df_def_vs_team_valid_sorted[defensive_stats].div(
+                df_def_vs_team_valid_sorted['MIN'], axis=0) * 36
+
+            game_pct_diffs_def = (
+                    (df_def_vs_team_per36 - season_avg_per36_def[defensive_stats]) /
+                    season_avg_per36_def[defensive_stats] * 100
+            )
+
+            for stat in defensive_stats:
+                bayesian_estimate = prior_mean
+                total_weight = prior_weight
+                for game_pct_diff in game_pct_diffs_def[stat].values:
+                    bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
+                    total_weight += 1
+                pct_diff_def[stat] = bayesian_estimate
+
+        # Only include players with historical data vs this opponent
+        if has_off_history or has_def_history:
+            matchup_scores.append({
+                'PLAYER_NAME': player_name,
+                'PLAYER_ID': player_id,
+                'Opponent': opponent,
+                'Home': '🏠' if is_home else '✈️',
+                'Off Cluster': int(off_cluster),
+                'Def Cluster': int(def_cluster),
+                'Has Off History': has_off_history,
+                'Has Def History': has_def_history,
+                'PTS %': pct_diff_off['PTS'] if has_off_history else 0,
+                'AST %': pct_diff_off['AST'] if has_off_history else 0,
+                'OREB %': pct_diff_off['OREB'] if has_off_history else 0,
+                'DREB %': pct_diff_def['DREB'] if has_def_history else 0,
+                'FG3A %': pct_diff_off['FG3A'] if has_off_history else 0,
+                'STL %': pct_diff_def['STL'] if has_def_history else 0,
+                'BLK %': pct_diff_def['BLK'] if has_def_history else 0,
+                'Off Games': len(df_off_vs_team_valid),
+                'Def Games': len(df_def_vs_team_valid),
+                'pct_diff_off': pct_diff_off,
+                'pct_diff_def': pct_diff_def
+            })
+
+    if not matchup_scores:
+        return None
+
+    matchups_df = pd.DataFrame(matchup_scores)
+    matchups_df = matchups_df.sort_values('PTS %', ascending=False)
+
+    return matchups_df
 def get_scoreboard(): ##Returns todays games + opponents. Helper function for build_player_list
     board = scoreboardv2.ScoreboardV2()
     games = board.game_header.get_data_frame()
@@ -1704,374 +1876,189 @@ def main():
     # =====================================================
     # 🟩 TAB 4 — Today's Best Matchups
     # =====================================================
-    # =====================================================
-    # 🟩 TAB 4 — Today's Best Matchups
-    # =====================================================
     with tab4:
         st.subheader("🔥 Today's Best Matchup Opportunities")
 
         try:
-            # Get today's games and players
+            # Load cached matchup data
             with st.spinner("Loading today's games..."):
-                todays_players = build_player_list()
+                matchups_df = load_todays_matchups(min_date, max_date)
 
-            if todays_players.empty:
-                st.info("No games scheduled for today.")
+            if matchups_df is None:
+                st.info("No games scheduled for today or no players with cluster data found.")
             else:
-                st.success(f"Found {len(todays_players)} players in today's games")
+                st.success(f"Found {len(matchups_df)} players with matchup history")
 
-                # Clean up the OPP column (remove brackets and quotes)
-                todays_players['OPP'] = todays_players['OPP'].str.strip("[]'\"")
+                # Filter options
+                show_negative = st.checkbox("Show negative matchups too", value=True)
 
-                # Merge with our cluster data to get player clusters and stats
-                todays_players_merged = todays_players.merge(
-                    merged[['PLAYER_ID', 'PLAYER_NAME', 'OffCluster', 'DefCluster']].drop_duplicates('PLAYER_ID'),
-                    on='PLAYER_ID',
-                    how='inner'
+                # Apply filters
+                filtered_df = matchups_df.copy()
+
+                if not show_negative:
+                    filtered_df = filtered_df[filtered_df['PTS %'] > 0]
+
+                st.markdown(f"### 📊 Top Matchup Opportunities ({len(filtered_df)} players)")
+
+                # Display summary table
+                display_cols = ['PLAYER_NAME', 'Home', 'Opponent', 'Off Cluster', 'Def Cluster',
+                                'PTS %', 'AST %', 'DREB %', 'OREB %', 'FG3A %', 'STL %', 'BLK %',
+                                'Off Games', 'Def Games']
+
+                def highlight_score(val, col_name):
+                    if '%' in col_name and col_name not in ['Home']:
+                        try:
+                            if val > 10:
+                                return 'background-color: #28A745; color: white; font-weight: bold'
+                            elif val > 5:
+                                return 'background-color: #90EE90; color: black'
+                            elif val > 0:
+                                return 'background-color: #D4EDDA; color: black'
+                            elif val < -5:
+                                return 'background-color: #DC3545; color: white'
+                            elif val < 0:
+                                return 'background-color: #F8D7DA; color: black'
+                        except:
+                            pass
+                    return ''
+
+                styled_matchups = filtered_df[display_cols].style.format({
+                    'PTS %': '{:.1f}%',
+                    'AST %': '{:.1f}%',
+                    'DREB %': '{:.1f}%',
+                    'OREB %': '{:.1f}%',
+                    'FG3A %': '{:.1f}%',
+                    'STL %': '{:.1f}%',
+                    'BLK %': '{:.1f}%'
+                }).apply(
+                    lambda row: [highlight_score(val, col) for col, val in zip(display_cols, row)],
+                    axis=1
                 )
 
-                if todays_players_merged.empty:
-                    st.warning("No players from today's games found in cluster data.")
-                else:
-                    st.markdown(f"**{len(todays_players_merged)} players with cluster data playing today**")
+                st.dataframe(styled_matchups, use_container_width=True, height=400, hide_index=True)
 
-                    # Calculate matchup scores for each player
-                    matchup_scores = []
+                st.caption("🏠 = Home game | ✈️ = Away game")
 
+                # =====================================================
+                # 🎯 Detailed Projection Section
+                # =====================================================
+                st.markdown("---")
+                st.markdown("### 🎯 Detailed Projection")
+
+                selected_today_player = st.selectbox(
+                    "Select player for full projection:",
+                    options=filtered_df['PLAYER_NAME'].tolist(),
+                    key="today_player_select"
+                )
+
+                if selected_today_player:
                     MIN_THRESHOLD = 5
                     offensive_stats = ['PTS', 'AST', 'OREB', 'FGM', 'FGA', 'FG3M', 'FG3A', 'FTM', 'FTA', 'TOV']
                     defensive_stats = ['DREB', 'REB', 'STL', 'BLK', 'PF']
 
-                    # OPTIMIZATION: Pre-filter merged data by date range once
+                    player_info = filtered_df[filtered_df['PLAYER_NAME'] == selected_today_player].iloc[0]
+                    opponent = player_info['Opponent']
+                    off_cluster = player_info['Off Cluster']
+                    def_cluster = player_info['Def Cluster']
+                    pct_diff_off = player_info['pct_diff_off']
+                    pct_diff_def = player_info['pct_diff_def']
+
+                    st.markdown(f"**{selected_today_player}** vs **{opponent}**")
+                    st.caption(f"Off Cluster {off_cluster} | Def Cluster {def_cluster}")
+
+                    # Get player's season stats
                     merged_filtered = merged[
                         (merged['GAME_DATE'] >= min_date) &
                         (merged['GAME_DATE'] <= max_date)
+                        ]
+
+                    player_season_stats = merged_filtered[
+                        (merged_filtered['PLAYER_NAME'] == selected_today_player) &
+                        (merged_filtered['MIN'] >= MIN_THRESHOLD)
                         ].copy()
 
-                    # OPTIMIZATION: Pre-calculate cluster averages for all clusters
-                    cluster_stats_cache = {}
+                    if not player_season_stats.empty:
+                        # Calculate player's season averages
+                        all_stats = offensive_stats + defensive_stats
+                        player_avg_stats = player_season_stats[all_stats + ['MIN']].mean()
 
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
+                        # Get median minutes from last 10 games
+                        player_last_10 = player_season_stats.sort_values('GAME_DATE', ascending=False).head(10)
+                        median_min = player_last_10['MIN'].median() if not player_last_10.empty else player_avg_stats[
+                            'MIN']
 
-                    for player_idx, (idx, player_row) in enumerate(todays_players_merged.iterrows()):
-                        player_id = player_row['PLAYER_ID']
-                        player_name = player_row['PLAYER_NAME']
-                        opponent = player_row['OPP']
-                        off_cluster = player_row['OffCluster']
-                        def_cluster = player_row['DefCluster']
-                        is_home = player_row['Home']
+                        # Minutes slider
+                        selected_minutes = st.slider(
+                            "Minutes per game:",
+                            min_value=0.0,
+                            max_value=48.0,
+                            value=float(median_min),
+                            step=0.5,
+                            key=f"minutes_{selected_today_player}",
+                            help=f"Default is median of last 10 games ({median_min:.1f} min)"
+                        )
 
-                        if player_idx % 10 == 0:  # Update status less frequently
-                            status_text.text(f"Analyzing matchups... {player_idx + 1}/{len(todays_players_merged)}")
+                        minutes_multiplier = selected_minutes / player_avg_stats['MIN'] if player_avg_stats[
+                                                                                               'MIN'] > 0 else 1.0
 
-                        if pd.isna(off_cluster) or pd.isna(def_cluster):
-                            continue
+                        # Build projection
+                        projection_data = {'Stat': [], 'Season Avg': [], 'Projected': [], 'Difference': []}
 
-                        # OPTIMIZATION: Use cached cluster data if available
-                        cache_key_off = f"off_{off_cluster}"
-                        cache_key_def = f"def_{def_cluster}"
+                        display_stats_order = ['PTS', 'AST', 'OREB', 'DREB', 'REB', 'FG3A', 'FG3M', 'FTA', 'FTM', 'STL',
+                                               'BLK']
 
-                        if cache_key_off not in cluster_stats_cache:
-                            df_off_cluster = merged_filtered[merged_filtered['OffCluster'] == off_cluster]
-                            df_off_valid = df_off_cluster[df_off_cluster['MIN'] >= MIN_THRESHOLD]
-                            df_off_per36 = df_off_valid[offensive_stats].div(df_off_valid['MIN'], axis=0) * 36
-                            season_avg_per36_off = df_off_per36.mean()
-                            df_off_cluster['OPP_TEAM'] = df_off_cluster['MATCHUP'].apply(lambda x: x.split()[-1])
-                            cluster_stats_cache[cache_key_off] = {
-                                'df': df_off_cluster,
-                                'season_avg': season_avg_per36_off
-                            }
+                        for stat in display_stats_order:
+                            if stat == 'REB':
+                                # Calculate REB from OREB + DREB
+                                season_avg = player_avg_stats['OREB'] + player_avg_stats['DREB']
+                                oreb_pct = pct_diff_off['OREB'] if player_info['Has Off History'] else 0
+                                dreb_pct = pct_diff_def['DREB'] if player_info['Has Def History'] else 0
+                                projected = (
+                                                    player_avg_stats['OREB'] * (1 + oreb_pct / 100) +
+                                                    player_avg_stats['DREB'] * (1 + dreb_pct / 100)
+                                            ) * minutes_multiplier
+                            elif stat in offensive_stats:
+                                season_avg = player_avg_stats[stat]
+                                pct_change = pct_diff_off[stat] if player_info['Has Off History'] else 0
+                                projected = season_avg * (1 + pct_change / 100) * minutes_multiplier
+                            elif stat in defensive_stats:
+                                season_avg = player_avg_stats[stat]
+                                pct_change = pct_diff_def[stat] if player_info['Has Def History'] else 0
+                                projected = season_avg * (1 + pct_change / 100) * minutes_multiplier
+                            else:
+                                continue
 
-                        if cache_key_def not in cluster_stats_cache:
-                            df_def_cluster = merged_filtered[merged_filtered['DefCluster'] == def_cluster]
-                            df_def_valid = df_def_cluster[df_def_cluster['MIN'] >= MIN_THRESHOLD]
-                            df_def_per36 = df_def_valid[defensive_stats].div(df_def_valid['MIN'], axis=0) * 36
-                            season_avg_per36_def = df_def_per36.mean()
-                            df_def_cluster['OPP_TEAM'] = df_def_cluster['MATCHUP'].apply(lambda x: x.split()[-1])
-                            cluster_stats_cache[cache_key_def] = {
-                                'df': df_def_cluster,
-                                'season_avg': season_avg_per36_def
-                            }
+                            projection_data['Stat'].append(stat)
+                            projection_data['Season Avg'].append(season_avg)
+                            projection_data['Projected'].append(projected)
+                            projection_data['Difference'].append(projected - season_avg)
 
-                        # Get from cache
-                        df_off_cluster = cluster_stats_cache[cache_key_off]['df']
-                        season_avg_per36_off = cluster_stats_cache[cache_key_off]['season_avg']
-                        df_def_cluster = cluster_stats_cache[cache_key_def]['df']
-                        season_avg_per36_def = cluster_stats_cache[cache_key_def]['season_avg']
+                        proj_df = pd.DataFrame(projection_data)
 
-                        if df_off_cluster.empty or df_def_cluster.empty:
-                            continue
-
-                        # Filter by opponent
-                        df_off_vs_team = df_off_cluster[df_off_cluster['OPP_TEAM'] == opponent]
-                        df_def_vs_team = df_def_cluster[df_def_cluster['OPP_TEAM'] == opponent]
-
-                        df_off_vs_team_valid = df_off_vs_team[df_off_vs_team['MIN'] >= MIN_THRESHOLD]
-                        df_def_vs_team_valid = df_def_vs_team[df_def_vs_team['MIN'] >= MIN_THRESHOLD]
-
-                        # Calculate Bayesian percentage differences
-                        prior_mean = 0.0
-                        prior_weight = 3.0
-
-                        pct_diff_off = pd.Series(0.0, index=offensive_stats)
-                        pct_diff_def = pd.Series(0.0, index=defensive_stats)
-                        has_off_history = False
-                        has_def_history = False
-
-                        # Offensive cluster Bayesian calculation
-                        if not df_off_vs_team_valid.empty:
-                            has_off_history = True
-                            df_off_vs_team_valid_sorted = df_off_vs_team_valid.sort_values('GAME_DATE')
-                            df_off_vs_team_per36 = df_off_vs_team_valid_sorted[offensive_stats].div(
-                                df_off_vs_team_valid_sorted['MIN'], axis=0) * 36
-
-                            game_pct_diffs_off = (
-                                    (df_off_vs_team_per36 - season_avg_per36_off[offensive_stats]) /
-                                    season_avg_per36_off[offensive_stats] * 100
-                            )
-
-                            for stat in offensive_stats:
-                                bayesian_estimate = prior_mean
-                                total_weight = prior_weight
-                                for game_pct_diff in game_pct_diffs_off[stat].values:
-                                    bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (
-                                                total_weight + 1)
-                                    total_weight += 1
-                                pct_diff_off[stat] = bayesian_estimate
-
-                        # Defensive cluster Bayesian calculation
-                        if not df_def_vs_team_valid.empty:
-                            has_def_history = True
-                            df_def_vs_team_valid_sorted = df_def_vs_team_valid.sort_values('GAME_DATE')
-                            df_def_vs_team_per36 = df_def_vs_team_valid_sorted[defensive_stats].div(
-                                df_def_vs_team_valid_sorted['MIN'], axis=0) * 36
-
-                            game_pct_diffs_def = (
-                                    (df_def_vs_team_per36 - season_avg_per36_def[defensive_stats]) /
-                                    season_avg_per36_def[defensive_stats] * 100
-                            )
-
-                            for stat in defensive_stats:
-                                bayesian_estimate = prior_mean
-                                total_weight = prior_weight
-                                for game_pct_diff in game_pct_diffs_def[stat].values:
-                                    bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (
-                                                total_weight + 1)
-                                    total_weight += 1
-                                pct_diff_def[stat] = bayesian_estimate
-
-                        # Only include players with historical data vs this opponent
-                        if has_off_history or has_def_history:
-                            matchup_scores.append({
-                                'PLAYER_NAME': player_name,
-                                'PLAYER_ID': player_id,
-                                'Opponent': opponent,
-                                'Home': '🏠' if is_home else '✈️',
-                                'Off Cluster': int(off_cluster),
-                                'Def Cluster': int(def_cluster),
-                                'Has Off History': has_off_history,
-                                'Has Def History': has_def_history,
-                                'PTS %': pct_diff_off['PTS'] if has_off_history else 0,
-                                'AST %': pct_diff_off['AST'] if has_off_history else 0,
-                                'OREB %': pct_diff_off['OREB'] if has_off_history else 0,
-                                'DREB %': pct_diff_def['DREB'] if has_def_history else 0,
-                                'FG3A %': pct_diff_off['FG3A'] if has_off_history else 0,
-                                'STL %': pct_diff_def['STL'] if has_def_history else 0,
-                                'BLK %': pct_diff_def['BLK'] if has_def_history else 0,
-                                'Off Games': len(df_off_vs_team_valid),
-                                'Def Games': len(df_def_vs_team_valid),
-                                # Store full pct_diff for later use
-                                'pct_diff_off': pct_diff_off,
-                                'pct_diff_def': pct_diff_def
-                            })
-
-                        progress_bar.progress((player_idx + 1) / len(todays_players_merged))
-
-                    progress_bar.empty()
-                    status_text.empty()
-
-                    if not matchup_scores:
-                        st.warning("No players found with historical matchup data vs today's opponents.")
-                    else:
-                        matchups_df = pd.DataFrame(matchup_scores)
-                        # Sort by PTS % by default
-                        matchups_df = matchups_df.sort_values('PTS %', ascending=False)
-
-                        # Display filter options
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            show_negative = st.checkbox("Show negative matchups too", value=True)
-
-                        # Apply filters
-                        filtered_df = matchups_df.copy()
-
-                        if not show_negative:
-                            filtered_df = filtered_df[filtered_df['PTS %'] > 0]
-
-                        if not show_negative:
-                            filtered_df = filtered_df[filtered_df['PTS %'] > 0]
-
-                        st.markdown(f"### 📊 Top Matchup Opportunities ({len(filtered_df)} players)")
-
-                        # Display summary table
-                        display_cols = ['PLAYER_NAME', 'Home', 'Opponent', 'Off Cluster', 'Def Cluster',
-                                        'PTS %', 'AST %', 'DREB %', 'OREB %', 'FG3A %', 'STL %', 'BLK %',
-                                        'Off Games', 'Def Games']
-
-                        def highlight_score(val, col_name):
-                            if '%' in col_name and col_name not in ['Home']:
+                        def highlight_diff(val, col_name):
+                            if col_name == 'Difference':
                                 try:
-                                    if val > 10:
-                                        return 'background-color: #28A745; color: white; font-weight: bold'
-                                    elif val > 5:
-                                        return 'background-color: #90EE90; color: black'
-                                    elif val > 0:
-                                        return 'background-color: #D4EDDA; color: black'
-                                    elif val < -5:
-                                        return 'background-color: #DC3545; color: white'
+                                    if val > 0:
+                                        return 'background-color: #D4EDDA; color: #155724'
                                     elif val < 0:
-                                        return 'background-color: #F8D7DA; color: black'
+                                        return 'background-color: #F8D7DA; color: #721C24'
                                 except:
                                     pass
                             return ''
 
-                        styled_matchups = filtered_df[display_cols].style.format({
-                            'PTS %': '{:.1f}%',
-                            'AST %': '{:.1f}%',
-                            'DREB %': '{:.1f}%',
-                            'OREB %': '{:.1f}%',
-                            'FG3A %': '{:.1f}%',
-                            'STL %': '{:.1f}%',
-                            'BLK %': '{:.1f}%'
+                        styled_proj = proj_df.style.format({
+                            'Season Avg': '{:.1f}',
+                            'Projected': '{:.1f}',
+                            'Difference': '{:.1f}'
                         }).apply(
-                            lambda row: [highlight_score(val, col) for col, val in zip(display_cols, row)],
+                            lambda row: [highlight_diff(val, col) for col, val in zip(proj_df.columns, row)],
                             axis=1
                         )
 
-                        st.dataframe(styled_matchups, use_container_width=True, height=400)
+                        st.dataframe(styled_proj, use_container_width=True, hide_index=True)
 
-                        st.caption("🏠 = Home game | ✈️ = Away game")
-
-                        # =====================================================
-                        # 🎯 Detailed Projection Section
-                        # =====================================================
-                        st.markdown("---")
-                        st.markdown("### 🎯 Detailed Projection")
-
-                        selected_today_player = st.selectbox(
-                            "Select player for full projection:",
-                            options=filtered_df['PLAYER_NAME'].tolist(),
-                            key="today_player_select"
-                        )
-
-                        if selected_today_player:
-                            player_info = filtered_df[filtered_df['PLAYER_NAME'] == selected_today_player].iloc[0]
-                            opponent = player_info['Opponent']
-                            off_cluster = player_info['Off Cluster']
-                            def_cluster = player_info['Def Cluster']
-                            pct_diff_off = player_info['pct_diff_off']
-                            pct_diff_def = player_info['pct_diff_def']
-
-                            st.markdown(f"**{selected_today_player}** vs **{opponent}**")
-                            st.caption(f"Off Cluster {off_cluster} | Def Cluster {def_cluster}")
-
-                            # Get player's season stats
-                            player_season_stats = merged_filtered[
-                                (merged_filtered['PLAYER_NAME'] == selected_today_player) &
-                                (merged_filtered['MIN'] >= MIN_THRESHOLD)
-                                ].copy()
-
-                            if not player_season_stats.empty:
-                                # Calculate player's season averages
-                                all_stats = offensive_stats + defensive_stats
-                                player_avg_stats = player_season_stats[all_stats + ['MIN']].mean()
-
-                                # Get median minutes from last 10 games
-                                player_last_10 = player_season_stats.sort_values('GAME_DATE', ascending=False).head(10)
-                                median_min = player_last_10['MIN'].median() if not player_last_10.empty else \
-                                player_avg_stats['MIN']
-
-                                # Minutes slider
-                                selected_minutes = st.slider(
-                                    "Minutes per game:",
-                                    min_value=0.0,
-                                    max_value=48.0,
-                                    value=float(median_min),
-                                    step=0.5,
-                                    key=f"minutes_{selected_today_player}",
-                                    help=f"Default is median of last 10 games ({median_min:.1f} min)"
-                                )
-
-                                minutes_multiplier = selected_minutes / player_avg_stats['MIN'] if player_avg_stats[
-                                                                                                       'MIN'] > 0 else 1.0
-
-                                # Build projection
-                                projection_data = {'Stat': [], 'Season Avg': [], 'Projected': [], 'Difference': []}
-
-                                display_stats_order = ['PTS', 'AST', 'OREB', 'DREB', 'REB', 'FG3A', 'FG3M', 'FTA',
-                                                       'FTM', 'STL', 'BLK']
-
-                                for stat in display_stats_order:
-                                    if stat == 'REB':
-                                        # Calculate REB from OREB + DREB
-                                        season_avg = player_avg_stats['OREB'] + player_avg_stats['DREB']
-                                        oreb_pct = pct_diff_off['OREB'] if player_info['Has Off History'] else 0
-                                        dreb_pct = pct_diff_def['DREB'] if player_info['Has Def History'] else 0
-                                        projected = (
-                                                            player_avg_stats['OREB'] * (1 + oreb_pct / 100) +
-                                                            player_avg_stats['DREB'] * (1 + dreb_pct / 100)
-                                                    ) * minutes_multiplier
-                                    elif stat in offensive_stats:
-                                        season_avg = player_avg_stats[stat]
-                                        pct_change = pct_diff_off[stat] if player_info['Has Off History'] else 0
-                                        projected = season_avg * (1 + pct_change / 100) * minutes_multiplier
-                                    elif stat in defensive_stats:
-                                        season_avg = player_avg_stats[stat]
-                                        pct_change = pct_diff_def[stat] if player_info['Has Def History'] else 0
-                                        projected = season_avg * (1 + pct_change / 100) * minutes_multiplier
-                                    else:
-                                        continue
-
-                                    projection_data['Stat'].append(stat)
-                                    projection_data['Season Avg'].append(season_avg)
-                                    projection_data['Projected'].append(projected)
-                                    projection_data['Difference'].append(projected - season_avg)
-
-                                proj_df = pd.DataFrame(projection_data)
-
-                                def highlight_diff(val, col_name):
-                                    if col_name == 'Difference':
-                                        try:
-                                            if val > 0:
-                                                return 'background-color: #D4EDDA; color: #155724'
-                                            elif val < 0:
-                                                return 'background-color: #F8D7DA; color: #721C24'
-                                        except:
-                                            pass
-                                    return ''
-
-                                styled_proj = proj_df.style.format({
-                                    'Season Avg': '{:.1f}',
-                                    'Projected': '{:.1f}',
-                                    'Difference': '{:.1f}'
-                                }).apply(
-                                    lambda row: [highlight_diff(val, col) for col, val in zip(proj_df.columns, row)],
-                                    axis=1
-                                )
-
-                                st.dataframe(styled_proj, use_container_width=True)
-
-                                st.caption(f"💡 Projections based on {selected_minutes:.1f} minutes")
-                                st.caption(
-                                    f"📊 Using Off Cluster {off_cluster} and Def Cluster {def_cluster} historical performance vs {opponent}")
-                            else:
-                                st.warning(f"No season stats found for {selected_today_player}")
-
-        except Exception as e:
-            st.error(f"Error loading today's games: {str(e)}")
-            st.exception(e)
-            st.info("Make sure the NBA API is accessible and there are games scheduled today.")
-if __name__ == '__main__':
+                        st.caption(f"💡 Projections based on {selected_minutes:.1f} minutes")
+                        st.caption(f"📊 Using Off Cluster {off_cluster} and Def Cluster {def_cluster}"
+    if __name__ == '__main__':
     #create_clusters()
     main()
