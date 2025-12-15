@@ -1899,8 +1899,8 @@ def main():
                         matchups_df = matchups_df.sort_values('PTS %', ascending=False)
 
                         # Display filter options
-                        col2 = st.columns(1)
-                        with col2:
+                        col1 = st.columns(1)
+                        with col1:
                             show_negative = st.checkbox("Show negative matchups too", value=True)
 
                         # Apply filters
