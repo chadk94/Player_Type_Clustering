@@ -18,7 +18,7 @@ import pandas as pd
 
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_todays_matchups(min_date, max_date):
+def load_todays_matchups(merged,min_date, max_date):
     """Load and calculate today's matchup data with caching"""
 
     # Get today's games and players
@@ -1882,7 +1882,7 @@ def main():
         try:
             # Load cached matchup data
             with st.spinner("Loading today's games..."):
-                matchups_df = load_todays_matchups(min_date, max_date)
+                matchups_df = load_todays_matchups(merged,min_date, max_date)
 
             if matchups_df is None:
                 st.info("No games scheduled for today or no players with cluster data found.")
