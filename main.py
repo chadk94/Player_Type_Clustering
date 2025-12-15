@@ -1901,17 +1901,13 @@ def main():
                         # Display filter options
                         col1, col2 = st.columns(2)
                         with col1:
-                            min_games = st.slider("Min games vs opponent:", 1, 10, 1)
-
-                        with col2:
                             show_negative = st.checkbox("Show negative matchups too", value=True)
 
                         # Apply filters
                         filtered_df = matchups_df.copy()
-                        filtered_df = filtered_df[
-                            (filtered_df['Off Games'] >= min_games) |
-                            (filtered_df['Def Games'] >= min_games)
-                            ]
+
+                        if not show_negative:
+                            filtered_df = filtered_df[filtered_df['PTS %'] > 0]
 
                         if not show_negative:
                             filtered_df = filtered_df[filtered_df['PTS %'] > 0]
