@@ -18,7 +18,7 @@ import pandas as pd
 
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
-def load_todays_matchups(min_date, max_date):
+def load_todays_matchups(merged,min_date, max_date):
     """Load and calculate today's matchup data with caching"""
 
     try:
