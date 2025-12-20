@@ -3,6 +3,7 @@ import time
 import nba_api.stats.library.data
 import numpy as np
 import matplotlib.pyplot as plt
+import requests
 import streamlit as st
 import pandas
 from nba_api.stats.library.parameters import SeasonTypeAllStar, PlayerOrTeamAbbreviation
@@ -1951,6 +1952,7 @@ def main():
 
                 # Apply filters
                 filtered_df = matchups_df.copy()
+                filtered_df=filtered_df[(filtered_df['OPP'] == selected_opp)]
 
                 if not show_negative:
                     filtered_df = filtered_df[filtered_df['PTS %'] > 0]
