@@ -1952,7 +1952,8 @@ def main():
 
                 # Apply filters
                 filtered_df = matchups_df.copy()
-                filtered_df=filtered_df[(filtered_df['Opponent'] == selected_opp)]
+                if selected_opp != "All":
+                    filtered_df=filtered_df[(filtered_df['Opponent'] == selected_opp)]
 
                 if not show_negative:
                     filtered_df = filtered_df[filtered_df['PTS %'] > 0]
