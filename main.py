@@ -1,5 +1,4 @@
 import time
-from datetime import date, timedelta
 
 import nba_api.stats.library.data
 import numpy as np
@@ -248,19 +247,13 @@ def load_todays_matchups(merged,min_date, max_date):
         return None
 
 def get_scoreboard(): ##Returns todays games + opponents. Helper function for build_player_list
-    days_ahead = 0
-    while True:
-        time.sleep(1)
-        game_date = date.today() + timedelta(days=days_ahead)
-        board = scoreboardv2.ScoreboardV2(game_date=game_date, league_id=10)
-        games = board.game_header.get_data_frame()
-
-        if not games.empty:
-            matchups = []
-            for _, row in games.iterrows():
-                matchups.append([row['VISITOR_TEAM_ID'], row['HOME_TEAM_ID']])
-            return matchups
-        days_ahead += 1
+    board = scoreboardv2.ScoreboardV2()
+    games = board.game_header.get_data_frame()
+    matchups=[]
+    for index,row in games.iterrows():
+        awayTeam=row['VISITOR_TEAM_ID']
+        homeTeam=row['HOME_TEAM_ID']
+        matchups.append([awayTeam,homeTeam])
     return matchups
 def build_player_list(): ##builds a list of players in todays games as well as their opponents  and whether they are home or away.
     matchups=get_scoreboard()
