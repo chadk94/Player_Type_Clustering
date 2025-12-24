@@ -250,6 +250,7 @@ def load_todays_matchups(merged,min_date, max_date):
 def get_scoreboard(): ##Returns todays games + opponents. Helper function for build_player_list
     days_ahead = 0
     while True:
+        time.sleep(1)
         game_date = date.today() + timedelta(days=days_ahead)
         board = scoreboardv2.ScoreboardV2(game_date=game_date, league_id=10)
         games = board.game_header.get_data_frame()
