@@ -1440,7 +1440,7 @@ def main():
                             continue
                         if selected_player != "All" and player_name == selected_player:
                             projected_row['AVG_MIN'] = selected_minutes
-                            actual_multiplier = minutes_multiplier
+                            actual_multiplier = selected_minutes / base_minutes if base_minutes > 0 else 1.0
                         else:
                             projected_row['AVG_MIN'] = base_minutes
                             actual_multiplier = 1.0
