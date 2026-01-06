@@ -274,7 +274,7 @@ def build_player_list(): ##builds a list of players in todays games as well as t
         homeroster=pd.DataFrame(homeroster.get_data_frames()[0].PLAYER_ID)
         homeroster['Home']=True
         homeroster['OPP']=str(awayabb)
-        playeroutput=pd.concat([playeroutput,awayroster,homeroster])
+        playeroutput = pd.concat([playeroutput, awayroster, homeroster]).drop_duplicates()
     return playeroutput
 
 def get_shot_chart_data(player_id, season='2025-26'):
