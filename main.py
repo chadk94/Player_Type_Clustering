@@ -960,7 +960,7 @@ def main():
         st.write("")  # Spacing
         st.button("✕", key="clear_def")
 
-    min_date, max_date = pd.to_datetime(merged['GAME_DATE'].min()), pd.to_datetime(merged['GAME_DATE'].max())
+    min_date, max_date = merged['GAME_DATE'].min(), merged['GAME_DATE'].max()
     selected_date = st.sidebar.date_input("Game Date Range", [min_date, max_date])
 
     # --- Apply Filters once ---
@@ -1035,6 +1035,11 @@ def main():
             else:
                 default_off_cluster = None
                 default_def_cluster = None
+        if len(selected_date) == 2:
+            merged = merged[
+                (merged['GAME_DATE'] >= pd.to_datetime(selected_date[0])) &
+                (merged['GAME_DATE'] <= pd.to_datetime(selected_date[1]))
+                ]
 
         # Allow user to select both offensive and defensive clusters
         col1, col2 = st.columns(2)
