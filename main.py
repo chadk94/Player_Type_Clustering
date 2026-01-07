@@ -960,7 +960,7 @@ def main():
         st.write("")  # Spacing
         st.button("✕", key="clear_def")
 
-    min_date, max_date = merged['GAME_DATE'].min(), merged['GAME_DATE'].max()
+    min_date, max_date = pd.to_datetime(merged['GAME_DATE'].min()), pd.to_datetime(merged['GAME_DATE'].max())
     selected_date = st.sidebar.date_input("Game Date Range", [min_date, max_date])
 
     # --- Apply Filters once ---
