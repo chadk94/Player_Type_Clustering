@@ -8,7 +8,8 @@ import streamlit as st
 import pandas
 from nba_api.stats.library.parameters import SeasonTypeAllStar, PlayerOrTeamAbbreviation
 from sklearn.cluster import KMeans
-from nba_api.stats.endpoints import LeagueGameLog, SynergyPlayTypes, PlayerDashPtShots, shotchartdetail, ShotChartDetail
+from nba_api.stats.endpoints import LeagueGameLog, SynergyPlayTypes, PlayerDashPtShots, shotchartdetail, \
+    ShotChartDetail, LeagueHustleStatsPlayer, synergyplaytypes, LeagueDashPtStats
 from nba_api.stats.endpoints import scoreboardv2
 from nba_api.stats.static.players import get_players
 from nba_api.live.nba.endpoints import scoreboard
@@ -357,9 +358,151 @@ def get_shot_chart_data(player_id, season='2025-26'):
     except Exception as e:
         return None
 
+
+def get_hustle_stats(season='2025-26'):
+    """Get hustle stats for all players - contested shots and deflections."""
+    try:
+        time.sleep(1)
+        print("Getting hustle stats...")
+
+        hustle = LeagueHustleStatsPlayer(
+            season=season,
+            season_type_all_star='Regular Season',
+        ).get_data_frames()[0]
+
+        # Select relevant columns
+        hustle_stats = hustle[[
+            'PLAYER_ID',
+            'PLAYER_NAME',
+            'CONTESTED_SHOTS_2PT',
+            'CONTESTED_SHOTS_3PT',
+            'DEFLECTIONS',
+            'G',
+            'MIN'# Games played for reference
+        ]].copy()
+
+        hustle_stats['CONTESTED_SHOTS_2PT_PER36'] = (hustle_stats['CONTESTED_SHOTS_2PT'] / hustle_stats['MIN']) * 36
+        hustle_stats['CONTESTED_SHOTS_3PT_PER36'] = (hustle_stats['CONTESTED_SHOTS_3PT'] / hustle_stats['MIN']) * 36
+        hustle_stats['DEFLECTIONS_PER36'] = (hustle_stats['DEFLECTIONS'] / hustle_stats['MIN']) * 36
+
+        # Select final columns
+        hustle_stats_per36 = hustle_stats[[
+            'PLAYER_ID',
+            'PLAYER_NAME',
+            'CONTESTED_SHOTS_2PT_PER36',
+            'CONTESTED_SHOTS_3PT_PER36',
+            'DEFLECTIONS_PER36'
+        ]]
+
+        # Calculate total contested shots
+
+
+        return hustle_stats_per36
+
+    except Exception as e:
+        print(f"Error getting hustle stats: {e}")
+        return None
+
+
+def get_tracking_stats(season='2025-26'):
+    """Get tracking stats - speed, distance, catch & shoot, passing, and drives."""
+    try:
+        time.sleep(1)
+        print("Getting tracking stats...")
+
+        # Speed/Distance tracking
+        tracking = LeagueDashPtStats(
+            season=season,
+            per_mode_simple='PerGame',
+            pt_measure_type='SpeedDistance',
+            player_or_team='Player'
+        ).get_data_frames()[0]
+
+        tracking_stats = tracking[[
+            'PLAYER_ID',
+            'PLAYER_NAME',
+            'AVG_SPEED_OFF',
+            'AVG_SPEED_DEF',
+        ]].copy()
+
+        # Catch & Shoot
+        time.sleep(1)
+        print("Getting catch & shoot stats...")
+        cs = LeagueDashPtStats(
+            season=season,
+            per_mode_simple='PerGame',
+            pt_measure_type='CatchShoot',
+            player_or_team='Player'
+        ).get_data_frames()[0]
+        csstats = cs[[
+            'PLAYER_ID',
+            'CATCH_SHOOT_FGA',
+            'CATCH_SHOOT_FG3A',
+            'MIN'
+        ]].copy()
+
+        csstats['CATCHANDSHOOTPER36'] = (csstats['CATCH_SHOOT_FGA'] / csstats['MIN']) * 36
+        csstats['CATCHANDSHOOT3PAPER36'] = (csstats['CATCH_SHOOT_FG3A'] / csstats['MIN']) * 36
+
+        # Passing
+        time.sleep(1)
+        print("Getting passing stats...")
+        passing = LeagueDashPtStats(
+            season=season,
+            per_mode_simple='PerGame',
+            pt_measure_type='Passing',
+            player_or_team='Player'
+        ).get_data_frames()[0]
+        passingstats = passing[[
+            'PLAYER_ID',
+            'PASSES_MADE',
+            'PASSES_RECEIVED',
+            'MIN'
+        ]].copy()
+
+        passingstats['PASSESMADEPER36'] = (passingstats['PASSES_MADE'] / passingstats['MIN']) * 36
+        passingstats['PASSESRECEIVEDPER36'] = (passingstats['PASSES_RECEIVED'] / passingstats['MIN']) * 36
+
+        # Drives
+        time.sleep(1)
+        print("Getting drives stats...")
+        drives = LeagueDashPtStats(
+            season=season,
+            per_mode_simple='PerGame',
+            pt_measure_type='Drives',
+            player_or_team='Player'
+        ).get_data_frames()[0]
+        drivestats = drives[[
+            'PLAYER_ID',
+            'DRIVES',
+            'MIN',
+            'DRIVE_PTS_PCT',
+            'DRIVE_AST_PCT',
+        ]].copy()
+        drivestats['DRIVESPER36']=(drivestats['DRIVES']/drivestats['MIN'])*36
+        # Merge all tracking stats together
+        combined = tracking_stats.merge(
+            csstats[['PLAYER_ID', 'CATCHANDSHOOTPER36', 'CATCHANDSHOOT3PAPER36']],
+            on='PLAYER_ID',
+            how='left'
+        ).merge(
+            passingstats[['PLAYER_ID', 'PASSESMADEPER36', 'PASSESRECEIVEDPER36']],
+            on='PLAYER_ID',
+            how='left'
+        ).merge(
+            drivestats[['PLAYER_ID', 'DRIVE_PTS_PCT', 'DRIVESPER36','DRIVE_AST_PCT']],
+            on='PLAYER_ID',
+            how='left'
+        )
+
+        return combined
+    except Exception as e:
+        print(f"Error getting tracking stats: {e}")
+        return None
+
+
 def enhance_player_data(player_averages, min_games=10):
-    """Add shot chart data to player averages."""
-    # Ensure PLAYER_ID is formatted correctly
+    """Add shot chart, tracking, and hustle data to player averages."""
 
     all_shot_data = pd.DataFrame()
     qualified_players = player_averages
@@ -367,6 +510,7 @@ def enhance_player_data(player_averages, min_games=10):
     total_players = len(qualified_players)
     print(f"Processing {total_players} qualified players...")
 
+    # GET SHOT CHART DATA (existing code - unchanged)
     for idx, player in qualified_players.iterrows():
         print(f"Processing player {idx + 1}/{total_players}: {player['PLAYER_NAME']} (ID: {player['PLAYER_ID']})")
         if idx == 0:
@@ -378,15 +522,73 @@ def enhance_player_data(player_averages, min_games=10):
                 shot_data = pd.DataFrame(shot_data, columns=all_shot_data.columns)
                 all_shot_data = pd.concat([all_shot_data, shot_data], ignore_index=True)
         time.sleep(1)
+
+    # ============ NEW: GET TRACKING STATS FOR EACH SEASON ============
+    print("\nGetting tracking stats...")
+    tracking_stats_2023 = get_tracking_stats(season='2023-24')
+    tracking_stats_2023['SEASON_ID'] = 22023
+
+    tracking_stats_2024 = get_tracking_stats(season='2024-25')
+    tracking_stats_2024['SEASON_ID'] = 22024
+
+    tracking_stats_2025 = get_tracking_stats(season='2025-26')
+    tracking_stats_2025['SEASON_ID'] = 22025
+
+    # Concat all tracking stats
+    tracking_stats = pd.concat([tracking_stats_2023, tracking_stats_2024, tracking_stats_2025], ignore_index=True)
+    print(f"✓ Combined tracking stats: {len(tracking_stats)} records")
+
+    # ============ NEW: GET HUSTLE STATS FOR EACH SEASON ============
+    print("\nGetting hustle stats...")
+    hustle_stats_2023 = get_hustle_stats(season='2023-24')
+    hustle_stats_2023['SEASON_ID'] = 22023
+
+    hustle_stats_2024 = get_hustle_stats(season='2024-25')
+    hustle_stats_2024['SEASON_ID'] = 22024
+
+    hustle_stats_2025 = get_hustle_stats(season='2025-26')
+    hustle_stats_2025['SEASON_ID'] = 22025
+
+    # Concat all hustle stats
+    hustle_stats = pd.concat([hustle_stats_2023, hustle_stats_2024, hustle_stats_2025], ignore_index=True)
+    print(f"✓ Combined hustle stats: {len(hustle_stats)} records")
+
+    # ============ MERGE EVERYTHING TOGETHER ============
     qualified_players = qualified_players.fillna(0)
     qualified_players[['PLAYER_ID', 'SEASON_ID']] = qualified_players[['PLAYER_ID', 'SEASON_ID']].astype(int)
     all_shot_data[['PLAYER_ID', 'SEASON_ID']] = all_shot_data[['PLAYER_ID', 'SEASON_ID']].astype(int)
 
+    # Merge shot chart data
     enhanced_data = qualified_players.merge(
         all_shot_data,
         on=['PLAYER_ID', 'SEASON_ID'],
         how='left'
     )
+
+    # Merge tracking stats
+    tracking_stats['PLAYER_ID'] = tracking_stats['PLAYER_ID'].astype(int)
+    tracking_stats['SEASON_ID'] = tracking_stats['SEASON_ID'].astype(int)
+
+    enhanced_data = enhanced_data.merge(
+        tracking_stats.drop(columns=['PLAYER_NAME'], errors='ignore'),
+        on=['PLAYER_ID', 'SEASON_ID'],
+        how='left'
+    )
+    print(f"✓ Merged tracking stats")
+
+    # Merge hustle stats
+    hustle_stats['PLAYER_ID'] = hustle_stats['PLAYER_ID'].astype(int)
+    hustle_stats['SEASON_ID'] = hustle_stats['SEASON_ID'].astype(int)
+
+    enhanced_data = enhanced_data.merge(
+        hustle_stats.drop(columns=['PLAYER_NAME'], errors='ignore'),
+        on=['PLAYER_ID', 'SEASON_ID'],
+        how='left'
+    )
+    print(f"✓ Merged hustle stats")
+
+    print(f"\n✓ Final enhanced dataset: {len(enhanced_data)} records with {len(enhanced_data.columns)} features")
+
     return enhanced_data
 
 
@@ -394,14 +596,32 @@ def cluster_players_off(data, n_clusters):
     """Perform k-means clustering on players based on their stats and shooting profiles."""
     # Select features for clustering
     data = data[data['MIN'] > 10].copy()
+
+    # ============ UPDATED: EXPANDED FEATURE SET ============
     features = [
+        # Traditional stats (existing)
         'PTS_per36', 'AST_per36', 'OREB_per36', 'DREB_per36', 'TOV_per36',
         'FG%', 'FG3%', 'FT%',
+
+        # Shot location (existing)
         'paint_shots_per_game_per36', 'paint_fg_pct',
         'corner_3_per_game_per36', 'corner_3_pct',
         'midrange_per_game_per36', 'midrange_pct',
         'above_break_3_per_game_per36', 'above_break_3_pct',
-        'avg_shot_distance', 'WEIGHT', 'Height_IN',
+        'avg_shot_distance',
+
+        # Physical attributes (existing)
+        'WEIGHT', 'Height_IN',
+
+        # ============ NEW: TRACKING STATS ============
+        'AVG_SPEED_OFF',  # Offensive speed
+        'CATCHANDSHOOTPER36',  # Catch & shoot attempts
+        'CATCHANDSHOOT3PAPER36',  # Catch & shoot 3PA
+        'PASSESMADEPER36',  # Passing volume
+        'PASSESRECEIVEDPER36',  # Off-ball movement
+        'DRIVESPER36',  # Driving frequency
+        'DRIVE_PTS_PCT',  # % of points from drives
+        'DRIVE_AST_PCT',  # % of assists from drives
     ]
 
     data['Height_IN'] = data['HEIGHT'].str.split('-').apply(lambda x: int(x[0]) * 12 + int(x[1]))
@@ -415,6 +635,16 @@ def cluster_players_off(data, n_clusters):
 
     # Remove rows with missing values
     clean_data = data.dropna(subset=features)
+
+    print(f"\n{'=' * 60}")
+    print(f"OFFENSIVE CLUSTERING FEATURES ({len(features)} total)")
+    print(f"{'=' * 60}")
+    print("Traditional Stats: PTS, AST, OREB, DREB, TOV, FG%, FG3%, FT%")
+    print("Shot Location: Paint, Corner 3, Midrange, Above Break 3")
+    print("Physical: Height, Weight")
+    print("NEW - Tracking: Speed, Catch&Shoot, Passing, Drives")
+    print(f"{'=' * 60}\n")
+
     # Scale the features
     scaler = StandardScaler()
     scaled_features = scaler.fit_transform(clean_data[features])
@@ -575,16 +805,33 @@ def cluster_players_off(data, n_clusters):
 
 
 def cluster_players_def(data, n_clusters):
-    """Perform k-means clustering on players based on their stats and shooting profiles."""
+    """Perform k-means clustering on players based on their defensive stats."""
     # Select features for clustering
     data = data[data['MIN'] > 10].copy()
+
+    # ============ UPDATED: EXPANDED FEATURE SET ============
     features = [
-        'DREB_per36', 'WEIGHT', 'Height_IN', 'STL_per36', 'BLK_per36'
+        # Traditional defensive stats (existing)
+        'DREB_per36',
+        'STL_per36',
+        'BLK_per36',
+
+        # Physical attributes (existing)
+        'WEIGHT',
+        'Height_IN',
+
+        # ============ NEW: HUSTLE STATS ============
+        'CONTESTED_SHOTS_2PT_PER36',  # Interior defense
+        'CONTESTED_SHOTS_3PT_PER36',  # Perimeter defense
+        'DEFLECTIONS_PER36',  # Active hands/disruption
+
+        # ============ NEW: TRACKING STATS ============
+        'AVG_SPEED_DEF',  # Defensive speed/mobility
     ]
 
     data['Height_IN'] = data['HEIGHT'].str.split('-').apply(lambda x: int(x[0]) * 12 + int(x[1]))
 
-    minutes_factor = 36 / data['MIN'].clip(lower=1)  # Avoid division by zero
+    minutes_factor = 36 / data['MIN'].clip(lower=1)
     per36_cols = ['PTS', 'AST', 'OREB', 'DREB', 'STL', 'BLK', 'TOV', 'paint_shots_per_game', 'corner_3_per_game',
                   'midrange_per_game', 'above_break_3_per_game']
     for col in per36_cols:
@@ -593,6 +840,16 @@ def cluster_players_def(data, n_clusters):
 
     # Remove rows with missing values
     clean_data = data.dropna(subset=features)
+
+    print(f"\n{'=' * 60}")
+    print(f"DEFENSIVE CLUSTERING FEATURES ({len(features)} total)")
+    print(f"{'=' * 60}")
+    print("Traditional Stats: DREB, STL, BLK")
+    print("Physical: Height, Weight")
+    print("NEW - Hustle: Contested Shots (2PT/3PT), Deflections")
+    print("NEW - Tracking: Defensive Speed")
+    print(f"{'=' * 60}\n")
+
     # Scale the features
     scaler = StandardScaler()
     scaled_features = scaler.fit_transform(clean_data[features])
@@ -831,20 +1088,44 @@ def basic_clustering(data):
 
 def create_clusters():
     data = get_player_box()
-    print ("got data")
+    print("got data")
     player_averages = box_to_avg(data)
-    print ("converetd to avg")
-    print (player_averages)
+    print("converted to avg")
+    print(player_averages)
     player_averages = add_height_weight_pos(player_averages)
-    print ("added height weight")
+    print("added height weight")
+
+    # ============ UPDATED: Now includes tracking and hustle stats ============
     enhanced_data = enhance_player_data(player_averages)
+
+    # Save the enhanced data with ALL features
     enhanced_data.to_csv('player_data.csv', index=False)
+    print("\n✓ Saved enhanced player data to 'player_data.csv'")
+
+    # Read it back
     enhanced_data = pd.read_csv("player_data.csv")
+
+    # Perform clustering with new features
+    print("\n" + "=" * 60)
+    print("STARTING OFFENSIVE CLUSTERING")
+    print("=" * 60)
     clustered_data = cluster_players_off(enhanced_data, None)
     clustered_data.to_csv('player_clusters_detailed.csv', index=False)
+    print("✓ Saved offensive clusters to 'player_clusters_detailed.csv'")
+
+    print("\n" + "=" * 60)
+    print("STARTING DEFENSIVE CLUSTERING")
+    print("=" * 60)
     defcluster = cluster_players_def(enhanced_data, None)
-    defcluster.to_csv('def_player_clusters_detailed.csv')
-    print(clustered_data)
+    defcluster.to_csv('def_player_clusters_detailed.csv', index=False)
+    print("✓ Saved defensive clusters to 'def_player_clusters_detailed.csv'")
+
+    print("\n" + "=" * 60)
+    print("CLUSTERING COMPLETE!")
+    print("=" * 60)
+    print(f"Total players clustered: {len(clustered_data)}")
+    print(f"Offensive clusters created: {clustered_data['Cluster'].nunique()}")
+    print(f"Defensive clusters created: {defcluster['Cluster'].nunique()}")
 
     return
 
@@ -2134,5 +2415,5 @@ def main():
             st.info("Make sure the NBA API is accessible and there are games scheduled today.")
             
 if __name__ == '__main__':
-    #create_clusters()
+    create_clusters()
     main()
