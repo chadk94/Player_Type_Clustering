@@ -443,6 +443,7 @@ def get_tracking_stats(season='2025-26'):
 
         csstats['CATCHANDSHOOTPER36'] = (csstats['CATCH_SHOOT_FGA'] / csstats['MIN']) * 36
         csstats['CATCHANDSHOOT3PAPER36'] = (csstats['CATCH_SHOOT_FG3A'] / csstats['MIN']) * 36
+        csstats['CATCHANDSHOOT3PAPER36']=csstats['CATCHANDSHOOT3PAPER36'].fillna(0)
 
         # Passing
         time.sleep(1)
@@ -2415,5 +2416,5 @@ def main():
             st.info("Make sure the NBA API is accessible and there are games scheduled today.")
             
 if __name__ == '__main__':
-   # create_clusters()
+    create_clusters()
     main()
