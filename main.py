@@ -2415,5 +2415,5 @@ def main():
             st.info("Make sure the NBA API is accessible and there are games scheduled today.")
             
 if __name__ == '__main__':
-    create_clusters()
+   # create_clusters()
     main()
