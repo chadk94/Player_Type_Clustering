@@ -3,4 +3,4 @@ nba_api==1.11.3
 numpy
 pandas
 scikit_learn
-streamlit
+streamlit==1.53.0
