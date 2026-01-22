@@ -4,3 +4,4 @@ numpy
 pandas
 scikit_learn
 streamlit
+altair==4.2.2
