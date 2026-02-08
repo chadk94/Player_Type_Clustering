@@ -278,31 +278,34 @@ def build_player_list(): ##builds a list of players in todays games as well as t
         playeroutput = pd.concat([playeroutput, awayroster, homeroster]).drop_duplicates()
     return playeroutput
 
-def get_shot_chart_data(player_id, season='2025-26'):
-    """Get detailed shot chart data for a player."""
-    try:
-        time.sleep(1)
-        player_id = str(int(float(player_id)))
-        print("getting shot chart", player_id)
-        shot_chart = ShotChartDetail(
-            player_id=player_id,
-            team_id=0,
-            season_nullable='2025-26',
-            season_type_all_star='Regular Season',
-            context_measure_simple='FGA'  # Specify the context measure
-        ).get_data_frames()[0]
-        # Calculate zone-based metrics
-        shot_profile = {
-            'PLAYER_ID': player_id,
-            'SEASON_ID': season
-        }
 
-        # Paint touches
+def get_shot_chart_data(player_id, season='2025-26', max_retries=3):
+    """Get detailed shot chart data for a player."""
+    for attempt in range(max_retries):
         try:
+            time.sleep(1)
+            player_id = str(int(float(player_id)))
+            print(f"Getting shot chart for {player_id} (attempt {attempt + 1}/{max_retries})")
+
+            shot_chart = ShotChartDetail(
+                player_id=player_id,
+                team_id=0,
+                season_nullable='2025-26',
+                season_type_all_star='Regular Season',
+                context_measure_simple='FGA'
+            ).get_data_frames()[0]
+
+            # Calculate zone-based metrics
+            shot_profile = {
+                'PLAYER_ID': player_id,
+                'SEASON_ID': season
+            }
+
             # Get actual games played
             games_played = shot_chart['GAME_ID'].nunique() if len(shot_chart) > 0 else 0
 
             if games_played == 0:
+                print(f"No games found for player {player_id}")
                 return None
 
             # Paint shots
@@ -310,7 +313,7 @@ def get_shot_chart_data(player_id, season='2025-26'):
             shot_profile['paint_shots_per_game'] = len(paint_shots) / games_played
             shot_profile['paint_fg_pct'] = paint_shots['SHOT_MADE_FLAG'].mean() if len(paint_shots) > 0 else 0
 
-            # Corner 3s - catches all variations
+            # Corner 3s
             corner_3s = shot_chart[shot_chart['SHOT_ZONE_BASIC'].isin(['Corner 3', 'Left Corner 3', 'Right Corner 3'])]
             shot_profile['corner_3_per_game'] = len(corner_3s) / games_played
             shot_profile['corner_3_pct'] = corner_3s['SHOT_MADE_FLAG'].mean() if len(corner_3s) > 0 else 0
@@ -347,17 +350,21 @@ def get_shot_chart_data(player_id, season='2025-26'):
                     ]
                 shot_profile['clutch_fg_pct'] = clutch_shots['SHOT_MADE_FLAG'].mean() if len(clutch_shots) > 0 else 0
 
-            # Add metadata for tracking
+            # Add metadata
             shot_profile['games_played'] = games_played
             shot_profile['total_shots'] = len(shot_chart)
 
             return pd.DataFrame([shot_profile])
-        except Exception as e:
-            print(f"Error processing shot chart: {e}")
-            return None
-    except Exception as e:
-        return None
 
+        except Exception as e:
+            print(f"Error on attempt {attempt + 1} for player {player_id}: {e}")
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 2  # Exponential backoff
+                print(f"Waiting {wait_time} seconds before retry...")
+                time.sleep(wait_time)
+            else:
+                print(f"Failed after {max_retries} attempts for player {player_id}")
+                return None
 
 def get_hustle_stats(season='2025-26'):
     """Get hustle stats for all players - contested shots and deflections."""
@@ -512,17 +519,37 @@ def enhance_player_data(player_averages, min_games=10):
     print(f"Processing {total_players} qualified players...")
 
     # GET SHOT CHART DATA (existing code - unchanged)
+    all_shot_data = []
+    failed_players = []
+
     for idx, player in qualified_players.iterrows():
-        print(f"Processing player {idx + 1}/{total_players}: {player['PLAYER_NAME']} (ID: {player['PLAYER_ID']})")
-        if idx == 0:
-            all_shot_data = pd.DataFrame(get_shot_chart_data(player['PLAYER_ID'], player['SEASON_ID']))
+        print(f"\nProcessing player {idx + 1}/{total_players}: {player['PLAYER_NAME']} (ID: {player['PLAYER_ID']})")
+
+        shot_data = get_shot_chart_data(player['PLAYER_ID'], player['SEASON_ID'])
+
+        if shot_data is not None:
+            all_shot_data.append(shot_data)
         else:
-            shot_data = get_shot_chart_data(player['PLAYER_ID'], player['SEASON_ID'])
-        if idx != 0:
-            if shot_data is not None:
-                shot_data = pd.DataFrame(shot_data, columns=all_shot_data.columns)
-                all_shot_data = pd.concat([all_shot_data, shot_data], ignore_index=True)
+            failed_players.append({
+                'PLAYER_ID': player['PLAYER_ID'],
+                'PLAYER_NAME': player['PLAYER_NAME']
+            })
+
         time.sleep(1)
+
+    # Combine all data
+    if all_shot_data:
+        all_shot_data = pd.concat(all_shot_data, ignore_index=True)
+        print(f"\nSuccessfully processed {len(all_shot_data)} players")
+    else:
+        all_shot_data = pd.DataFrame()
+        print("\nNo shot data collected")
+
+    # Report failures
+    if failed_players:
+        print(f"\nFailed to get data for {len(failed_players)} players:")
+        for p in failed_players[:10]:  # Show first 10
+            print(f"  - {p['PLAYER_NAME']} ({p['PLAYER_ID']})")
 
     # ============ NEW: GET TRACKING STATS FOR EACH SEASON ============
     print("\nGetting tracking stats...")
@@ -2416,5 +2443,5 @@ def main():
             st.info("Make sure the NBA API is accessible and there are games scheduled today.")
             
 if __name__ == '__main__':
-   # create_clusters()
+    create_clusters()
     main()
