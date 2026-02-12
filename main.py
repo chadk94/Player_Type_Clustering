@@ -283,7 +283,7 @@ def get_shot_chart_data(player_id, season='2025-26', max_retries=3):
     """Get detailed shot chart data for a player."""
     for attempt in range(max_retries):
         try:
-            time.sleep(1)
+            time.sleep(5)
             player_id = str(int(float(player_id)))
             print(f"Getting shot chart for {player_id} (attempt {attempt + 1}/{max_retries})")
 
@@ -359,7 +359,7 @@ def get_shot_chart_data(player_id, season='2025-26', max_retries=3):
         except Exception as e:
             print(f"Error on attempt {attempt + 1} for player {player_id}: {e}")
             if attempt < max_retries - 1:
-                wait_time = (attempt + 1) * 2  # Exponential backoff
+                wait_time = (attempt + 1) * 60  # Exponential backoff
                 print(f"Waiting {wait_time} seconds before retry...")
                 time.sleep(wait_time)
             else:
@@ -2443,5 +2443,5 @@ def main():
             st.info("Make sure the NBA API is accessible and there are games scheduled today.")
             
 if __name__ == '__main__':
-    #create_clusters()
+   # create_clusters()
     main()
