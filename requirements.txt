@@ -1,5 +1,5 @@
 matplotlib
-nba_api==1.11.3
+nba_api==1.11.4
 numpy
 pandas
 scikit_learn
