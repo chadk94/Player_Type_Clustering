@@ -279,6 +279,94 @@ def build_player_list(): ##builds a list of players in todays games as well as t
     return playeroutput
 
 
+def get_playtype_stats(season='2025-26'):
+    """Get synergy play type stats - both offensive and defensive frequencies."""
+
+    # Define play types to pull
+    offensive_types = ['PRBallHandler', 'PRRollman', 'Postup', 'Spotup', 'OffScreen', 'Cut']
+    defensive_types = ['PRBallHandler', 'PRRollman', 'Postup']
+
+    # Storage for all raw dataframes
+    offensive_data = {}
+    defensive_data = {}
+
+    max_retries = 3
+
+    # Get all offensive stats first
+    for play_type in offensive_types:
+        for attempt in range(max_retries):
+            try:
+                time.sleep(1)
+                print(f"Getting offensive {play_type} stats for {season}... (attempt {attempt + 1}/{max_retries})")
+
+                offensive_data[play_type] = SynergyPlayTypes(
+                    season=season,
+                    season_type_all_star='Regular Season',
+                    per_mode_simple='PerGame',
+                    play_type_nullable=play_type,
+                    player_or_team_abbreviation='P',
+                    type_grouping_nullable='offensive'
+                ).get_data_frames()[0]
+                break
+            except Exception as e:
+                print(f"Error getting offensive {play_type} stats (attempt {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
+                    print(f"Failed to get offensive {play_type} stats after all retries")
+                    return None, None, None
+                print("Waiting 60 seconds before retry...")
+                time.sleep(60)
+
+    # Get all defensive stats
+    for play_type in defensive_types:
+        for attempt in range(max_retries):
+            try:
+                time.sleep(1)
+                print(f"Getting defensive {play_type} stats for {season}... (attempt {attempt + 1}/{max_retries})")
+
+                defensive_data[play_type] = SynergyPlayTypes(
+                    season=season,
+                    season_type_all_star='Regular Season',
+                    per_mode_simple='PerGame',
+                    play_type_nullable=play_type,
+                    player_or_team_abbreviation='P',
+                    type_grouping_nullable='defensive'
+                ).get_data_frames()[0]
+                break
+            except Exception as e:
+                print(f"Error getting defensive {play_type} stats (attempt {attempt + 1}): {e}")
+                if attempt == max_retries - 1:
+                    print(f"Failed to get defensive {play_type} stats after all retries")
+                    return None, None, None
+                print("Waiting 60 seconds before retry...")
+                time.sleep(60)
+
+    # Now extract just the frequencies we need
+    try:
+        all_stats = []
+
+        # Extract offensive frequencies
+        for play_type, df in offensive_data.items():
+            stats = df[['PLAYER_ID', 'POSS_PCT']].copy()
+            stats.rename(columns={'POSS_PCT': f'OFF_{play_type.upper()}_FREQ'}, inplace=True)
+            all_stats.append(stats)
+
+        # Extract defensive frequencies
+        for play_type, df in defensive_data.items():
+            stats = df[['PLAYER_ID', 'POSS_PCT']].copy()
+            stats.rename(columns={'POSS_PCT': f'DEF_{play_type.upper()}_FREQ'}, inplace=True)
+            all_stats.append(stats)
+
+        # Merge all frequencies together
+        combined = all_stats[0]
+        for stats in all_stats[1:]:
+            combined = combined.merge(stats, on='PLAYER_ID', how='outer')
+
+        # Return both the combined frequencies AND the raw data if you need it later
+        return combined, offensive_data, defensive_data
+
+    except Exception as e:
+        print(f"Error merging play type stats: {e}")
+        return None, None, None
 def get_shot_chart_data(player_id, season='2025-26', max_retries=3):
     """Get detailed shot chart data for a player."""
     for attempt in range(max_retries):
@@ -366,129 +454,203 @@ def get_shot_chart_data(player_id, season='2025-26', max_retries=3):
                 print(f"Failed after {max_retries} attempts for player {player_id}")
                 return None
 
+
 def get_hustle_stats(season='2025-26'):
     """Get hustle stats for all players - contested shots and deflections."""
-    try:
-        time.sleep(1)
-        print("Getting hustle stats...")
 
-        hustle = LeagueHustleStatsPlayer(
-            season=season,
-            season_type_all_star='Regular Season',
-        ).get_data_frames()[0]
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            time.sleep(1)
+            print(f"Getting hustle stats... (attempt {attempt + 1}/{max_retries})")
 
-        # Select relevant columns
-        hustle_stats = hustle[[
-            'PLAYER_ID',
-            'PLAYER_NAME',
-            'CONTESTED_SHOTS_2PT',
-            'CONTESTED_SHOTS_3PT',
-            'DEFLECTIONS',
-            'G',
-            'MIN'# Games played for reference
-        ]].copy()
+            hustle = LeagueHustleStatsPlayer(
+                season=season,
+                season_type_all_star='Regular Season',
+            ).get_data_frames()[0]
 
-        hustle_stats['CONTESTED_SHOTS_2PT_PER36'] = (hustle_stats['CONTESTED_SHOTS_2PT'] / hustle_stats['MIN']) * 36
-        hustle_stats['CONTESTED_SHOTS_3PT_PER36'] = (hustle_stats['CONTESTED_SHOTS_3PT'] / hustle_stats['MIN']) * 36
-        hustle_stats['DEFLECTIONS_PER36'] = (hustle_stats['DEFLECTIONS'] / hustle_stats['MIN']) * 36
+            # Select relevant columns
+            hustle_stats = hustle[[
+                'PLAYER_ID',
+                'PLAYER_NAME',
+                'CONTESTED_SHOTS_2PT',
+                'CONTESTED_SHOTS_3PT',
+                'DEFLECTIONS',
+                'G',
+                'MIN'  # Games played for reference
+            ]].copy()
 
-        # Select final columns
-        hustle_stats_per36 = hustle_stats[[
-            'PLAYER_ID',
-            'PLAYER_NAME',
-            'CONTESTED_SHOTS_2PT_PER36',
-            'CONTESTED_SHOTS_3PT_PER36',
-            'DEFLECTIONS_PER36'
-        ]]
+            hustle_stats['CONTESTED_SHOTS_2PT_PER36'] = (hustle_stats['CONTESTED_SHOTS_2PT'] / hustle_stats['MIN']) * 36
+            hustle_stats['CONTESTED_SHOTS_3PT_PER36'] = (hustle_stats['CONTESTED_SHOTS_3PT'] / hustle_stats['MIN']) * 36
+            hustle_stats['DEFLECTIONS_PER36'] = (hustle_stats['DEFLECTIONS'] / hustle_stats['MIN']) * 36
 
-        # Calculate total contested shots
+            # Select final columns
+            hustle_stats_per36 = hustle_stats[[
+                'PLAYER_ID',
+                'PLAYER_NAME',
+                'CONTESTED_SHOTS_2PT_PER36',
+                'CONTESTED_SHOTS_3PT_PER36',
+                'DEFLECTIONS_PER36'
+            ]]
 
+            return hustle_stats_per36
 
-        return hustle_stats_per36
-
-    except Exception as e:
-        print(f"Error getting hustle stats: {e}")
-        return None
-
-
+        except Exception as e:
+            print(f"Error getting hustle stats (attempt {attempt + 1}): {e}")
+            if attempt == max_retries - 1:
+                print("Failed to get hustle stats after all retries")
+                return None
+            print("Waiting 60 seconds before retry...")
+            time.sleep(60)
 def get_tracking_stats(season='2025-26'):
-    """Get tracking stats - speed, distance, catch & shoot, passing, and drives."""
+    """Get tracking stats - speed, distance, catch & shoot, passing, drives, and rebounding."""
+
+    # Speed/Distance tracking
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            time.sleep(1)
+            print(f"Getting speed/distance stats... (attempt {attempt + 1}/{max_retries})")
+            tracking = LeagueDashPtStats(
+                season=season,
+                per_mode_simple='PerGame',
+                pt_measure_type='SpeedDistance',
+                player_or_team='Player'
+            ).get_data_frames()[0]
+
+            tracking_stats = tracking[[
+                'PLAYER_ID',
+                'PLAYER_NAME',
+                'AVG_SPEED_OFF',
+                'AVG_SPEED_DEF',
+            ]].copy()
+            break
+        except Exception as e:
+            print(f"Error getting speed/distance stats (attempt {attempt + 1}): {e}")
+            if attempt == max_retries - 1:
+                print("Failed to get speed/distance stats after all retries")
+                return None
+            print("Waiting 60 seconds before retry...")
+            time.sleep(60)
+
+    # Catch & Shoot
+    for attempt in range(max_retries):
+        try:
+            time.sleep(1)
+            print(f"Getting catch & shoot stats... (attempt {attempt + 1}/{max_retries})")
+            cs = LeagueDashPtStats(
+                season=season,
+                per_mode_simple='PerGame',
+                pt_measure_type='CatchShoot',
+                player_or_team='Player'
+            ).get_data_frames()[0]
+
+            csstats = cs[[
+                'PLAYER_ID',
+                'CATCH_SHOOT_FGA',
+                'CATCH_SHOOT_FG3A',
+                'MIN'
+            ]].copy()
+
+            csstats['CATCHANDSHOOTPER36'] = (csstats['CATCH_SHOOT_FGA'] / csstats['MIN']) * 36
+            csstats['CATCHANDSHOOT3PAPER36'] = (csstats['CATCH_SHOOT_FG3A'] / csstats['MIN']) * 36
+            csstats['CATCHANDSHOOT3PAPER36'] = csstats['CATCHANDSHOOT3PAPER36'].fillna(0)
+            break
+        except Exception as e:
+            print(f"Error getting catch & shoot stats (attempt {attempt + 1}): {e}")
+            if attempt == max_retries - 1:
+                print("Failed to get catch & shoot stats after all retries")
+                return None
+            print("Waiting 60 seconds before retry...")
+            time.sleep(60)
+
+    # Passing
+    for attempt in range(max_retries):
+        try:
+            time.sleep(1)
+            print(f"Getting passing stats... (attempt {attempt + 1}/{max_retries})")
+            passing = LeagueDashPtStats(
+                season=season,
+                per_mode_simple='PerGame',
+                pt_measure_type='Passing',
+                player_or_team='Player'
+            ).get_data_frames()[0]
+
+            passingstats = passing[[
+                'PLAYER_ID',
+                'PASSES_MADE',
+                'PASSES_RECEIVED',
+                'MIN'
+            ]].copy()
+
+            passingstats['PASSESMADEPER36'] = (passingstats['PASSES_MADE'] / passingstats['MIN']) * 36
+            passingstats['PASSESRECEIVEDPER36'] = (passingstats['PASSES_RECEIVED'] / passingstats['MIN']) * 36
+            break
+        except Exception as e:
+            print(f"Error getting passing stats (attempt {attempt + 1}): {e}")
+            if attempt == max_retries - 1:
+                print("Failed to get passing stats after all retries")
+                return None
+            print("Waiting 60 seconds before retry...")
+            time.sleep(60)
+
+    # Drives
+    for attempt in range(max_retries):
+        try:
+            time.sleep(1)
+            print(f"Getting drives stats... (attempt {attempt + 1}/{max_retries})")
+            drives = LeagueDashPtStats(
+                season=season,
+                per_mode_simple='PerGame',
+                pt_measure_type='Drives',
+                player_or_team='Player'
+            ).get_data_frames()[0]
+
+            drivestats = drives[[
+                'PLAYER_ID',
+                'DRIVES',
+                'MIN',
+                'DRIVE_PTS_PCT',
+                'DRIVE_AST_PCT',
+            ]].copy()
+            drivestats['DRIVESPER36'] = (drivestats['DRIVES'] / drivestats['MIN']) * 36
+            break
+        except Exception as e:
+            print(f"Error getting drives stats (attempt {attempt + 1}): {e}")
+            if attempt == max_retries - 1:
+                print("Failed to get drives stats after all retries")
+                return None
+            print("Waiting 60 seconds before retry...")
+            time.sleep(60)
+
+    # Rebounding (both offensive and defensive)
+    for attempt in range(max_retries):
+        try:
+            time.sleep(1)
+            print(f"Getting rebounding stats... (attempt {attempt + 1}/{max_retries})")
+            rebounding = LeagueDashPtStats(
+                season=season,
+                per_mode_simple='PerGame',
+                pt_measure_type='Rebounding',
+                player_or_team='Player'
+            ).get_data_frames()[0]
+
+            reboundingstats = rebounding[[
+                'PLAYER_ID',
+                'AVG_OREB_DIST',
+                'AVG_DREB_DIST'
+            ]].copy()
+            break
+        except Exception as e:
+            print(f"Error getting rebounding stats (attempt {attempt + 1}): {e}")
+            if attempt == max_retries - 1:
+                print("Failed to get rebounding stats after all retries")
+                return None
+            print("Waiting 60 seconds before retry...")
+            time.sleep(60)
+
+    # Merge all tracking stats together
     try:
-        time.sleep(1)
-        print("Getting tracking stats...")
-
-        # Speed/Distance tracking
-        tracking = LeagueDashPtStats(
-            season=season,
-            per_mode_simple='PerGame',
-            pt_measure_type='SpeedDistance',
-            player_or_team='Player'
-        ).get_data_frames()[0]
-
-        tracking_stats = tracking[[
-            'PLAYER_ID',
-            'PLAYER_NAME',
-            'AVG_SPEED_OFF',
-            'AVG_SPEED_DEF',
-        ]].copy()
-
-        # Catch & Shoot
-        time.sleep(1)
-        print("Getting catch & shoot stats...")
-        cs = LeagueDashPtStats(
-            season=season,
-            per_mode_simple='PerGame',
-            pt_measure_type='CatchShoot',
-            player_or_team='Player'
-        ).get_data_frames()[0]
-        csstats = cs[[
-            'PLAYER_ID',
-            'CATCH_SHOOT_FGA',
-            'CATCH_SHOOT_FG3A',
-            'MIN'
-        ]].copy()
-
-        csstats['CATCHANDSHOOTPER36'] = (csstats['CATCH_SHOOT_FGA'] / csstats['MIN']) * 36
-        csstats['CATCHANDSHOOT3PAPER36'] = (csstats['CATCH_SHOOT_FG3A'] / csstats['MIN']) * 36
-        csstats['CATCHANDSHOOT3PAPER36']=csstats['CATCHANDSHOOT3PAPER36'].fillna(0)
-
-        # Passing
-        time.sleep(1)
-        print("Getting passing stats...")
-        passing = LeagueDashPtStats(
-            season=season,
-            per_mode_simple='PerGame',
-            pt_measure_type='Passing',
-            player_or_team='Player'
-        ).get_data_frames()[0]
-        passingstats = passing[[
-            'PLAYER_ID',
-            'PASSES_MADE',
-            'PASSES_RECEIVED',
-            'MIN'
-        ]].copy()
-
-        passingstats['PASSESMADEPER36'] = (passingstats['PASSES_MADE'] / passingstats['MIN']) * 36
-        passingstats['PASSESRECEIVEDPER36'] = (passingstats['PASSES_RECEIVED'] / passingstats['MIN']) * 36
-
-        # Drives
-        time.sleep(1)
-        print("Getting drives stats...")
-        drives = LeagueDashPtStats(
-            season=season,
-            per_mode_simple='PerGame',
-            pt_measure_type='Drives',
-            player_or_team='Player'
-        ).get_data_frames()[0]
-        drivestats = drives[[
-            'PLAYER_ID',
-            'DRIVES',
-            'MIN',
-            'DRIVE_PTS_PCT',
-            'DRIVE_AST_PCT',
-        ]].copy()
-        drivestats['DRIVESPER36']=(drivestats['DRIVES']/drivestats['MIN'])*36
-        # Merge all tracking stats together
         combined = tracking_stats.merge(
             csstats[['PLAYER_ID', 'CATCHANDSHOOTPER36', 'CATCHANDSHOOT3PAPER36']],
             on='PLAYER_ID',
@@ -498,19 +660,21 @@ def get_tracking_stats(season='2025-26'):
             on='PLAYER_ID',
             how='left'
         ).merge(
-            drivestats[['PLAYER_ID', 'DRIVE_PTS_PCT', 'DRIVESPER36','DRIVE_AST_PCT']],
+            drivestats[['PLAYER_ID', 'DRIVE_PTS_PCT', 'DRIVESPER36', 'DRIVE_AST_PCT']],
+            on='PLAYER_ID',
+            how='left'
+        ).merge(
+            reboundingstats[['PLAYER_ID', 'AVG_OREB_DIST', 'AVG_DREB_DIST']],
             on='PLAYER_ID',
             how='left'
         )
 
         return combined
     except Exception as e:
-        print(f"Error getting tracking stats: {e}")
+        print(f"Error merging tracking stats: {e}")
         return None
-
-
 def enhance_player_data(player_averages, min_games=10):
-    """Add shot chart, tracking, and hustle data to player averages."""
+    """Add shot chart, tracking, hustle, and play type data to player averages."""
 
     all_shot_data = pd.DataFrame()
     qualified_players = player_averages
@@ -581,6 +745,21 @@ def enhance_player_data(player_averages, min_games=10):
     hustle_stats = pd.concat([hustle_stats_2023, hustle_stats_2024, hustle_stats_2025], ignore_index=True)
     print(f"✓ Combined hustle stats: {len(hustle_stats)} records")
 
+    # ============ NEW: GET PLAY TYPE STATS FOR EACH SEASON ============
+    print("\nGetting play type stats...")
+    playtype_stats_2023, _, _ = get_playtype_stats(season='2023-24')
+    playtype_stats_2023['SEASON_ID'] = 22023
+
+    playtype_stats_2024, _, _ = get_playtype_stats(season='2024-25')
+    playtype_stats_2024['SEASON_ID'] = 22024
+
+    playtype_stats_2025, _, _ = get_playtype_stats(season='2025-26')
+    playtype_stats_2025['SEASON_ID'] = 22025
+
+    # Concat all play type stats
+    playtype_stats = pd.concat([playtype_stats_2023, playtype_stats_2024, playtype_stats_2025], ignore_index=True)
+    print(f"✓ Combined play type stats: {len(playtype_stats)} records")
+
     # ============ MERGE EVERYTHING TOGETHER ============
     qualified_players = qualified_players.fillna(0)
     qualified_players[['PLAYER_ID', 'SEASON_ID']] = qualified_players[['PLAYER_ID', 'SEASON_ID']].astype(int)
@@ -614,6 +793,17 @@ def enhance_player_data(player_averages, min_games=10):
         how='left'
     )
     print(f"✓ Merged hustle stats")
+
+    # Merge play type stats
+    playtype_stats['PLAYER_ID'] = playtype_stats['PLAYER_ID'].astype(int)
+    playtype_stats['SEASON_ID'] = playtype_stats['SEASON_ID'].astype(int)
+
+    enhanced_data = enhanced_data.merge(
+        playtype_stats,
+        on=['PLAYER_ID', 'SEASON_ID'],
+        how='left'
+    )
+    print(f"✓ Merged play type stats")
 
     print(f"\n✓ Final enhanced dataset: {len(enhanced_data)} records with {len(enhanced_data.columns)} features")
 
@@ -649,7 +839,14 @@ def cluster_players_off(data, n_clusters):
         'PASSESRECEIVEDPER36',  # Off-ball movement
         'DRIVESPER36',  # Driving frequency
         'DRIVE_PTS_PCT',  # % of points from drives
-        'DRIVE_AST_PCT',  # % of assists from drives
+        'DRIVE_AST_PCT',
+        'AVG_OREB_DIST',# % of assists from drives
+        'OFF_PRBALLHANDLER_FREQ',
+        'OFF_PRROLLMAN_FREQ',
+        'OFF_POSTUP_FREQ',
+        'OFF_SPOTUP_FREQ',
+        'OFF_OFFSCREEN_FREQ',
+        'OFF_CUT_FREQ',
     ]
 
     data['Height_IN'] = data['HEIGHT'].str.split('-').apply(lambda x: int(x[0]) * 12 + int(x[1]))
@@ -855,6 +1052,10 @@ def cluster_players_def(data, n_clusters):
 
         # ============ NEW: TRACKING STATS ============
         'AVG_SPEED_DEF',  # Defensive speed/mobility
+        'AVG_DREB_DIST',
+        'DEF_PRBALLHANDLER_FREQ',
+        'DEF_PRROLLMAN_FREQ',
+        'DEF_POSTUP_FREQ'
     ]
 
     data['Height_IN'] = data['HEIGHT'].str.split('-').apply(lambda x: int(x[0]) * 12 + int(x[1]))
@@ -947,7 +1148,7 @@ def cluster_players_def(data, n_clusters):
             n_clusters = optimal_clusters_sil
         else:
             # If they disagree by more than 1, take silhouette with a note
-            n_clusters = optimal_clusters_sil
+            n_clusters = min(optimal_clusters_sil,elbow_value)
             print(f"Note: Elbow method suggests {elbow_value} clusters, "
                   f"while Silhouette suggests {optimal_clusters_sil}. "
                   f"Choosing {n_clusters} based on Silhouette score.")
@@ -1115,24 +1316,23 @@ def basic_clustering(data):
 
 
 def create_clusters():
-    data = get_player_box()
-    print("got data")
-    player_averages = box_to_avg(data)
-    print("converted to avg")
-    print(player_averages)
-    player_averages = add_height_weight_pos(player_averages)
-    print("added height weight")
-
-    # ============ UPDATED: Now includes tracking and hustle stats ============
-    enhanced_data = enhance_player_data(player_averages)
-
-    # Save the enhanced data with ALL features
-    enhanced_data.to_csv('player_data.csv', index=False)
-    print("\n✓ Saved enhanced player data to 'player_data.csv'")
+    # data = get_player_box()
+    # print("got data")
+    # player_averages = box_to_avg(data)
+    # print("converted to avg")
+    # print(player_averages)
+    # player_averages = add_height_weight_pos(player_averages)
+    # print("added height weight")
+    #
+    # # ============ UPDATED: Now includes tracking and hustle stats ============
+    # enhanced_data = enhance_player_data(player_averages)
+    #
+    # # Save the enhanced data with ALL features
+    # enhanced_data.to_csv('player_data.csv', index=False)
+    # print("\n✓ Saved enhanced player data to 'player_data.csv'")
 
     # Read it back
-    enhanced_data = pd.read_csv("player_data.csv")
-
+    enhanced_data = pd.read_csv("player_data.csv").fillna(0)
     # Perform clustering with new features
     print("\n" + "=" * 60)
     print("STARTING OFFENSIVE CLUSTERING")
@@ -1163,6 +1363,37 @@ st.set_page_config(page_title="NBA Player Archetype Dashboard", layout="wide")
 
 @st.cache_data
 def load_data():
+    DEF_CLUSTER_OVERRIDES = {
+        'Scottie Barnes': 8, 'Anthony Davis': 1, 'Rudy Gobert': 1, 'Jaren Jackson Jr.': 8,
+        'Myles Turner': 1, "Kel'el Ware": 1, 'Bam Adebayo': 8, 'Wendell Carter Jr.': 7,
+        'Zach Edey': 7, 'Joel Embiid': 7, 'Nikola Jokić': 7, 'Jalen Smith': 7,
+        'Karl-Anthony Towns': 7, 'Jaden McDaniels': 11, 'Anfernee Simons': 0,
+        'Amen Thompson': 11, 'Jaylon Tyson': 11, 'Shaedon Sharpe': 6, 'Marcus Smart': 11,
+        'Trae Young': 0, 'Kyle Anderson': 12, 'Donte DiVincenzo': 4, 'Jrue Holiday': 4,
+        'Derrick Jones Jr.': 11, 'Larry Nance Jr.': 7, 'Jarred Vanderbilt': 6,
+        'Kenrich Williams': 7, 'GG Jackson': 5, 'Jonathan Kuminga': 5, 'Dalen Terry': 6,
+        'Sharife Cooper': 4, 'Saddiq Bey': 5, 'Dillon Brooks': 11, 'Max Christie': 6,
+        'Walter Clayton Jr.': 4, 'Luguentz Dort': 11, 'Anthony Edwards': 6, 'AJ Green': 0,
+        'Tim Hardaway Jr.': 0, 'Cameron Johnson': 6, 'Zach LaVine': 0, 'Tre Mann': 0,
+        'CJ McCollum': 0, 'Khris Middleton': 12, 'Jamal Murray': 0, 'Aaron Nesmith': 6,
+        'Jalen Pickett': 0, 'Will Riley': 12, 'Klay Thompson': 12, 'Coby White': 0,
+        'Karlo Matković': 3, 'Brandon Clarke': 3, 'Ty Jerome': 4, 'Lawson Lovering': 3,
+        'Cody Martin': 6, 'Jahmai Mashack': 4, 'Mac McClung': 0, 'De\'Anthony Melton': 11,
+        'Drew Peterson': 12, 'Scotty Pippen Jr.': 4, 'Isaiah Stevens': 4,
+        'Matisse Thybulle': 11, 'Tolu Smith': 3, 'Jaylen Wells': 4,
+    }
+    DEF_CLUSTER_NAMES = {
+        8: 'High Stock + D',
+        7: 'Turtles',
+        6: 'Long Wing/Secondary POA',
+        4: 'Pesky Guard',
+        11: 'POA Defender',
+        5: 'Big Wing Defender',
+        0: 'Non POA Guard',
+        3: 'Bad/Slow Big Defender',
+        12: 'Non-POA Wing',
+        1: 'Rim Protector',
+    }
     playerbox = LeagueGameLog(
         player_or_team_abbreviation='P',
         season_type_all_star='Regular Season',
@@ -1180,6 +1411,13 @@ def load_data():
         .merge(defcluster, on='PLAYER_ID', how='left')
     )
     merged['GAME_DATE'] = pd.to_datetime(merged['GAME_DATE'])
+
+    # Apply manual DefCluster overrides by player name
+    override_mask = merged['PLAYER_NAME'].isin(DEF_CLUSTER_OVERRIDES)
+    merged.loc[override_mask, 'DefCluster'] = merged.loc[override_mask, 'PLAYER_NAME'].map(DEF_CLUSTER_OVERRIDES)
+    merged['DefCluster'] = merged['DefCluster'].map(DEF_CLUSTER_NAMES)
+
+
     return merged
 
 
@@ -2441,7 +2679,37 @@ def main():
             st.error(f"Error loading today's games: {str(e)}")
             st.exception(e)
             st.info("Make sure the NBA API is accessible and there are games scheduled today.")
-            
+
+
+def clean_existing_csv(filepath='player_data.csv', output_path='player_data.csv'):
+    """Clean existing player_data.csv by removing duplicates"""
+    df = pd.read_csv(filepath)
+
+    print(f"Original rows: {len(df)}")
+
+    # Check for duplicates
+    duplicates_mask = df.duplicated(subset=['PLAYER_ID', 'SEASON_ID'], keep=False)
+    num_duplicates = duplicates_mask.sum()
+
+    if num_duplicates > 0:
+        print(f"Found {num_duplicates} duplicate rows")
+
+        # Keep first occurrence of each player-season
+        df_cleaned = df.drop_duplicates(subset=['PLAYER_ID', 'SEASON_ID'], keep='first')
+
+        print(f"Cleaned rows: {len(df_cleaned)}")
+        print(f"Removed {len(df) - len(df_cleaned)} duplicate rows")
+
+        # Save cleaned version
+        df_cleaned.to_csv(output_path, index=False)
+        print(f"\n✓ Saved cleaned data to '{output_path}'")
+
+        return df_cleaned
+    else:
+        print("✓ No duplicates found!")
+        return df
+
+
 if __name__ == '__main__':
-   # create_clusters()
+    #create_clusters()
     main()
