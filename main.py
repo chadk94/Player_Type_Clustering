@@ -1415,7 +1415,7 @@ def load_data():
     # Apply manual DefCluster overrides by player name
     override_mask = merged['PLAYER_NAME'].isin(DEF_CLUSTER_OVERRIDES)
     merged.loc[override_mask, 'DefCluster'] = merged.loc[override_mask, 'PLAYER_NAME'].map(DEF_CLUSTER_OVERRIDES)
-    merged['DefCluster'] = merged['DefCluster'].map(DEF_CLUSTER_NAMES)
+    merged['DefClusterName'] = merged['DefCluster'].map(DEF_CLUSTER_NAMES)
 
 
     return merged
@@ -2513,7 +2513,7 @@ def main():
                 st.markdown(f"### 📊 Top Matchup Opportunities ({len(filtered_df)} players)")
 
                 # Display summary table
-                display_cols = ['PLAYER_NAME', 'Home', 'Opponent', 'Off Cluster', 'Def Cluster',
+                display_cols = ['PLAYER_NAME', 'Home', 'Opponent', 'Off Cluster', 'DefClusterName',
                                 'PTS %', 'AST %', 'DREB %', 'OREB %', 'FG3A %', 'STL %', 'BLK %',
                                 'Off Games', 'Def Games']
 
