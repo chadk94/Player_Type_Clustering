@@ -233,15 +233,17 @@ def load_todays_matchups(merged,min_date, max_date):
                 # Only include players with historical data vs this opponent
                 if has_off_history or has_def_history:
                     player_rows = merged[merged['PLAYER_ID'] == player_id]
+                    off_cluster_name = player_rows['OffClusterName'].iloc[0] if not player_rows.empty else ''
                     def_cluster_name = player_rows['DefClusterName'].iloc[0] if not player_rows.empty else ''
-                    if pd.isna(def_cluster_name):
-                        def_cluster_name = ''
+                    if pd.isna(off_cluster_name): off_cluster_name = ''
+                    if pd.isna(def_cluster_name): def_cluster_name = ''
                     matchup_scores.append({
                         'PLAYER_NAME': player_name,
                         'PLAYER_ID': player_id,
                         'Opponent': opponent,
                         'Home': '🏠' if is_home else '✈️',
                         'Off Cluster': int(off_cluster),
+                        'Off Cluster Name': off_cluster_name,
                         'Def Cluster': int(def_cluster),
                         'Def Cluster Name': def_cluster_name,
                         'Has Off History': has_off_history,
@@ -1418,6 +1420,18 @@ def load_data():
         'Drew Peterson': 12, 'Scotty Pippen Jr.': 4, 'Isaiah Stevens': 4,
         'Matisse Thybulle': 11, 'Tolu Smith': 3, 'Jaylen Wells': 4,
     }
+    OFF_CLUSTER_NAMES = {
+        0: 'Catch & Shoot Wing',
+        1: 'Athletic Roll Man',
+        2: 'Primary Ball Handler',
+        3: 'Uncategorized',
+        4: 'Spot-Up Role Player',
+        5: 'High Usage Wing',
+        6: 'Secondary Playmaker',
+        7: 'Dominant Big',
+        8: 'Traditional Center',
+        9: 'Stretch Big',
+    }
     DEF_CLUSTER_NAMES = {
         8: 'High Stock + D',
         7: 'Turtles',
@@ -1451,6 +1465,9 @@ def load_data():
     # Apply manual DefCluster overrides by player name
     override_mask = merged['PLAYER_NAME'].isin(DEF_CLUSTER_OVERRIDES)
     merged.loc[override_mask, 'DefCluster'] = merged.loc[override_mask, 'PLAYER_NAME'].map(DEF_CLUSTER_OVERRIDES)
+    merged['OffClusterName'] = merged['OffCluster'].map(
+        lambda x: OFF_CLUSTER_NAMES.get(int(x)) if pd.notna(x) else None
+    )
     merged['DefClusterName'] = merged['DefCluster'].map(
         lambda x: DEF_CLUSTER_NAMES.get(int(x)) if pd.notna(x) else None
     )
@@ -1462,13 +1479,25 @@ def main():
     merged = load_data()
     st.title("🏀 NBA Player Archetype Dashboard (2024–25 Season)")
 
-    # Build def cluster name map from merged data
+    # Build cluster name maps from merged data
+    off_cluster_name_map = (
+        merged.dropna(subset=['OffCluster', 'OffClusterName'])
+        .drop_duplicates('OffCluster')
+        .set_index('OffCluster')['OffClusterName']
+        .to_dict()
+    )
     def_cluster_name_map = (
         merged.dropna(subset=['DefCluster', 'DefClusterName'])
         .drop_duplicates('DefCluster')
         .set_index('DefCluster')['DefClusterName']
         .to_dict()
     )
+
+    def format_off_cluster(x):
+        if x == "All":
+            return "All"
+        name = off_cluster_name_map.get(x, '')
+        return f"{name} ({int(x)})" if name else f"Cluster {int(x)}"
 
     def format_def_cluster(x):
         if x == "All":
@@ -1544,7 +1573,10 @@ def main():
     col1, col2 = st.sidebar.columns([4, 1])
     with col1:
         off_clusters = sorted(merged['OffCluster'].dropna().unique())
-        selected_off_cluster = st.selectbox("Offensive Cluster", ["All"] + off_clusters, key='off_cluster_filter')
+        selected_off_cluster = st.selectbox(
+            "Offensive Cluster", ["All"] + off_clusters,
+            key='off_cluster_filter', format_func=format_off_cluster
+        )
     with col2:
         st.write("")  # Spacing
         st.button("✕", key="clear_off")
@@ -1598,7 +1630,7 @@ def main():
         else:
             st.dataframe(
                 df_filtered[['PLAYER_NAME', 'TEAM_ABBREVIATION', 'GAME_DATE',
-                             'MATCHUP', 'MIN','PTS', 'REB', 'AST', 'FG3M', 'FG3A', 'FTA', 'OffCluster', 'DefClusterName']]
+                             'MATCHUP', 'MIN','PTS', 'REB', 'AST', 'FG3M', 'FG3A', 'FTA', 'OffClusterName', 'DefClusterName']]
                 .sort_values('GAME_DATE', ascending=False)
                 .reset_index(drop=True)
             )
@@ -1655,7 +1687,8 @@ def main():
                 "Offensive Cluster for Analysis",
                 off_cluster_options,
                 index=default_off_index,
-                key=f"off_analysis_{selected_player}"  # Add key with player name
+                key=f"off_analysis_{selected_player}",
+                format_func=format_off_cluster
             )
 
         with col2:
@@ -1685,10 +1718,12 @@ def main():
             st.warning("No games match the selected clusters within your filters.")
         else:
             st.markdown(f"### 📈 Cluster Analysis")
+            off_analysis_name = off_cluster_name_map.get(selected_off_analysis, '')
+            off_analysis_label = f"{off_analysis_name} ({int(selected_off_analysis)})" if off_analysis_name else f"Cluster {int(selected_off_analysis)}"
             def_analysis_name = def_cluster_name_map.get(selected_def_analysis, '')
             def_analysis_label = f"{def_analysis_name} ({int(selected_def_analysis)})" if def_analysis_name else f"Cluster {int(selected_def_analysis)}"
             st.markdown(
-                f"**Offensive Cluster {int(selected_off_analysis)}** | **Defensive Cluster {def_analysis_label}**")
+                f"**Offensive Cluster {off_analysis_label}** | **Defensive Cluster {def_analysis_label}**")
 
             # Show example players from both clusters
             off_players = df_off_cluster['PLAYER_NAME'].unique()[:5]
@@ -1912,7 +1947,7 @@ def main():
                     st.markdown("*Showing season averages (no historical cluster data vs this opponent available)*")
 
                 st.caption(
-                    f"**Note:** Offensive stats use Offensive Cluster {int(selected_off_analysis)}, Defensive stats use Defensive Cluster {def_analysis_label}")
+                    f"**Note:** Offensive stats use Offensive Cluster {off_analysis_label}, Defensive stats use Defensive Cluster {def_analysis_label}")
 
                 # Get ALL unique players from the season who have the required clusters
                 # We need to aggregate from merged dataset to get season averages per player
@@ -2022,8 +2057,8 @@ def main():
 
                         projected_row = {
                             'PLAYER_NAME': player_name,
-                            'OffCluster': selected_off_analysis if not pd.isna(player_row.get('MIN_off')) else None,
-                            'DefCluster': selected_def_analysis if not pd.isna(player_row.get('MIN_def')) else None
+                            'OffClusterName': off_analysis_label if not pd.isna(player_row.get('MIN_off')) else None,
+                            'DefClusterName': def_analysis_label if not pd.isna(player_row.get('MIN_def')) else None
                         }
 
                         # Use whichever MIN is available (prefer off, then def)
@@ -2110,7 +2145,7 @@ def main():
 
                         if display_stats:
                             # Create display dataframe
-                            display_columns = ['PLAYER_NAME', 'AVG_MIN', 'OffCluster', 'DefCluster']
+                            display_columns = ['PLAYER_NAME', 'AVG_MIN', 'OffClusterName', 'DefClusterName']
                             for stat in display_stats:
                                 display_columns.extend([f'{stat}_Season', f'{stat}_Projected', f'{stat}_Diff'])
 
@@ -2127,8 +2162,8 @@ def main():
                                 rename_dict = {
                                     'PLAYER_NAME': 'Player',
                                     'AVG_MIN': 'MPG',
-                                    'OffCluster': 'Off',
-                                    'DefCluster': 'Def'
+                                    'OffClusterName': 'Off',
+                                    'DefClusterName': 'Def'
                                 }
                                 for stat in display_stats:
                                     rename_dict[f'{stat}_Season'] = f'{stat} (Season)'
@@ -2163,7 +2198,7 @@ def main():
                                 st.dataframe(styled_proj, use_container_width=True)
 
                                 st.caption(
-                                    f"💡 Offensive stats ({', '.join(offensive_stats)}) use ALL players in Off Cluster {int(selected_off_analysis)}")
+                                    f"💡 Offensive stats ({', '.join(offensive_stats)}) use ALL players in Off Cluster {off_analysis_label}")
                                 st.caption(
                                     f"💡 Defensive stats ({', '.join(defensive_stats)}) use ALL players in Def Cluster {def_analysis_label}")
                         else:
@@ -2421,7 +2456,9 @@ def main():
                     cols = st.columns(3)
                     for idx, cluster in enumerate(off_clusters_used):
                         with cols[idx % 3]:
-                            with st.expander(f"Offensive Cluster {cluster}"):
+                            off_name = off_cluster_name_map.get(cluster, '')
+                            off_expander_label = f"Off Cluster {cluster}: {off_name}" if off_name else f"Offensive Cluster {cluster}"
+                            with st.expander(off_expander_label):
                                 players = cluster_players_map.get(f"Off-{cluster}", [])
                                 st.write(", ".join(players))
 
@@ -2544,7 +2581,7 @@ def main():
                 st.markdown(f"### 📊 Top Matchup Opportunities ({len(filtered_df)} players)")
 
                 # Display summary table
-                display_cols = ['PLAYER_NAME', 'Home', 'Opponent', 'Off Cluster', 'Def Cluster Name',
+                display_cols = ['PLAYER_NAME', 'Home', 'Opponent', 'Off Cluster Name', 'Def Cluster Name',
                                 'PTS %', 'AST %', 'DREB %', 'OREB %', 'FG3M %', 'FG3A %', 'STL %', 'BLK %',
                                 'Off Games', 'Def Games']
 
@@ -2610,7 +2647,8 @@ def main():
                     player_def_name = def_cluster_name_map.get(def_cluster, def_cluster_name_map.get(float(def_cluster), ''))
                     def_cluster_label = f"{player_def_name} ({int(def_cluster)})" if player_def_name else f"Cluster {int(def_cluster)}"
                     st.markdown(f"**{selected_today_player}** vs **{opponent}**")
-                    st.caption(f"Off Cluster {int(off_cluster)} | Def Cluster {def_cluster_label}")
+                    off_cluster_label = f"{player_info['Off Cluster Name']} ({int(off_cluster)})" if player_info['Off Cluster Name'] else f"Cluster {int(off_cluster)}"
+                    st.caption(f"Off Cluster {off_cluster_label} | Def Cluster {def_cluster_label}")
 
                     # Get player's season stats
                     merged_filtered = merged[
@@ -2705,7 +2743,7 @@ def main():
 
                         st.caption(f"💡 Projections based on {selected_minutes:.1f} minutes")
                         st.caption(
-                            f"📊 Using Off Cluster {int(off_cluster)} and Def Cluster {def_cluster_label} historical performance vs {opponent}")
+                            f"📊 Using Off Cluster {off_cluster_label} and Def Cluster {def_cluster_label} historical performance vs {opponent}")
                     else:
                         st.warning(f"No season stats found for {selected_today_player}")
 
