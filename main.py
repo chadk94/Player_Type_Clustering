@@ -2043,14 +2043,13 @@ def main():
                             has_off = pd.notna(w_row.get('MIN_off'))
                             has_def = pd.notna(w_row.get('MIN_def'))
 
-                            # MPG from the window's average minutes
+                            # MPG shows the window's actual average minutes
                             w_base_min = w_row['MIN_off'] if has_off else w_row['MIN_def']
+                            display_min = w_base_min
 
                             if selected_player != "All" and player_name == selected_player:
-                                display_min = selected_minutes
                                 actual_multiplier = selected_minutes / w_base_min if w_base_min > 0 else 1.0
                             else:
-                                display_min = w_base_min
                                 actual_multiplier = 1.0
 
                             projected_row = {
