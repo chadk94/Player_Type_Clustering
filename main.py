@@ -2031,27 +2031,27 @@ def main():
                         if selected_player != "All" and player_name != selected_player:
                             continue
 
-                        if not pd.isna(player_row.get('MIN_off')):
-                            base_minutes = player_row['MIN_off']
-                        elif not pd.isna(player_row.get('MIN_def')):
-                            base_minutes = player_row['MIN_def']
-                        else:
+                        # Verify player exists in at least the full-season data
+                        if pd.isna(player_row.get('MIN_off')) and pd.isna(player_row.get('MIN_def')):
                             continue
 
-                        if selected_player != "All" and player_name == selected_player:
-                            display_min = selected_minutes
-                            actual_multiplier = selected_minutes / base_minutes if base_minutes > 0 else 1.0
-                        else:
-                            display_min = base_minutes
-                            actual_multiplier = 1.0
-
                         for window_label, pct_diff in window_configs:
-                            # Use time-windowed player averages for Season column
+                            # Use time-windowed player averages for Season column and MPG
                             lookup = proj_lookup[window_label]
                             w_row = lookup.loc[player_name] if player_name in lookup.index else player_row
 
                             has_off = pd.notna(w_row.get('MIN_off'))
                             has_def = pd.notna(w_row.get('MIN_def'))
+
+                            # MPG from the window's average minutes
+                            w_base_min = w_row['MIN_off'] if has_off else w_row['MIN_def']
+
+                            if selected_player != "All" and player_name == selected_player:
+                                display_min = selected_minutes
+                                actual_multiplier = selected_minutes / w_base_min if w_base_min > 0 else 1.0
+                            else:
+                                display_min = w_base_min
+                                actual_multiplier = 1.0
 
                             projected_row = {
                                 'PLAYER_NAME': player_name,
