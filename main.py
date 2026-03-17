@@ -214,6 +214,9 @@ def load_todays_matchups(merged,min_date, max_date):
 
                     for stat in offensive_stats:
                         pct_diff_off[stat] = bayesian_pct_diff(game_pct_diffs_off[stat].values, stat)
+                    # Projected 3PM = Projected 3PA × player season 3P%
+                    if 'FG3A' in pct_diff_off.index:
+                        pct_diff_off['FG3M'] = pct_diff_off['FG3A']
 
                 # Defensive cluster Bayesian calculation
                 if not df_def_vs_team_valid.empty:
@@ -1800,6 +1803,9 @@ def main():
 
                     for stat in offensive_stats:
                         pct_diff_off[stat] = bayesian_pct_diff(game_pct_diffs_off[stat].values, stat)
+                    # Projected 3PM = Projected 3PA × player season 3P%
+                    if 'FG3A' in pct_diff_off.index:
+                        pct_diff_off['FG3M'] = pct_diff_off['FG3A']
 
                 # Calculate defensive cluster % diff with game-by-game Bayesian approach
                 if not df_def_vs_team_valid.empty:
@@ -1832,6 +1838,9 @@ def main():
                 for stat in defensive_stats:
                     if stat in pct_diff_def.index:
                         avg_pct_diff_combined[stat] = pct_diff_def[stat]
+                # Projected 3PM = Projected 3PA × player season 3P%
+                if 'FG3A' in avg_pct_diff_combined.index and pd.notna(avg_pct_diff_combined['FG3A']):
+                    avg_pct_diff_combined['FG3M'] = avg_pct_diff_combined['FG3A']
 
                 # Show comparison table if we have any historical data
                 if has_off_history or has_def_history:
