@@ -18,6 +18,46 @@ from nba_api.stats.endpoints import commonteamroster
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
 
+# Per-stat half-life values (games) derived from backtest.
+# Weight of a game N games ago = 0.5 ^ (N / half_life). 999 ≈ no decay.
+STAT_HALF_LIFE = {
+    # Offensive — volume/shooting: no meaningful decay
+    'PTS':  999,
+    'FGM':  999,
+    'FGA':  999,
+    'FG3M': 999,
+    'FG3A': 999,
+    'FTM':  999,
+    'FTA':  999,
+    'TOV':  999,
+    # Playmaking — modest decay (backtest optimum: 15)
+    'AST':  15,
+    # Rebounding — moderate decay; recent matchups matter but don't overreact (optimum: 1, using 10)
+    'OREB': 10,
+    'DREB': 10,
+    # Defensive activity — moderate decay (optimum: 10)
+    'STL':  10,
+    'BLK':  10,
+    'PF':   10,
+    # Composite — handled as OREB+DREB components, but keep a safe default
+    'REB':  999,
+}
+
+
+def bayesian_pct_diff(game_diffs: np.ndarray, stat: str,
+                      prior_mean: float = 0.0, prior_weight: float = 3.0) -> float:
+    """Bayesian sequential update with per-stat games-ago exponential decay."""
+    half_life = STAT_HALF_LIFE.get(stat, 999)
+    n         = len(game_diffs)
+    estimate  = prior_mean
+    total_wt  = prior_weight
+    for i, diff in enumerate(game_diffs):
+        games_ago   = n - 1 - i          # 0 = most recent game
+        game_weight = 0.5 ** (games_ago / half_life)
+        estimate    = (total_wt * estimate + game_weight * diff) / (total_wt + game_weight)
+        total_wt   += game_weight
+    return estimate
+
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_todays_matchups(merged,min_date, max_date):
@@ -173,12 +213,7 @@ def load_todays_matchups(merged,min_date, max_date):
                     )
 
                     for stat in offensive_stats:
-                        bayesian_estimate = prior_mean
-                        total_weight = prior_weight
-                        for game_pct_diff in game_pct_diffs_off[stat].values:
-                            bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
-                            total_weight += 1
-                        pct_diff_off[stat] = bayesian_estimate
+                        pct_diff_off[stat] = bayesian_pct_diff(game_pct_diffs_off[stat].values, stat)
 
                 # Defensive cluster Bayesian calculation
                 if not df_def_vs_team_valid.empty:
@@ -193,15 +228,14 @@ def load_todays_matchups(merged,min_date, max_date):
                     )
 
                     for stat in defensive_stats:
-                        bayesian_estimate = prior_mean
-                        total_weight = prior_weight
-                        for game_pct_diff in game_pct_diffs_def[stat].values:
-                            bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
-                            total_weight += 1
-                        pct_diff_def[stat] = bayesian_estimate
+                        pct_diff_def[stat] = bayesian_pct_diff(game_pct_diffs_def[stat].values, stat)
 
                 # Only include players with historical data vs this opponent
                 if has_off_history or has_def_history:
+                    player_rows = merged[merged['PLAYER_ID'] == player_id]
+                    def_cluster_name = player_rows['DefClusterName'].iloc[0] if not player_rows.empty else ''
+                    if pd.isna(def_cluster_name):
+                        def_cluster_name = ''
                     matchup_scores.append({
                         'PLAYER_NAME': player_name,
                         'PLAYER_ID': player_id,
@@ -209,12 +243,14 @@ def load_todays_matchups(merged,min_date, max_date):
                         'Home': '🏠' if is_home else '✈️',
                         'Off Cluster': int(off_cluster),
                         'Def Cluster': int(def_cluster),
+                        'Def Cluster Name': def_cluster_name,
                         'Has Off History': has_off_history,
                         'Has Def History': has_def_history,
                         'PTS %': pct_diff_off['PTS'] if has_off_history else 0,
                         'AST %': pct_diff_off['AST'] if has_off_history else 0,
                         'OREB %': pct_diff_off['OREB'] if has_off_history else 0,
                         'DREB %': pct_diff_def['DREB'] if has_def_history else 0,
+                        'FG3M %': pct_diff_off['FG3M'] if has_off_history else 0,
                         'FG3A %': pct_diff_off['FG3A'] if has_off_history else 0,
                         'STL %': pct_diff_def['STL'] if has_def_history else 0,
                         'BLK %': pct_diff_def['BLK'] if has_def_history else 0,
@@ -1415,7 +1451,9 @@ def load_data():
     # Apply manual DefCluster overrides by player name
     override_mask = merged['PLAYER_NAME'].isin(DEF_CLUSTER_OVERRIDES)
     merged.loc[override_mask, 'DefCluster'] = merged.loc[override_mask, 'PLAYER_NAME'].map(DEF_CLUSTER_OVERRIDES)
-    merged['DefClusterName'] = merged['DefCluster'].map(DEF_CLUSTER_NAMES)
+    merged['DefClusterName'] = merged['DefCluster'].map(
+        lambda x: DEF_CLUSTER_NAMES.get(int(x)) if pd.notna(x) else None
+    )
 
     return merged
 
@@ -1423,6 +1461,20 @@ def load_data():
 def main():
     merged = load_data()
     st.title("🏀 NBA Player Archetype Dashboard (2024–25 Season)")
+
+    # Build def cluster name map from merged data
+    def_cluster_name_map = (
+        merged.dropna(subset=['DefCluster', 'DefClusterName'])
+        .drop_duplicates('DefCluster')
+        .set_index('DefCluster')['DefClusterName']
+        .to_dict()
+    )
+
+    def format_def_cluster(x):
+        if x == "All":
+            return "All"
+        name = def_cluster_name_map.get(x, '')
+        return f"{name} ({int(x)})" if name else f"Cluster {int(x)}"
 
     st.sidebar.header("Filters")
 
@@ -1501,7 +1553,10 @@ def main():
     col1, col2 = st.sidebar.columns([4, 1])
     with col1:
         def_clusters = sorted(merged['DefCluster'].dropna().unique())
-        selected_def_cluster = st.selectbox("Defensive Cluster", ["All"] + def_clusters, key='def_cluster_filter')
+        selected_def_cluster = st.selectbox(
+            "Defensive Cluster", ["All"] + def_clusters,
+            key='def_cluster_filter', format_func=format_def_cluster
+        )
     with col2:
         st.write("")  # Spacing
         st.button("✕", key="clear_def")
@@ -1543,7 +1598,7 @@ def main():
         else:
             st.dataframe(
                 df_filtered[['PLAYER_NAME', 'TEAM_ABBREVIATION', 'GAME_DATE',
-                             'MATCHUP', 'MIN','PTS', 'REB', 'AST', 'FG3A', 'FTA', 'OffCluster', 'DefCluster']]
+                             'MATCHUP', 'MIN','PTS', 'REB', 'AST', 'FG3M', 'FG3A', 'FTA', 'OffCluster', 'DefClusterName']]
                 .sort_values('GAME_DATE', ascending=False)
                 .reset_index(drop=True)
             )
@@ -1613,7 +1668,8 @@ def main():
                 "Defensive Cluster for Analysis",
                 def_cluster_options,
                 index=default_def_index,
-                key=f"def_analysis_{selected_player}"  # Add key with player name
+                key=f"def_analysis_{selected_player}",
+                format_func=format_def_cluster
             )
 
         # Get data for both clusters
@@ -1629,8 +1685,10 @@ def main():
             st.warning("No games match the selected clusters within your filters.")
         else:
             st.markdown(f"### 📈 Cluster Analysis")
+            def_analysis_name = def_cluster_name_map.get(selected_def_analysis, '')
+            def_analysis_label = f"{def_analysis_name} ({int(selected_def_analysis)})" if def_analysis_name else f"Cluster {int(selected_def_analysis)}"
             st.markdown(
-                f"**Offensive Cluster {selected_off_analysis}** | **Defensive Cluster {selected_def_analysis}**")
+                f"**Offensive Cluster {int(selected_off_analysis)}** | **Defensive Cluster {def_analysis_label}**")
 
             # Show example players from both clusters
             off_players = df_off_cluster['PLAYER_NAME'].unique()[:5]
@@ -1706,14 +1764,7 @@ def main():
                     pct_diff_off = pd.Series(index=offensive_stats, dtype=float)
 
                     for stat in offensive_stats:
-                        bayesian_estimate = prior_mean
-                        total_weight = prior_weight
-
-                        for game_pct_diff in game_pct_diffs_off[stat].values:
-                            bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
-                            total_weight += 1
-
-                        pct_diff_off[stat] = bayesian_estimate
+                        pct_diff_off[stat] = bayesian_pct_diff(game_pct_diffs_off[stat].values, stat)
 
                 # Calculate defensive cluster % diff with game-by-game Bayesian approach
                 if not df_def_vs_team_valid.empty:
@@ -1736,14 +1787,7 @@ def main():
                     pct_diff_def = pd.Series(index=defensive_stats, dtype=float)
 
                     for stat in defensive_stats:
-                        bayesian_estimate = prior_mean
-                        total_weight = prior_weight
-
-                        for game_pct_diff in game_pct_diffs_def[stat].values:
-                            bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
-                            total_weight += 1
-
-                        pct_diff_def[stat] = bayesian_estimate
+                        pct_diff_def[stat] = bayesian_pct_diff(game_pct_diffs_def[stat].values, stat)
 
                 # Combine the % diffs
                 avg_pct_diff_combined = pd.Series(index=all_counting_stats, dtype=float)
@@ -1868,7 +1912,7 @@ def main():
                     st.markdown("*Showing season averages (no historical cluster data vs this opponent available)*")
 
                 st.caption(
-                    f"**Note:** Offensive stats use Offensive Cluster {selected_off_analysis}, Defensive stats use Defensive Cluster {selected_def_analysis}")
+                    f"**Note:** Offensive stats use Offensive Cluster {int(selected_off_analysis)}, Defensive stats use Defensive Cluster {def_analysis_label}")
 
                 # Get ALL unique players from the season who have the required clusters
                 # We need to aggregate from merged dataset to get season averages per player
@@ -2061,7 +2105,7 @@ def main():
                         display_stats = st.multiselect(
                             "Select stats to display:",
                             all_counting_stats,
-                            default=['PTS', 'REB', 'AST', 'FG3A', 'FTA', 'STL', 'BLK']
+                            default=['PTS', 'REB', 'AST', 'FG3M', 'FG3A', 'FTA', 'STL', 'BLK']
                         )
 
                         if display_stats:
@@ -2119,9 +2163,9 @@ def main():
                                 st.dataframe(styled_proj, use_container_width=True)
 
                                 st.caption(
-                                    f"💡 Offensive stats ({', '.join(offensive_stats)}) use ALL players in Off Cluster {selected_off_analysis}")
+                                    f"💡 Offensive stats ({', '.join(offensive_stats)}) use ALL players in Off Cluster {int(selected_off_analysis)}")
                                 st.caption(
-                                    f"💡 Defensive stats ({', '.join(defensive_stats)}) use ALL players in Def Cluster {selected_def_analysis}")
+                                    f"💡 Defensive stats ({', '.join(defensive_stats)}) use ALL players in Def Cluster {def_analysis_label}")
                         else:
                             st.info("Select at least one stat to display projections.")
 
@@ -2201,14 +2245,7 @@ def main():
                     # Bayesian sequential update for each stat
                     pct_diffs = {}
                     for stat in offensive_stats:
-                        bayesian_estimate = prior_mean
-                        total_weight = prior_weight
-
-                        for game_pct_diff in game_pct_diffs[stat].values:
-                            bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
-                            total_weight += 1
-
-                        pct_diffs[stat] = bayesian_estimate
+                        pct_diffs[stat] = bayesian_pct_diff(game_pct_diffs[stat].values, stat)
 
                     # Get player examples
                     cluster_players = df_cluster['PLAYER_NAME'].unique()
@@ -2259,14 +2296,7 @@ def main():
                     # Bayesian sequential update for each stat
                     pct_diffs = {}
                     for stat in defensive_stats:
-                        bayesian_estimate = prior_mean
-                        total_weight = prior_weight
-
-                        for game_pct_diff in game_pct_diffs[stat].values:
-                            bayesian_estimate = (total_weight * bayesian_estimate + game_pct_diff) / (total_weight + 1)
-                            total_weight += 1
-
-                        pct_diffs[stat] = bayesian_estimate
+                        pct_diffs[stat] = bayesian_pct_diff(game_pct_diffs[stat].values, stat)
 
                     # Get player examples
                     cluster_players = df_cluster['PLAYER_NAME'].unique()
@@ -2475,7 +2505,9 @@ def main():
                     cols = st.columns(3)
                     for idx, cluster in enumerate(def_clusters_used):
                         with cols[idx % 3]:
-                            with st.expander(f"Defensive Cluster {cluster}"):
+                            def_name = def_cluster_name_map.get(cluster, '')
+                            expander_label = f"Def Cluster {cluster}: {def_name}" if def_name else f"Defensive Cluster {cluster}"
+                            with st.expander(expander_label):
                                 players = cluster_players_map.get(f"Def-{cluster}", [])
                                 st.write(", ".join(players))
                 st.caption(
@@ -2512,8 +2544,8 @@ def main():
                 st.markdown(f"### 📊 Top Matchup Opportunities ({len(filtered_df)} players)")
 
                 # Display summary table
-                display_cols = ['PLAYER_NAME', 'Home', 'Opponent', 'Off Cluster', 'Def Cluster',
-                                'PTS %', 'AST %', 'DREB %', 'OREB %', 'FG3A %', 'STL %', 'BLK %',
+                display_cols = ['PLAYER_NAME', 'Home', 'Opponent', 'Off Cluster', 'Def Cluster Name',
+                                'PTS %', 'AST %', 'DREB %', 'OREB %', 'FG3M %', 'FG3A %', 'STL %', 'BLK %',
                                 'Off Games', 'Def Games']
 
                 def highlight_score(val, col_name):
@@ -2538,6 +2570,7 @@ def main():
                     'AST %': '{:.1f}%',
                     'DREB %': '{:.1f}%',
                     'OREB %': '{:.1f}%',
+                    'FG3M %': '{:.1f}%',
                     'FG3A %': '{:.1f}%',
                     'STL %': '{:.1f}%',
                     'BLK %': '{:.1f}%'
@@ -2574,8 +2607,10 @@ def main():
                     pct_diff_off = player_info['pct_diff_off']
                     pct_diff_def = player_info['pct_diff_def']
 
+                    player_def_name = def_cluster_name_map.get(def_cluster, def_cluster_name_map.get(float(def_cluster), ''))
+                    def_cluster_label = f"{player_def_name} ({int(def_cluster)})" if player_def_name else f"Cluster {int(def_cluster)}"
                     st.markdown(f"**{selected_today_player}** vs **{opponent}**")
-                    st.caption(f"Off Cluster {off_cluster} | Def Cluster {def_cluster}")
+                    st.caption(f"Off Cluster {int(off_cluster)} | Def Cluster {def_cluster_label}")
 
                     # Get player's season stats
                     merged_filtered = merged[
@@ -2670,7 +2705,7 @@ def main():
 
                         st.caption(f"💡 Projections based on {selected_minutes:.1f} minutes")
                         st.caption(
-                            f"📊 Using Off Cluster {off_cluster} and Def Cluster {def_cluster} historical performance vs {opponent}")
+                            f"📊 Using Off Cluster {int(off_cluster)} and Def Cluster {def_cluster_label} historical performance vs {opponent}")
                     else:
                         st.warning(f"No season stats found for {selected_today_player}")
 
