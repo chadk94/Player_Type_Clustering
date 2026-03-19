@@ -1,4 +1,5 @@
 import time
+import math
 
 import nba_api.stats.library.data
 import numpy as np
@@ -6,6 +7,7 @@ import matplotlib.pyplot as plt
 import requests
 import streamlit as st
 import pandas
+from scipy.stats import poisson as scipy_poisson
 from nba_api.stats.library.parameters import SeasonTypeAllStar, PlayerOrTeamAbbreviation
 from sklearn.cluster import KMeans
 from nba_api.stats.endpoints import LeagueGameLog, SynergyPlayTypes, PlayerDashPtShots, shotchartdetail, \
@@ -17,6 +19,7 @@ from nba_api.stats.static import teams
 from nba_api.stats.endpoints import commonteamroster
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
+from FanduelScrape import getnbaprops, reformat_api
 
 # Per-stat half-life values (games) derived from backtest.
 # Weight of a game N games ago = 0.5 ^ (N / half_life). 999 ≈ no decay.
@@ -42,6 +45,93 @@ STAT_HALF_LIFE = {
     # Composite — handled as OREB+DREB components, but keep a safe default
     'REB':  999,
 }
+
+# FanDuel category → component stats used for projection
+_PROP_STAT_COMPONENTS = {
+    'PTS': ['PTS'],
+    'REB': ['OREB', 'DREB'],
+    'AST': ['AST'],
+    'STL': ['STL'],
+    'BLK': ['BLK'],
+    '3PM': ['FG3M'],
+    'PA':  ['PTS', 'AST'],
+    'PR':  ['PTS', 'OREB', 'DREB'],
+    'PRA': ['PTS', 'OREB', 'DREB', 'AST'],
+    'RA':  ['OREB', 'DREB', 'AST'],
+}
+
+_OFFENSIVE_STATS = ['PTS', 'AST', 'OREB', 'FGM', 'FGA', 'FG3M', 'FG3A', 'FTM', 'FTA', 'TOV']
+_DEFENSIVE_STATS = ['DREB', 'REB', 'STL', 'BLK', 'PF']
+
+
+@st.cache_data(ttl=21600)
+def load_fanduel_props():
+    try:
+        raw = getnbaprops()
+        if not raw:
+            return pd.DataFrame()
+        return reformat_api(raw)
+    except Exception:
+        return pd.DataFrame()
+
+
+def _to_american(odds):
+    if odds is None or (isinstance(odds, float) and math.isnan(odds)):
+        return None
+    odds = float(odds)
+    if 1.0 <= odds < 100.0:  # decimal format
+        if odds >= 2.0:
+            return round((odds - 1) * 100)
+        else:
+            return round(-100 / (odds - 1))
+    return int(odds)  # already American
+
+
+def _american_to_decimal(odds):
+    if odds is None or (isinstance(odds, float) and math.isnan(odds)):
+        return None
+    odds = float(odds)
+    # Decimal odds are in [1.0, ~50); American are >= 100 or <= -100
+    if 1.0 <= odds < 100.0:
+        return odds  # already decimal
+    elif odds >= 100:
+        return 1 + odds / 100
+    else:  # negative American (e.g. -110)
+        return 1 + 100 / abs(odds)
+
+
+def _calc_poisson_ev(mu, line, over_odds, under_odds):
+    """Returns (ev_over_pct, ev_under_pct, p_over_pct) using Poisson(mu)."""
+    if mu <= 0 or line < 0:
+        return None, None, None
+    k = int(line)  # floor; handles .5 lines correctly
+    p_over = 1.0 - scipy_poisson.cdf(k, mu)
+    p_under = scipy_poisson.cdf(k, mu)
+    d_over = _american_to_decimal(over_odds)
+    d_under = _american_to_decimal(under_odds)
+    ev_over = (p_over * (d_over - 1) - p_under) * 100 if d_over is not None else None
+    ev_under = (p_under * (d_under - 1) - p_over) * 100 if d_under is not None else None
+    return ev_over, ev_under, p_over * 100
+
+
+@st.cache_data(ttl=21600)
+def _build_player_season_stats(merged, min_date, max_date):
+    """Compute per-player season averages and last-10-game median minutes in one pass."""
+    all_cols = _OFFENSIVE_STATS + _DEFENSIVE_STATS
+    filtered = merged[
+        (merged['GAME_DATE'] >= min_date) &
+        (merged['GAME_DATE'] <= max_date) &
+        (merged['MIN'] >= 5)
+    ]
+    player_avgs = filtered.groupby('PLAYER_NAME')[all_cols + ['MIN']].mean()
+    player_last10_min = (
+        filtered.sort_values('GAME_DATE', ascending=False)
+        .groupby('PLAYER_NAME')
+        .head(10)
+        .groupby('PLAYER_NAME')['MIN']
+        .median()
+    )
+    return player_avgs, player_last10_min
 
 
 def bayesian_pct_diff(game_diffs: np.ndarray, stat: str,
@@ -1621,7 +1711,7 @@ def main():
     # =====================================================
     # 🔹 Tabs that share this filtered dataset
     # =====================================================
-    tab1, tab2, tab3,tab4 = st.tabs(["📊 Player Stats", "🧠 Clustering Overview","Team Best/Worst Cluster Performance","🔥 Today's Best Matchup Opportunities"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Player Stats", "🧠 Clustering Overview", "Team Best/Worst Cluster Performance", "🔥 Today's Best Matchup Opportunities", "💰 FanDuel EV"])
 
     # =====================================================
     # 🟦 TAB 1 — Player Stats
@@ -2732,6 +2822,154 @@ def main():
             st.error(f"Error loading today's games: {str(e)}")
             st.exception(e)
             st.info("Make sure the NBA API is accessible and there are games scheduled today.")
+
+    # =====================================================
+    # 💰 TAB 5 — FanDuel EV Analysis
+    # =====================================================
+    with tab5:
+        st.subheader("💰 FanDuel Props — Poisson EV Analysis")
+
+        with st.spinner("Loading FanDuel props..."):
+            props_df = load_fanduel_props()
+
+        if props_df.empty:
+            st.warning("No FanDuel props loaded. The API may be rate-limited or have no games today.")
+        else:
+            st.success(f"Loaded {len(props_df)} props for {props_df['Player Name'].nunique()} players")
+
+            with st.spinner("Computing projections..."):
+                matchups_df_ev = load_todays_matchups(merged, min_date, max_date)
+                player_avgs, player_last10_min = _build_player_season_stats(merged, min_date, max_date)
+
+            if matchups_df_ev is None:
+                st.warning("Could not load today's matchup projections. Check that NBA games are scheduled.")
+            else:
+                def _normalize(name):
+                    return name.lower().strip().replace('.', '').replace("'", '').replace('-', ' ')
+
+                matchup_name_map = {_normalize(n): n for n in matchups_df_ev['PLAYER_NAME'].unique()}
+                # O(1) row lookup by player name
+                matchup_rows = {row['PLAYER_NAME']: row for _, row in matchups_df_ev.iterrows()}
+
+                ev_rows = []
+                for _, prop in props_df.iterrows():
+                    fd_name = prop['Player Name']
+                    norm = _normalize(fd_name)
+
+                    matched = matchup_name_map.get(norm)
+                    if matched is None:
+                        last = norm.split()[-1]
+                        candidates = [v for k, v in matchup_name_map.items() if k.split()[-1] == last]
+                        matched = candidates[0] if len(candidates) == 1 else None
+
+                    if matched is None or matched not in player_avgs.index:
+                        continue
+
+                    category = prop['Category']
+                    line = prop['Line']
+                    over_odds = prop['Over odds']
+                    under_odds = prop['Under odds']
+
+                    if pd.isna(line):
+                        continue
+
+                    avg = player_avgs.loc[matched]
+                    if avg['MIN'] <= 0:
+                        continue
+                    median_min = player_last10_min.get(matched, avg['MIN'])
+                    mm = median_min / avg['MIN']
+
+                    mrow = matchup_rows[matched]
+                    pct_diff_off = mrow['pct_diff_off']
+                    pct_diff_def = mrow['pct_diff_def']
+                    has_off = mrow['Has Off History']
+                    has_def = mrow['Has Def History']
+                    opponent = mrow['Opponent']
+
+                    components = _PROP_STAT_COMPONENTS.get(category, [])
+                    if not components:
+                        continue
+                    mu = 0.0
+                    for stat in components:
+                        s_avg = float(avg.get(stat, 0.0))
+                        if stat in _OFFENSIVE_STATS:
+                            pct = float(pct_diff_off[stat]) if (has_off and stat in pct_diff_off.index) else 0.0
+                        elif stat in _DEFENSIVE_STATS:
+                            pct = float(pct_diff_def[stat]) if (has_def and stat in pct_diff_def.index) else 0.0
+                        else:
+                            pct = 0.0
+                        mu += s_avg * (1 + pct / 100) * mm
+                    if mu <= 0:
+                        continue
+
+                    ev_over, ev_under, p_over = _calc_poisson_ev(mu, line, over_odds, under_odds)
+
+                    ev_rows.append({
+                        'Player': matched,
+                        'Opponent': opponent,
+                        'Stat': category,
+                        'Line': line,
+                        'Projection': round(mu, 2),
+                        'Proj - Line': round(mu - line, 2),
+                        'P(Over)%': round(p_over, 1) if p_over is not None else None,
+                        'Over Odds': _to_american(over_odds),
+                        'Under Odds': _to_american(under_odds),
+                        'EV Over%': round(ev_over, 1) if ev_over is not None else None,
+                        'EV Under%': round(ev_under, 1) if ev_under is not None else None,
+                    })
+
+                if not ev_rows:
+                    st.info("No players matched between FanDuel props and today's projection data.")
+                else:
+                    ev_df = pd.DataFrame(ev_rows)
+                    ev_df['Best EV%'] = ev_df[['EV Over%', 'EV Under%']].max(axis=1)
+
+                    # Apply sidebar opponent / player filters
+                    if selected_opp != "All":
+                        ev_df = ev_df[ev_df['Opponent'] == selected_opp]
+                    if selected_player != "All":
+                        ev_df = ev_df[ev_df['Player'] == selected_player]
+
+                    # Tab-level filter controls
+                    col_f1, col_f2 = st.columns(2)
+                    with col_f1:
+                        all_cats = sorted(ev_df['Stat'].unique()) if not ev_df.empty else []
+                        cat_filter = st.multiselect("Filter by stat", options=all_cats, default=all_cats, key="ev_cat_filter")
+                    with col_f2:
+                        min_ev = st.slider("Min best EV%", -30.0, 20.0, 0.0, 0.5, key="ev_min_slider")
+
+                    if cat_filter:
+                        ev_df = ev_df[ev_df['Stat'].isin(cat_filter)]
+                    ev_df = ev_df[ev_df['Best EV%'] >= min_ev].sort_values('Best EV%', ascending=False)
+
+                    st.markdown(f"### 📋 {len(ev_df)} props | {ev_df['Player'].nunique()} players")
+
+                    def _ev_color(val):
+                        try:
+                            v = float(val)
+                            if v > 10:    return 'background-color: #28A745; color: white; font-weight: bold'
+                            elif v > 5:   return 'background-color: #90EE90; color: black'
+                            elif v > 0:   return 'background-color: #D4EDDA; color: black'
+                            elif v < -10: return 'background-color: #DC3545; color: white'
+                            elif v < 0:   return 'background-color: #F8D7DA; color: black'
+                        except Exception:
+                            pass
+                        return ''
+
+                    display_df = ev_df.drop(columns=['Best EV%']).reset_index(drop=True)
+                    styled = display_df.style.format({
+                        'Projection': '{:.1f}',
+                        'Proj - Line': '{:+.1f}',
+                        'P(Over)%': '{:.1f}%',
+                        'EV Over%': '{:+.1f}%',
+                        'EV Under%': '{:+.1f}%',
+                    }, na_rep='—').applymap(_ev_color, subset=['EV Over%', 'EV Under%'])
+
+                    st.dataframe(styled, use_container_width=True, height=520, hide_index=True)
+                    st.caption(
+                        "EV% = expected return per $100 wagered. Projection = cluster-adjusted season avg "
+                        "scaled to median of last 10 games minutes. Poisson CDF used for P(Over/Under)."
+                    )
 
 
 def clean_existing_csv(filepath='player_data.csv', output_path='player_data.csv'):
