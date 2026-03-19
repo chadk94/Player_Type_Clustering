@@ -2035,6 +2035,13 @@ def main():
                         if pd.isna(player_row.get('MIN_off')) and pd.isna(player_row.get('MIN_def')):
                             continue
 
+                        # Whole-season 3P% for FG3M derivation (stable across time windows)
+                        full_fg3a = player_row.get('FG3A', 0)
+                        full_fg3m = player_row.get('FG3M', 0)
+                        season_fg3_pct = (full_fg3m / full_fg3a
+                                          if (pd.notna(full_fg3a) and pd.notna(full_fg3m) and full_fg3a > 0)
+                                          else 0)
+
                         for window_label, pct_diff in window_configs:
                             # Use time-windowed player averages for Season column and MPG
                             lookup = proj_lookup[window_label]
@@ -2062,9 +2069,17 @@ def main():
 
                             if has_off:
                                 for stat in offensive_stats:
-                                    season_avg = w_row[stat]
-                                    pct_change = pct_diff[stat] if stat in pct_diff.index else 0
-                                    projected_value = season_avg * (1 + pct_change / 100) * actual_multiplier
+                                    if stat == 'FG3M':
+                                        # FG3M = FG3A (window) × whole-season 3P%
+                                        fg3a_w = w_row.get('FG3A', 0) if pd.notna(w_row.get('FG3A')) else 0
+                                        fg3a_pct = pct_diff['FG3A'] if 'FG3A' in pct_diff.index else 0
+                                        fg3a_proj = fg3a_w * (1 + fg3a_pct / 100) * actual_multiplier
+                                        season_avg = fg3a_w * season_fg3_pct
+                                        projected_value = fg3a_proj * season_fg3_pct
+                                    else:
+                                        season_avg = w_row[stat]
+                                        pct_change = pct_diff[stat] if stat in pct_diff.index else 0
+                                        projected_value = season_avg * (1 + pct_change / 100) * actual_multiplier
                                     projected_row[f'{stat}_Season'] = season_avg
                                     projected_row[f'{stat}_Projected'] = projected_value
                                     projected_row[f'{stat}_Diff'] = projected_value - season_avg
