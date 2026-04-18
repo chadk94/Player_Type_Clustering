@@ -1,5 +1,6 @@
 import time
 import math
+import difflib
 
 import nba_api.stats.library.data
 import numpy as np
@@ -2980,17 +2981,11 @@ def main():
                     # 2. Exact normalized match
                     if matched is None:
                         matched = matchup_name_map.get(norm)
-                    # 3. Fallback: last name + first initial (avoids "Lopez" matching the wrong Lopez)
+                    # 3. Fallback: fuzzy full-name match (handles minor spelling diffs,
+                    #    but rejects similar-but-wrong names like Davion vs Donovan Mitchell)
                     if matched is None:
-                        parts = norm.split()
-                        if len(parts) >= 2:
-                            last = parts[-1]
-                            first_initial = parts[0][0]
-                            candidates = [
-                                v for k, v in matchup_name_map.items()
-                                if k.split()[-1] == last and k[0] == first_initial
-                            ]
-                            matched = candidates[0] if len(candidates) == 1 else None
+                        close = difflib.get_close_matches(norm, matchup_name_map.keys(), n=1, cutoff=0.85)
+                        matched = matchup_name_map[close[0]] if close else None
 
                     if matched is None or matched not in player_avgs.index:
                         continue
