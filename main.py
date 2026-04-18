@@ -2970,6 +2970,8 @@ def main():
                     st.caption(f"🚑 Excluded (Out/Doubtful, no props): {', '.join(sorted(actually_excluded))}")
                 # ────────────────────────────────────────────────────────────
 
+                use_team_total_adj = st.checkbox("Team total adjustment", value=True, key="ev_team_total_adj")
+
                 ev_rows = []
                 for _, prop in props_df.iterrows():
                     fd_name = prop['Player Name']
@@ -3028,7 +3030,7 @@ def main():
                             pct = 0.0
                         component_mu = s_avg * (1 + pct / 100) * mm
                         mu_raw += component_mu
-                        if stat == 'PTS':
+                        if stat == 'PTS' and use_team_total_adj:
                             component_mu *= pts_scalar
                         mu += component_mu
                     if mu <= 0:
