@@ -117,5 +117,58 @@ def reformat_api(api):
                     })
 
     return pd.DataFrame(rows)
+def get_team_totals():
+    """
+    Derive each team's projected point total from FanDuel game totals + spreads.
+    Formula: team_total = (game_total + spread_for_team) / 2
+    where spread_for_team is negative for the favorite and positive for the underdog.
+    Falls back to game_total / 2 if spread is unavailable.
+    """
+    API_KEY = '50d7871c8a201db4df96c55ed424cd6a'
+    BASE_URL = 'https://api.the-odds-api.com/v4/sports'
+    sport_key = 'basketball_nba'
+
+    url = f"{BASE_URL}/{sport_key}/odds"
+    params = {
+        'apiKey': API_KEY,
+        'regions': 'us',
+        'markets': 'totals,spreads',
+        'bookmakers': 'fanduel',
+    }
+    try:
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        events = response.json()
+    except Exception as e:
+        print(f"Error fetching game totals/spreads: {e}")
+        return {}
+
+    team_totals = {}
+    for event in events:
+        home_team = event.get('home_team', '')
+        away_team = event.get('away_team', '')
+        game_total = None
+        spreads = {}  # team_name -> spread point (negative = favorite)
+
+        for bookmaker in event.get('bookmakers', []):
+            for market in bookmaker.get('markets', []):
+                if market['key'] == 'totals':
+                    for outcome in market['outcomes']:
+                        if outcome['name'] == 'Over':
+                            game_total = float(outcome['point'])
+                elif market['key'] == 'spreads':
+                    for outcome in market['outcomes']:
+                        spreads[outcome['name']] = float(outcome['point'])
+
+        if game_total is None:
+            continue
+
+        for team in (home_team, away_team):
+            spread = spreads.get(team, 0.0)
+            team_totals[team] = (game_total + spread) / 2
+
+    return team_totals
+
+
 # Example usage:
 

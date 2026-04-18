@@ -19,7 +19,7 @@ from nba_api.stats.static import teams
 from nba_api.stats.endpoints import commonteamroster
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
-from FanduelScrape import getnbaprops, reformat_api
+from FanduelScrape import getnbaprops, reformat_api, get_team_totals
 
 # Per-stat half-life values (games) derived from backtest.
 # Weight of a game N games ago = 0.5 ^ (N / half_life). 999 ≈ no decay.
@@ -73,6 +73,30 @@ def load_fanduel_props():
         return reformat_api(raw)
     except Exception:
         return pd.DataFrame()
+
+
+# Maps Odds API full team names → NBA abbreviations
+_ODDS_TEAM_TO_ABBREV = {
+    'Atlanta Hawks': 'ATL', 'Boston Celtics': 'BOS', 'Brooklyn Nets': 'BKN',
+    'Charlotte Hornets': 'CHA', 'Chicago Bulls': 'CHI', 'Cleveland Cavaliers': 'CLE',
+    'Dallas Mavericks': 'DAL', 'Denver Nuggets': 'DEN', 'Detroit Pistons': 'DET',
+    'Golden State Warriors': 'GSW', 'Houston Rockets': 'HOU', 'Indiana Pacers': 'IND',
+    'Los Angeles Clippers': 'LAC', 'Los Angeles Lakers': 'LAL', 'Memphis Grizzlies': 'MEM',
+    'Miami Heat': 'MIA', 'Milwaukee Bucks': 'MIL', 'Minnesota Timberwolves': 'MIN',
+    'New Orleans Pelicans': 'NOP', 'New York Knicks': 'NYK', 'Oklahoma City Thunder': 'OKC',
+    'Orlando Magic': 'ORL', 'Philadelphia 76ers': 'PHI', 'Phoenix Suns': 'PHX',
+    'Portland Trail Blazers': 'POR', 'Sacramento Kings': 'SAC', 'San Antonio Spurs': 'SAS',
+    'Toronto Raptors': 'TOR', 'Utah Jazz': 'UTA', 'Washington Wizards': 'WAS',
+}
+
+
+@st.cache_data(ttl=3600)
+def load_team_totals():
+    """Return {team_abbrev: total_points} from FanDuel team total lines."""
+    raw = get_team_totals()
+    return {_ODDS_TEAM_TO_ABBREV[name]: total
+            for name, total in raw.items()
+            if name in _ODDS_TEAM_TO_ABBREV}
 
 
 def _to_american(odds):
@@ -149,6 +173,34 @@ def bayesian_pct_diff(game_diffs: np.ndarray, stat: str,
     return estimate
 
 
+@st.cache_data(ttl=1800)
+def get_inactive_players() -> set:
+    """
+    Return a set of player names (displayName) who are Out or Doubtful today.
+    Source: ESPN public injuries API.
+    """
+    INACTIVE_STATUSES = {'out', 'doubtful'}
+    try:
+        url = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries'
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        inactive = set()
+        for team_block in data.get('injuries', []):
+            for injury in team_block.get('injuries', []):
+                status = injury.get('status', '').lower().strip()
+                if status in INACTIVE_STATUSES:
+                    athlete = injury.get('athlete', {})
+                    name = athlete.get('displayName', '').strip()
+                    if name:
+                        inactive.add(name)
+        return inactive
+    except Exception as e:
+        print(f"Injury report fetch failed: {e}")
+        return set()
+
+
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def load_todays_matchups(merged,min_date, max_date):
     """Load and calculate today's matchup data with caching"""
@@ -178,8 +230,9 @@ def load_todays_matchups(merged,min_date, max_date):
         return None
 
     try:
-        # Clean up the OPP column
+        # Clean up the OPP and TEAM columns (stored as str(list) e.g. "['LAL']")
         todays_players['OPP'] = todays_players['OPP'].str.strip("[]'\"")
+        todays_players['TEAM'] = todays_players['TEAM'].str.strip("[]'\"")
 
         # Merge with cluster data
         todays_players_merged = todays_players.merge(
@@ -224,6 +277,7 @@ def load_todays_matchups(merged,min_date, max_date):
                 player_id = player_row['PLAYER_ID']
                 player_name = player_row['PLAYER_NAME']
                 opponent = player_row['OPP']
+                player_team = player_row.get('TEAM', '')
                 off_cluster = player_row['OffCluster']
                 def_cluster = player_row['DefCluster']
                 is_home = player_row['Home']
@@ -333,6 +387,7 @@ def load_todays_matchups(merged,min_date, max_date):
                     matchup_scores.append({
                         'PLAYER_NAME': player_name,
                         'PLAYER_ID': player_id,
+                        'TEAM': player_team,
                         'Opponent': opponent,
                         'Home': '🏠' if is_home else '✈️',
                         'Off Cluster': int(off_cluster),
@@ -403,9 +458,11 @@ def build_player_list(): ##builds a list of players in todays games as well as t
         awayroster=pd.DataFrame(awayroster.get_data_frames()[0].PLAYER_ID)
         awayroster['Home']=False
         awayroster['OPP']=str(homeabb)
+        awayroster['TEAM']=str(awayabb)
         homeroster=pd.DataFrame(homeroster.get_data_frames()[0].PLAYER_ID)
         homeroster['Home']=True
         homeroster['OPP']=str(awayabb)
+        homeroster['TEAM']=str(homeabb)
         playeroutput = pd.concat([playeroutput, awayroster, homeroster]).drop_duplicates()
     return playeroutput
 
@@ -2847,20 +2904,93 @@ def main():
                 def _normalize(name):
                     return name.lower().strip().replace('.', '').replace("'", '').replace('-', ' ')
 
+                # Hard overrides for names FanDuel spells differently than NBA API
+                _FD_NAME_OVERRIDES = {
+                    # 'FanDuel Name': 'NBA API Name'
+                    # e.g. 'nic claxton': 'nicolas claxton',
+                }
+
                 matchup_name_map = {_normalize(n): n for n in matchups_df_ev['PLAYER_NAME'].unique()}
                 # O(1) row lookup by player name
                 matchup_rows = {row['PLAYER_NAME']: row for _, row in matchups_df_ev.iterrows()}
+
+                # ── Team total scaling ──────────────────────────────────────
+                # Compute each team's sum of raw projected PTS across all
+                # players in today's matchups, then scale so it equals the
+                # FanDuel team total line.
+                team_totals_map = load_team_totals()  # {abbrev: total}
+
+                inactive_players_ev = get_inactive_players()
+
+                # Players with FanDuel props are confirmed active — override any
+                # stale ESPN injury status.
+                # Normalize names (strip dots/apostrophes, lowercase) so
+                # "R.J. Barrett" and "RJ Barrett" compare equal.
+                def _norm_name(n):
+                    return n.lower().replace('.', '').replace("'", '').strip()
+
+                props_norm = {_norm_name(n) for n in props_df['Player Name'].unique()}
+                # Build a map from normalized ESPN name → original ESPN name
+                inactive_norm = {_norm_name(n): n for n in inactive_players_ev}
+
+                # A player is truly inactive only if no FanDuel prop exists for them
+                truly_inactive_norm = {norm for norm in inactive_norm if norm not in props_norm}
+
+                team_proj_sum = {}  # {team_abbrev: sum_of_raw_proj_pts}
+                for pname, mrow in matchup_rows.items():
+                    if _norm_name(pname) in truly_inactive_norm:
+                        continue
+                    team = mrow.get('TEAM', '')
+                    if not team or pname not in player_avgs.index:
+                        continue
+                    avg_row = player_avgs.loc[pname]
+                    if avg_row['MIN'] <= 0:
+                        continue
+                    mm = player_last10_min.get(pname, avg_row['MIN']) / avg_row['MIN']
+                    pct = float(mrow['pct_diff_off']['PTS']) if mrow['Has Off History'] else 0.0
+                    proj_pts = float(avg_row['PTS']) * (1 + pct / 100) * mm
+                    team_proj_sum[team] = team_proj_sum.get(team, 0.0) + proj_pts
+
+                pts_scalars = {}  # {team_abbrev: scale_factor}
+                for team, proj_sum in team_proj_sum.items():
+                    if team in team_totals_map and proj_sum > 0:
+                        pts_scalars[team] = team_totals_map[team] / proj_sum
+                    else:
+                        pts_scalars[team] = 1.0
+
+                if team_totals_map:
+                    total_lines = ', '.join(
+                        f"{t}: {v:.1f}" for t, v in sorted(team_totals_map.items())
+                        if t in team_proj_sum
+                    )
+                    st.caption(f"📊 Team totals (FanDuel): {total_lines}")
+                actually_excluded = {inactive_norm[n] for n in truly_inactive_norm}
+                if actually_excluded:
+                    st.caption(f"🚑 Excluded (Out/Doubtful, no props): {', '.join(sorted(actually_excluded))}")
+                # ────────────────────────────────────────────────────────────
 
                 ev_rows = []
                 for _, prop in props_df.iterrows():
                     fd_name = prop['Player Name']
                     norm = _normalize(fd_name)
 
-                    matched = matchup_name_map.get(norm)
+                    # 1. Check hard overrides first
+                    norm_override = _FD_NAME_OVERRIDES.get(norm)
+                    matched = matchup_name_map.get(norm_override) if norm_override else None
+                    # 2. Exact normalized match
                     if matched is None:
-                        last = norm.split()[-1]
-                        candidates = [v for k, v in matchup_name_map.items() if k.split()[-1] == last]
-                        matched = candidates[0] if len(candidates) == 1 else None
+                        matched = matchup_name_map.get(norm)
+                    # 3. Fallback: last name + first initial (avoids "Lopez" matching the wrong Lopez)
+                    if matched is None:
+                        parts = norm.split()
+                        if len(parts) >= 2:
+                            last = parts[-1]
+                            first_initial = parts[0][0]
+                            candidates = [
+                                v for k, v in matchup_name_map.items()
+                                if k.split()[-1] == last and k[0] == first_initial
+                            ]
+                            matched = candidates[0] if len(candidates) == 1 else None
 
                     if matched is None or matched not in player_avgs.index:
                         continue
@@ -2885,11 +3015,14 @@ def main():
                     has_off = mrow['Has Off History']
                     has_def = mrow['Has Def History']
                     opponent = mrow['Opponent']
+                    player_team = mrow.get('TEAM', '')
+                    pts_scalar = pts_scalars.get(player_team, 1.0)
 
                     components = _PROP_STAT_COMPONENTS.get(category, [])
                     if not components:
                         continue
                     mu = 0.0
+                    mu_raw = 0.0
                     for stat in components:
                         s_avg = float(avg.get(stat, 0.0))
                         if stat in _OFFENSIVE_STATS:
@@ -2898,7 +3031,11 @@ def main():
                             pct = float(pct_diff_def[stat]) if (has_def and stat in pct_diff_def.index) else 0.0
                         else:
                             pct = 0.0
-                        mu += s_avg * (1 + pct / 100) * mm
+                        component_mu = s_avg * (1 + pct / 100) * mm
+                        mu_raw += component_mu
+                        if stat == 'PTS':
+                            component_mu *= pts_scalar
+                        mu += component_mu
                     if mu <= 0:
                         continue
 
@@ -2909,6 +3046,7 @@ def main():
                         'Opponent': opponent,
                         'Stat': category,
                         'Line': line,
+                        'Raw Proj': round(mu_raw, 2),
                         'Projection': round(mu, 2),
                         'Proj - Line': round(mu - line, 2),
                         'P(Over)%': round(p_over, 1) if p_over is not None else None,
@@ -2958,6 +3096,7 @@ def main():
 
                     display_df = ev_df.drop(columns=['Best EV%']).reset_index(drop=True)
                     styled = display_df.style.format({
+                        'Raw Proj': '{:.1f}',
                         'Projection': '{:.1f}',
                         'Proj - Line': '{:+.1f}',
                         'P(Over)%': '{:.1f}%',
