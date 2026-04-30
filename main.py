@@ -1416,20 +1416,24 @@ def cluster_players_def(data, n_clusters):
     return result_data
 
 
-def get_player_box(seasontype="Regular Season"):
-    # returns all player box scores for the season
-    time.sleep(1)
-    playerbox = LeagueGameLog(player_or_team_abbreviation='P', season_type_all_star=seasontype,
-                              season=['2023-24']).get_data_frames()[0]
-    time.sleep(1)
-    playerbox = pandas.concat(
-        [playerbox, LeagueGameLog(player_or_team_abbreviation='P', season_type_all_star=seasontype,
-                                  season=['2024-25']).get_data_frames()[0]])
-    time.sleep(1)
-    playerbox = pandas.concat([playerbox,
-                               LeagueGameLog(player_or_team_abbreviation='P', season_type_all_star=seasontype,
-                                             season=['2025-26']).get_data_frames()[0]])
-
+def get_player_box():
+    seasons = ['2023-24', '2024-25', '2025-26']
+    season_types = ['Regular Season', 'Playoffs']
+    frames = []
+    for season in seasons:
+        for stype in season_types:
+            time.sleep(1)
+            try:
+                df = LeagueGameLog(
+                    player_or_team_abbreviation='P',
+                    season_type_all_star=stype,
+                    season=season
+                ).get_data_frames()[0]
+                if not df.empty:
+                    frames.append(df)
+            except Exception as e:
+                print(f"Failed to fetch {stype} {season}: {e}")
+    playerbox = pandas.concat(frames, ignore_index=True)
     print(playerbox.columns)
     # 10 wnba 00 nba 20 g league
     return playerbox
@@ -1600,6 +1604,17 @@ def load_data():
         season_type_all_star='Regular Season',
         season='2025-26'
     ).get_data_frames()[0]
+    time.sleep(1)
+    try:
+        playoffs = LeagueGameLog(
+            player_or_team_abbreviation='P',
+            season_type_all_star='Playoffs',
+            season='2025-26'
+        ).get_data_frames()[0]
+        if not playoffs.empty:
+            playerbox = pd.concat([playerbox, playoffs], ignore_index=True)
+    except Exception:
+        pass
 
     offcluster = pd.read_csv('player_clusters_detailed.csv')[['PLAYER_ID', 'Cluster']].rename(
         columns={'Cluster': 'OffCluster'})
