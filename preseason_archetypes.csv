@@ -143,7 +143,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1630192,Zeke Nnaji,Zeke Nnaji,DEN,1610612743,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1630595,Cade Cunningham,Cade Cunningham,DET,1610612765,22026,33.90530303030303,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,analyst_review,6.0,Long Wing/Secondary POA,analyst_review
 1631105,Jalen Duren,Jalen Duren,DET,1610612765,22026,30.905303030303035,22025.0,True,True,preseason_historical_prior,1.0,Athletic Roll Man,analyst_review,1.0,Rim Protector,analyst_review
-1641709,Ausar Thompson,Ausar Thompson,DET,1610612765,22026,29.905303030303035,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,analyst_review,11.0,POA Defender,analyst_review
+1641709,Ausar Thompson,Ausar Thompson,DET,1610612765,22026,29.905303030303035,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,manual_override,11.0,POA Defender,analyst_review
 1628381,John Collins,John Collins,DET,1610612765,22026,27.405303030303035,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,historical_named_role,3.0,Bad/Slow Big Defender,historical_named_role
 1629130,Duncan Robinson,Duncan Robinson,DET,1610612765,22026,26.905303030303035,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,analyst_review,12.0,Non-POA Wing,analyst_review
 1630198,Isaiah Joe,Isaiah Joe,DET,1610612765,22026,19.905303030303035,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,analyst_review,0.0,Non POA Guard,analyst_review
@@ -439,7 +439,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1641739,Toumani Camara,Toumani Camara,POR,1610612757,22026,34.0,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,analyst_review,11.0,POA Defender,analyst_review
 203081,Damian Lillard,Damian Lillard,POR,1610612757,22026,32.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
 1642270,Donovan Clingan,Donovan Clingan,POR,1610612757,22026,28.0,22025.0,True,True,preseason_historical_prior,1.0,Athletic Roll Man,historical_named_role,1.0,Rim Protector,historical_named_role
-201950,Jrue Holiday,Jrue Holiday,POR,1610612757,22026,28.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,historical_named_role,4.0,Pesky Guard,manual_override
+201950,Jrue Holiday,Jrue Holiday,POR,1610612757,22026,28.0,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,manual_override,4.0,Pesky Guard,manual_override
 1629630,Ja Morant,Ja Morant,POR,1610612757,22026,24.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,analyst_review,0.0,Non POA Guard,analyst_review
 1631101,Shaedon Sharpe,Shaedon Sharpe,POR,1610612757,22026,22.0,22025.0,True,True,preseason_historical_prior,5.0,High Usage Wing,analyst_review,6.0,Long Wing/Secondary POA,manual_override
 1630703,Scoot Henderson,Scoot Henderson,POR,1610612757,22026,20.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,analyst_review,0.0,Non POA Guard,analyst_review

@@ -1,0 +1,26 @@
+{
+  "scope": "Every positive-workbook-minute player; both offense and defense",
+  "players_screened": 318,
+  "sides_screened": 636,
+  "flagged_players": 209,
+  "flagged_sides": 274,
+  "protected_flagged_sides": 83,
+  "applied_assignment_changes": 0,
+  "proposed_changes": 6,
+  "evidence": "Immutable partial-season 2025\u201326 tracking features; no new 2026\u201327 observations",
+  "method": "Existing feature sets; standardized fixed named centroids; height guardrail; RMS distances. Distance margins are not calibrated probabilities. Closest centroid is a review candidate, not proof of basketball role.",
+  "thresholds": {
+    "ambiguous_margin_below": 0.1,
+    "assigned_distance_ratio_at_least": 1.35,
+    "outlier_reference_quantile": 0.95,
+    "small_sample_games_or_MPG_below": 10
+  },
+  "source_sha256": {
+    "archetype_overrides.json": "02de254a0d79de7febb8631b7edb33ee21b4307f112c95bfc7c3a52f16e86d45",
+    "preseason_archetypes.csv": "88485b0e837c7640327f9b55a7b83bd0d8a6dc2966dfe5456f83e4c6e38c2743",
+    "clustering_features.json": "b5f1985ae454dca260a99f5e76fecc56e4733eb5dc19111194d02ba1671c156e",
+    "references/player_clusters_detailed.csv": "9c443a322cf01cc9758b5c3c528d1ad144951b88ddb53f41ea3a7d1a47b05282",
+    "references/def_player_clusters_detailed.csv": "032b2c9718e451bb146c6d10523af73ca646cd80314247b24c4c538381d9f2ea",
+    "data/audit/role_fit_proposals.csv": "09b381a2cf9edea92beed2791aaa05645442c3a4c3aff034b6e9ed0806a839f2"
+  }
+}

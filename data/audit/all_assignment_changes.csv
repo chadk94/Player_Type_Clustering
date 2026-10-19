@@ -58,7 +58,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1628963,Marvin Bagley III,DEN,False,,Athletic Roll Man,,Bad/Slow Big Defender,analyst_review,analyst_review
 1630595,Cade Cunningham,DET,False,Primary Ball Handler,Primary Ball Handler,Big Wing Defender,Long Wing/Secondary POA,analyst_review,analyst_review
 1631105,Jalen Duren,DET,True,Traditional Center,Athletic Roll Man,Cluster 10 (unnamed),Rim Protector,analyst_review,analyst_review
-1641709,Ausar Thompson,DET,False,Athletic Roll Man,Spot-Up Role Player,POA Defender,POA Defender,analyst_review,analyst_review
+1641709,Ausar Thompson,DET,False,Athletic Roll Man,Secondary Playmaker,POA Defender,POA Defender,manual_override,analyst_review
 1629130,Duncan Robinson,DET,True,Catch & Shoot Wing,Catch & Shoot Wing,Cluster 2 (unnamed),Non-POA Wing,analyst_review,analyst_review
 1630198,Isaiah Joe,DET,True,Catch & Shoot Wing,Catch & Shoot Wing,Cluster 13 (unnamed),Non POA Guard,analyst_review,analyst_review
 1641842,Ronald Holland II,DET,True,Uncategorized,Spot-Up Role Player,Long Wing/Secondary POA,Long Wing/Secondary POA,analyst_review,analyst_review
@@ -168,6 +168,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1642346,Ryan Dunn,PHX,True,Uncategorized,Spot-Up Role Player,Bad/Slow Big Defender,POA Defender,analyst_review,analyst_review
 1628379,Luke Kennard,PHX,False,,Catch & Shoot Wing,,Non POA Guard,analyst_review,analyst_review
 1641739,Toumani Camara,POR,True,Uncategorized,Catch & Shoot Wing,Cluster 2 (unnamed),POA Defender,analyst_review,analyst_review
+201950,Jrue Holiday,POR,False,Primary Ball Handler,Secondary Playmaker,Pesky Guard,Pesky Guard,manual_override,manual_override
 1629630,Ja Morant,POR,True,Primary Ball Handler,Primary Ball Handler,Cluster 13 (unnamed),Non POA Guard,analyst_review,analyst_review
 1630703,Scoot Henderson,POR,False,Primary Ball Handler,Primary Ball Handler,Non-POA Wing,Non POA Guard,analyst_review,analyst_review
 1629057,Robert Williams III,POR,False,Athletic Roll Man,Athletic Roll Man,Turtles,Rim Protector,analyst_review,analyst_review

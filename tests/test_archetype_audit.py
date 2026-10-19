@@ -27,6 +27,33 @@ class ArchetypeAuditTests(unittest.TestCase):
                 self.assertEqual(player[f'{side}AssignmentSource'],'manual_override' if manual is not None else 'analyst_review')
         self.assertEqual(len(build_audit()),100)
 
+    def test_ausar_and_jrue_changes_preserve_all_existing_manual_rules(self):
+        import hashlib
+        rules = load_rules()
+        for name in ['Ausar Thompson','Jrue Holiday']:
+            self.assertEqual(rules['OFF_CLUSTER_OVERRIDES'][name],6)
+            for filename in ['preseason_archetypes.csv','player_clusters_detailed.csv']:
+                frame = pd.read_csv(ROOT/filename)
+                player = frame[frame.PLAYER_NAME.eq(name)].iloc[0]
+                self.assertEqual(player['OffCluster' if filename.startswith('preseason') else 'Cluster'],6)
+            rules['OFF_CLUSTER_OVERRIDES'].pop(name)
+        digest = hashlib.sha256(json.dumps(rules,sort_keys=True).encode()).hexdigest()
+        self.assertEqual(digest,"f98bd289f4165ef6e42368b8ae51d9fa779a8062f623f1f7bd15337b2d5485c1")
+
+    def test_fit_audit_is_read_only_and_protects_manual_roles(self):
+        from audit_role_fit import audit_role_fit
+        paths = [ROOT/name for name in ['archetype_overrides.json','preseason_archetypes.csv',
+                 'archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv']]
+        before = {path:path.read_bytes() for path in paths}
+        report = audit_role_fit()
+        self.assertEqual(len(report),636)
+        self.assertEqual(report.PLAYER_ID.nunique(),318)
+        protected = report[report['Protected manual override']]
+        self.assertTrue(protected.Proposed.eq(protected.Current).all())
+        self.assertEqual(report.Proposed.ne(report.Current).sum(),6)
+        for path in paths:
+            self.assertEqual(path.read_bytes(),before[path])
+
     def test_user_override_wins_even_when_review_disagrees(self):
         rules = load_rules()
         rules['OFF_CLUSTER_OVERRIDES']['Draymond Green']=2

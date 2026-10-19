@@ -307,3 +307,33 @@ No older NBA season or unadjusted European profile has been silently substituted
 The live RotoWire full-season table stayed on “Loading Stats”, although the signed-in
 Premium account could view individual forecast summaries. A complete usable updated
 projection for Hezonja (including its minutes denominator) is still required.
+
+
+### User corrections and read-only fit audit (2026-10-19)
+
+Ausar Thompson and Jrue Holiday are now **Secondary Playmakers** on offense,
+recorded as user manual overrides. Their defensive roles are unchanged. All 120
+previous manual rules retain their exact values; there are now 30 offensive and
+92 defensive rules. Only those two players' published role assignments changed.
+
+`python audit_role_fit.py` screens all 318 players with positive workbook minutes
+on both sides (636 checks). It does not change any assignment, review or override.
+The screen uses the existing 34 offensive/13 defensive standardized archived
+2025–26 tracking features and fixed named centroids, respecting the automatic
+height guardrail. Flags identify top-two distance margins below 10%, an assigned
+role at least 35% farther than the nearest centroid, nearest distance above the
+reference 95th percentile, fewer than 10 archived games/MPG, or absent features.
+These are review thresholds, **not calibrated confidence probabilities or proof
+that a label is wrong**. Partial-season tracking data can miss changed roles;
+steals, blocks, size and centroid proximity do not establish defensive assignments.
+
+`data/audit/role_fit/` contains every check, every flagged side and source hashes.
+The broad screen flags 209 players (274 sides), including 83 protected manual
+sides. A flag on a manual rule is informational; the rule remains authoritative.
+`data/audit/role_fit_proposals.csv` records analyst review of the 28 strongest
+nonmanual centroid conflicts plus three role/position concerns. Six changes are
+proposed for user approval; the other 25 reviewed sides should retain their
+current labels. Other weak, missing-data or borderline flags retain current roles
+pending stronger evidence. **No proposal in this file is loaded by the app or
+clustering pipeline.** Neither the audit nor its proposals modify live labels.
+The proposed changes may only be incorporated after explicit user approval.
