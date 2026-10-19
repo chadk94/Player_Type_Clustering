@@ -385,3 +385,15 @@ that preview only. Zero/unavailable minutes, missing statistical baselines or
 incomplete matchup history exclude a player from this table; the coverage
 expander explains the underlying inputs. Props are loaded only for the selected
 edge game, cached for five minutes, and refreshed by the existing refresh button.
+
+
+### Stable browsing and explicit refresh
+
+The dashboard no longer runs a timed five-minute fragment rerender, which rebuilt
+all tabs and tables while a user was reading or scrolling. The fragment now reruns
+on user controls only. **Refresh live data** clears the five-minute caches and
+reloads records, schedules, matchup history and sportsbook quotes. Changing game,
+book or filters still updates that selection; cached data expires after five
+minutes when a subsequent interaction requests it. The visible checked-at time
+identifies the snapshot. It stays fixed during passive browsing, and quote-age
+validation still excludes prices older than 15 minutes at comparison load time.

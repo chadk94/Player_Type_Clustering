@@ -87,7 +87,7 @@ def reset_manual_minutes(flag_key, slider_key):
     st.session_state.pop(slider_key, None)
 
 
-@st.fragment(run_every=300)
+@st.fragment
 def render_live_dashboard(ui, roster):
     roster = apply_roster_rules(roster)
     roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)
@@ -104,7 +104,7 @@ def render_live_dashboard(ui, roster):
         try:
             state = live_state(SEASON)
             teams, players = state['teams'], state['players']
-            ui.caption(f"Live data checked: {state['as_of']} · ESPN regular-season data · refreshes every 5 minutes while open")
+            ui.caption(f"Live data checked: {state['as_of']} · ESPN regular-season data · Snapshot stays fixed while you browse. Use Refresh live data to update.")
             if state['errors']:
                 ui.warning('Some current-season player summaries could not be loaded. Affected players may lack season-average minutes; unavailable values stay blank.')
                 with ui.expander('Data refresh details'):
@@ -242,7 +242,7 @@ def render_live_dashboard(ui, roster):
                         raise OddsFeedError('Sportsbook matchup could not be verified.')
                     quotes = player_quotes(payload,player_name,book_key)
                     game_time = pd.Timestamp(event['commence_time']).tz_convert('America/Denver')
-                    ui.caption(f'{book_name} via The Odds API · {team} vs {opponent} · {game_time:%b %d, %Y at %I:%M %p %Z}. Quotes refresh every 5 minutes; quotes older than 15 minutes are excluded from comparison.')
+                    ui.caption(f'{book_name} via The Odds API · {team} vs {opponent} · {game_time:%b %d, %Y at %I:%M %p %Z}. Use Refresh live data for updated quotes; quotes older than 15 minutes are excluded when comparisons are loaded.')
             except OddsFeedError as exc:
                 ui.caption(str(exc))
             comparison = compare_with_book(preview,quotes)
@@ -350,7 +350,7 @@ def render_live_dashboard(ui, roster):
                     combined = pd.concat(matchup_rows,ignore_index=True) if matchup_rows else pd.DataFrame()
                     ranked,total_edges = game_edges(combined,payload,game,BOOKS[edge_book_name],now=now,plays_only=plays_only,direction=edge_direction)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
-                    ui.caption('Current paired Over/Under prices only; quotes older than 15 minutes are excluded. Refreshes every 5 minutes while open. Edge % is a projection gap, not a win probability or expected betting return.')
+                    ui.caption('Snapshot of paired Over/Under prices; quotes older than 15 minutes are excluded when loaded. Use Refresh live data to update. Edge % is a projection gap, not a win probability or expected betting return.')
                     if ranked.empty:
                         ui.info('No eligible edges meet these filters. Props may not be posted yet, quotes may be stale, or projections may lack matchup history. Try another game/book or turn off the 5% filter.')
                     else:
