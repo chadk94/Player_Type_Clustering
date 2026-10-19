@@ -7,6 +7,8 @@ import pandas as pd
 from import_minutes import TEAM_IDS
 from sportsbook_lines import TEAM_NAMES, STAT_ORDER, OddsFeedError, player_quotes, compare_with_book
 
+EDGE_STATS = [stat for stat in STAT_ORDER if stat != 'TOV']
+
 EDGE_COLUMNS = ['Rank','Player','Team','Opponent','Stat','Play','Projected minutes',
                 'Projected','Book line','Book implied total','Edge %','Over odds',
                 'Under odds','Updated UTC','Off samples','Def samples','Stat baseline','Matchup data']
@@ -50,8 +52,8 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
         raise OddsFeedError('Sportsbook matchup could not be verified.')
     if direction not in ['Both','Over','Under']:
         raise ValueError('Invalid edge direction')
-    selected_stats = set(STAT_ORDER if stats is None else stats)
-    if not selected_stats.issubset(STAT_ORDER):
+    selected_stats = set(EDGE_STATS if stats is None else stats)
+    if not selected_stats.issubset(EDGE_STATS):
         raise ValueError('Unknown stat category')
     rows = []
     for _,player in matchups.iterrows():

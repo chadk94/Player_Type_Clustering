@@ -15,9 +15,9 @@ from matchup_data import load_game_logs
 from matchup_projections import assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS, prior_season_profiles
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
-from sportsbook_edges import scheduled_book_games, game_edges
+from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS
 from projection_presentation import over_line_label, matchup_rating
-from sportsbook_lines import (BOOKS, MARKETS, STAT_ORDER, OddsFeedError, read_feed, next_matchup,
+from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
                               player_quotes, compare_with_book, comparison_style)
 
 
@@ -89,7 +89,7 @@ def reset_manual_minutes(flag_key, slider_key):
 
 
 def set_edge_stats(selected):
-    for stat in STAT_ORDER:
+    for stat in EDGE_STATS:
         st.session_state[f'edges_stat_{stat}'] = selected
 
 
@@ -342,7 +342,7 @@ def render_live_dashboard(ui, roster):
             with clear_col:
                 ui.button('Clear all',key='edges_clear_all',on_click=set_edge_stats,args=(False,))
             selected_stats = []
-            for stat_col,stat in zip(ui.columns(8),STAT_ORDER):
+            for stat_col,stat in zip(ui.columns(len(EDGE_STATS)),EDGE_STATS):
                 with stat_col:
                     if ui.checkbox(stat,value=True,key=f'edges_stat_{stat}'):
                         selected_stats.append(stat)

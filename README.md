@@ -420,3 +420,8 @@ and PRA use their combined baseline/projected totals. These explicit display
 thresholds are an interpretive scale, not calibrated outcome probabilities or
 sportsbook edges. Ratings remain blank when matchup adjustments are disabled,
 baseline is zero/nonfinite or projected data is unavailable.
+
+
+Top Sportsbook Edges excludes turnovers (TOV) from both its category checkboxes
+and rankings. Select all selects the seven remaining categories. Player vs
+Opponent retains its existing turnover projection.
