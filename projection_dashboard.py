@@ -378,12 +378,13 @@ def render_live_dashboard(ui, roster):
                     else:
                         ui.success(f'Showing {len(ranked)} of {total_edges} eligible player-stat edges')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
-                        display_columns = ['Rank','Player','Team','Stat','Play','Projected minutes','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds']
+                        display_columns = ['Rank','Player','Team','Stat','Play','Projected minutes','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds']
                         edge_display = ranked[display_columns]
                         ui.dataframe(edge_display.style.apply(comparison_style,axis=1).format(
                             {'Projected minutes':'{:.1f}','Projected':'{:.2f}',
                              'Book implied total':'{:.2f}','Edge %':'{:+.2f}%',
                              'Over odds':'{:+.0f}','Under odds':'{:+.0f}'},na_rep='—'),hide_index=True,width='stretch')
+                        ui.caption('Matchup rating: 1 ⬇️⬇️ poor, 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent. Ratings measure opponent lift versus baseline, independent of the sportsbook edge or Over/Under play.')
                         ui.caption('Only edges strictly above +5% (Over) or below −5% (Under) are marked as plays. Color intensity grows with edge magnitude. Multiple stats for the same player may be correlated.')
                         ui.download_button('Download this game’s top edges',ranked.to_csv(index=False),f"{game['Away']}_{game['Home']}_top_edges.csv",'text/csv',key='edges_download')
                     with ui.expander('Game projection coverage'):

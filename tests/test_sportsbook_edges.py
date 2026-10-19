@@ -31,6 +31,15 @@ class GameEdgeTests(unittest.TestCase):
         self.assertEqual(set(ranked.Play),{'Over','Under'})
         self.assertEqual(set(ranked.Stat),{'3PM'})
 
+    def test_matchup_ratings_use_opponent_lift_not_sportsbook_edge(self):
+        self.players['Baseline FG3M']=self.players.FG3M
+        ranked,_=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now)
+        self.assertEqual(set(ranked['Matchup rating']),{'3 ↔️'})
+        self.assertTrue(ranked['Edge %'].abs().gt(5).all())
+        self.players['Baseline FG3M']=self.players.FG3M/1.15
+        ranked,_=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now)
+        self.assertEqual(set(ranked['Matchup rating']),{'5 ⬆️⬆️'})
+
     def test_direction_and_optional_subthreshold_rows(self):
         under,_=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,direction='Under')
         self.assertTrue(under['Edge %'].lt(-5).all())
