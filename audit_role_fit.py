@@ -84,6 +84,12 @@ def audit_role_fit():
         mask = report.PLAYER_ID.eq(proposal.PLAYER_ID) & report.Side.eq(proposal.Side)
         if mask.sum() != 1:
             raise ValueError('Proposal must match exactly one positive-minute role')
+        if proposal.Decision in ['User approved change — APPLIED','User confirmed keep — APPLIED']:
+            if not report.loc[mask,'Protected manual override'].all() or report.loc[mask,'Current'].iloc[0] != proposal.Proposed:
+                raise ValueError('Approved audit decision must match a published manual override')
+            report.loc[mask,'Action'] = proposal.Decision
+            report.loc[mask,'Review rationale'] = proposal.Rationale
+            continue
         if report.loc[mask,'Protected manual override'].any():
             raise ValueError('Audit proposals cannot alter a protected user override')
         if report.loc[mask,'Current'].iloc[0] != proposal.Current:

@@ -37,6 +37,14 @@ class ArchetypeAuditTests(unittest.TestCase):
                 player = frame[frame.PLAYER_NAME.eq(name)].iloc[0]
                 self.assertEqual(player['OffCluster' if filename.startswith('preseason') else 'Cluster'],6)
             rules['OFF_CLUSTER_OVERRIDES'].pop(name)
+        accepted = {'OFF':{'Jock Landale':9,'Caleb Martin':4,'Noah Clowney':0,"Nae'Qwan Tomlin":1},
+                    'DEF':{'Collin Gillespie':4,'Daniel Gafford':1,'Walker Kessler':1,'Ryan Rollins':11,'Tristan da Silva':6}}
+        roster = pd.read_csv(ROOT/'preseason_archetypes.csv').set_index('PLAYER_NAME')
+        for side,items in accepted.items():
+            for name,role in items.items():
+                self.assertEqual(rules[side+'_CLUSTER_OVERRIDES'].pop(name),role)
+                self.assertEqual(roster.loc[name,side.title()+'Cluster'],role)
+                self.assertEqual(roster.loc[name,side.title()+'AssignmentSource'],'manual_override')
         digest = hashlib.sha256(json.dumps(rules,sort_keys=True).encode()).hexdigest()
         self.assertEqual(digest,"f98bd289f4165ef6e42368b8ae51d9fa779a8062f623f1f7bd15337b2d5485c1")
 
@@ -50,7 +58,7 @@ class ArchetypeAuditTests(unittest.TestCase):
         self.assertEqual(report.PLAYER_ID.nunique(),318)
         protected = report[report['Protected manual override']]
         self.assertTrue(protected.Proposed.eq(protected.Current).all())
-        self.assertEqual(report.Proposed.ne(report.Current).sum(),6)
+        self.assertEqual(report.Proposed.ne(report.Current).sum(),0)
         for path in paths:
             self.assertEqual(path.read_bytes(),before[path])
 

@@ -4,12 +4,12 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1630168,Onyeka Okongwu,ATL,False,Stretch Big,Stretch Big,High Stock + D,Rim Protector,analyst_review,analyst_review
 203468,CJ McCollum,ATL,False,Secondary Playmaker,Primary Ball Handler,Non POA Guard,Non POA Guard,analyst_review,manual_override
 1630598,Aaron Wiggins,ATL,True,Uncategorized,Catch & Shoot Wing,Bad/Slow Big Defender,Long Wing/Secondary POA,analyst_review,analyst_review
-1629111,Jock Landale,ATL,True,Stretch Big,Traditional Center,Cluster 10 (unnamed),Bad/Slow Big Defender,analyst_review,analyst_review
+1629111,Jock Landale,ATL,True,Stretch Big,Stretch Big,Cluster 10 (unnamed),Bad/Slow Big Defender,manual_override,analyst_review
 1630557,Corey Kispert,ATL,False,,Catch & Shoot Wing,,Non-POA Wing,analyst_review,analyst_review
 1629008,Michael Porter Jr.,BKN,False,Spot-Up Role Player,High Usage Wing,Big Wing Defender,Big Wing Defender,analyst_review,analyst_review
 1642856,Egor Dëmin,BKN,True,Secondary Playmaker,Secondary Playmaker,Cluster 2 (unnamed),Long Wing/Secondary POA,analyst_review,analyst_review
 1630549,Day'Ron Sharpe,BKN,False,Athletic Roll Man,Athletic Roll Man,High Stock + D,Turtles,analyst_review,analyst_review
-1641730,Noah Clowney,BKN,False,Catch & Shoot Wing,Stretch Big,Bad/Slow Big Defender,High Stock + D,analyst_review,analyst_review
+1641730,Noah Clowney,BKN,False,Catch & Shoot Wing,Catch & Shoot Wing,Bad/Slow Big Defender,High Stock + D,manual_override,analyst_review
 1629021,Moritz Wagner,BKN,True,Stretch Big,Stretch Big,Cluster 10 (unnamed),Bad/Slow Big Defender,analyst_review,analyst_review
 1642849,Nolan Traore,BKN,True,Secondary Playmaker,Secondary Playmaker,Cluster 13 (unnamed),Non POA Guard,analyst_review,analyst_review
 1642874,Danny Wolf,BKN,False,,Stretch Big,,Turtles,analyst_review,analyst_review
@@ -42,12 +42,13 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1630241,Sam Merrill,CLE,True,Catch & Shoot Wing,Catch & Shoot Wing,Cluster 2 (unnamed),Non POA Guard,analyst_review,analyst_review
 1641854,Craig Porter Jr.,CLE,False,,Secondary Playmaker,,Pesky Guard,analyst_review,analyst_review
 1643509,Meleek Thomas,CLE,False,,Catch & Shoot Wing,,Non POA Guard,analyst_review,analyst_review
-1641772,Nae'Qwan Tomlin,CLE,False,,Athletic Roll Man,,High Stock + D,analyst_review,analyst_review
+1641772,Nae'Qwan Tomlin,CLE,False,,Athletic Roll Man,,High Stock + D,manual_override,analyst_review
 1642843,Cooper Flagg,DAL,False,High Usage Wing,High Usage Wing,Bad/Slow Big Defender,High Stock + D,analyst_review,analyst_review
 1629023,P.J. Washington,DAL,False,Stretch Big,Spot-Up Role Player,Bad/Slow Big Defender,High Stock + D,analyst_review,analyst_review
+1629655,Daniel Gafford,DAL,False,Traditional Center,Traditional Center,Turtles,Rim Protector,historical_named_role,manual_override
 1630230,Naji Marshall,DAL,True,Uncategorized,Secondary Playmaker,Big Wing Defender,Big Wing Defender,analyst_review,analyst_review
 1642258,Zaccharie Risacher,DAL,True,Uncategorized,Catch & Shoot Wing,Bad/Slow Big Defender,Long Wing/Secondary POA,analyst_review,analyst_review
-1628997,Caleb Martin,DAL,False,,Catch & Shoot Wing,,Long Wing/Secondary POA,analyst_review,analyst_review
+1628997,Caleb Martin,DAL,False,,Spot-Up Role Player,,Long Wing/Secondary POA,manual_override,analyst_review
 1630619,Moussa Cisse,DAL,False,,Athletic Roll Man,,Rim Protector,analyst_review,analyst_review
 1629661,Cameron Johnson,DEN,True,Uncategorized,Catch & Shoot Wing,Long Wing/Secondary POA,Long Wing/Secondary POA,analyst_review,manual_override
 1631128,Christian Braun,DEN,True,Uncategorized,Spot-Up Role Player,Non-POA Wing,Long Wing/Secondary POA,analyst_review,analyst_review
@@ -94,6 +95,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1642920,Kobe Sanders,LAC,False,,Secondary Playmaker,,Long Wing/Secondary POA,analyst_review,analyst_review
 1642949,Yanic Konan Niederhäuser,LAC,False,,Athletic Roll Man,,Rim Protector,analyst_review,analyst_review
 1629029,Luka Dončić,LAL,False,High Usage Wing,Primary Ball Handler,Big Wing Defender,Big Wing Defender,analyst_review,analyst_review
+1631117,Walker Kessler,LAL,False,Athletic Roll Man,Athletic Roll Man,Turtles,Rim Protector,historical_named_role,manual_override
 1629656,Quentin Grimes,LAL,True,Spot-Up Role Player,Catch & Shoot Wing,Cluster 2 (unnamed),Long Wing/Secondary POA,analyst_review,analyst_review
 1629680,Matisse Thybulle,LAL,True,Uncategorized,Spot-Up Role Player,POA Defender,POA Defender,analyst_review,manual_override
 1630572,Sandro Mamukelashvili,LAL,False,Stretch Big,Stretch Big,High Stock + D,Turtles,analyst_review,analyst_review
@@ -113,7 +115,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1630696,Dru Smith,MIA,False,,Secondary Playmaker,,Pesky Guard,analyst_review,analyst_review
 1629639,Tyler Herro,MIL,False,Spot-Up Role Player,Primary Ball Handler,Non-POA Wing,Non POA Guard,analyst_review,analyst_review
 1631170,Jaime Jaquez Jr.,MIL,False,Primary Ball Handler,Secondary Playmaker,Bad/Slow Big Defender,Big Wing Defender,analyst_review,analyst_review
-1631157,Ryan Rollins,MIL,False,Secondary Playmaker,Primary Ball Handler,Long Wing/Secondary POA,Pesky Guard,analyst_review,analyst_review
+1631157,Ryan Rollins,MIL,False,Secondary Playmaker,Primary Ball Handler,Long Wing/Secondary POA,POA Defender,analyst_review,manual_override
 1629645,Kevin Porter Jr.,MIL,False,Primary Ball Handler,Primary Ball Handler,Long Wing/Secondary POA,Non POA Guard,analyst_review,analyst_review
 1628398,Kyle Kuzma,MIL,False,Stretch Big,High Usage Wing,Big Wing Defender,Big Wing Defender,analyst_review,analyst_review
 1627747,Caris LeVert,MIL,True,Secondary Playmaker,Secondary Playmaker,Cluster 2 (unnamed),Long Wing/Secondary POA,analyst_review,analyst_review
@@ -149,7 +151,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1630532,Franz Wagner,ORL,True,High Usage Wing,High Usage Wing,Cluster 2 (unnamed),Big Wing Defender,analyst_review,analyst_review
 1630217,Desmond Bane,ORL,True,Spot-Up Role Player,High Usage Wing,Cluster 2 (unnamed),Long Wing/Secondary POA,analyst_review,analyst_review
 1641710,Anthony Black,ORL,False,Spot-Up Role Player,Secondary Playmaker,Long Wing/Secondary POA,Long Wing/Secondary POA,analyst_review,analyst_review
-1641783,Tristan da Silva,ORL,True,Uncategorized,Spot-Up Role Player,Non-POA Wing,Non-POA Wing,analyst_review,analyst_review
+1641783,Tristan da Silva,ORL,True,Uncategorized,Spot-Up Role Player,Non-POA Wing,Long Wing/Secondary POA,analyst_review,manual_override
 1629048,Goga Bitadze,ORL,False,Traditional Center,Traditional Center,Turtles,Rim Protector,analyst_review,analyst_review
 1642859,Jase Richardson,ORL,True,Uncategorized,Secondary Playmaker,Cluster 13 (unnamed),Non POA Guard,analyst_review,analyst_review
 1642869,Noah Penda,ORL,False,,Secondary Playmaker,,High Stock + D,analyst_review,analyst_review
@@ -164,6 +166,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1628970,Miles Bridges,PHX,False,Stretch Big,High Usage Wing,Big Wing Defender,Big Wing Defender,analyst_review,analyst_review
 1630224,Jalen Green,PHX,False,Secondary Playmaker,Primary Ball Handler,Non-POA Wing,Non-POA Wing,analyst_review,analyst_review
 1642345,Oso Ighodaro,PHX,False,Traditional Center,Traditional Center,High Stock + D,Rim Protector,analyst_review,analyst_review
+1631221,Collin Gillespie,PHX,False,Secondary Playmaker,Secondary Playmaker,Long Wing/Secondary POA,Pesky Guard,historical_named_role,manual_override
 1630692,Jordan Goodwin,PHX,True,Uncategorized,Spot-Up Role Player,Long Wing/Secondary POA,Pesky Guard,analyst_review,analyst_review
 1642346,Ryan Dunn,PHX,True,Uncategorized,Spot-Up Role Player,Bad/Slow Big Defender,POA Defender,analyst_review,analyst_review
 1628379,Luke Kennard,PHX,False,,Catch & Shoot Wing,,Non POA Guard,analyst_review,analyst_review

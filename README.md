@@ -337,3 +337,22 @@ current labels. Other weak, missing-data or borderline flags retain current role
 pending stronger evidence. **No proposal in this file is loaded by the app or
 clustering pipeline.** Neither the audit nor its proposals modify live labels.
 The proposed changes may only be incorporated after explicit user approval.
+
+
+### Accepted audit decisions (2026-10-19)
+
+The user approved eight role changes: Jock Landale → Stretch Big (offense),
+Caleb Martin → Spot-Up Role Player (offense), Noah Clowney → Catch & Shoot Wing
+(offense), Daniel Gafford and Walker Kessler → Rim Protector (defense),
+Ryan Rollins → POA Defender (defense), Tristan da Silva → Long Wing/Secondary POA
+(defense), and Collin Gillespie → Pesky Guard (defense). Nae’Qwan Tomlin retains
+Athletic Roll Man, now explicitly protected as a manual offensive override.
+All 122 previously stored rules are preserved; totals are now 34 offensive and
+97 defensive manual rules. No other assignments or source minutes changed.
+`data/audit/user_accepted_role_changes.csv` records the eight actual changes.
+The proposal ledger retains the original assignments/rationales for history and
+marks these decisions applied; approved user decisions supersede earlier analyst
+recommendations. The audit validates approved roles against manual rules and
+never reapplies a stale candidate. The refreshed screen has 204 flagged players /
+268 sides, including 86 protected manual sides, with zero pending role changes.
+The earlier 209-player counts above describe the initial pre-approval screen.

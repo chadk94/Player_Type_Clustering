@@ -29,6 +29,10 @@ off,OG Anunoby,0,True,0.0
 off,Josh Hart,6,True,6.0
 off,Ausar Thompson,6,True,6.0
 off,Jrue Holiday,6,True,6.0
+off,Jock Landale,9,True,9.0
+off,Caleb Martin,4,True,4.0
+off,Noah Clowney,0,True,0.0
+off,Nae'Qwan Tomlin,1,True,1.0
 def,Scottie Barnes,8,True,8.0
 def,Anthony Davis,1,True,1.0
 def,Rudy Gobert,1,True,1.0
@@ -121,3 +125,8 @@ def,Darryn Peterson,6,True,6.0
 def,AJ Dybantsa,6,True,6.0
 def,OG Anunoby,5,True,5.0
 def,Josh Hart,5,True,5.0
+def,Collin Gillespie,4,True,4.0
+def,Daniel Gafford,1,True,1.0
+def,Walker Kessler,1,True,1.0
+def,Ryan Rollins,11,True,11.0
+def,Tristan da Silva,6,True,6.0

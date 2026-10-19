@@ -13,7 +13,7 @@
     "historical_player_data.csv": "bab301eb68303368b87d1b8299eabbdaca6f82bfb5864936b830ac5a6ae92421",
     "projected_minutes.csv": "d0a5b14f4d50f92d6b130744eef511e98cacecde1da28e045e0a67fe2b3a71b6",
     "team_games.csv": "dac53a876ddd90f1f9207d8c3552c4bec055249438d023f2e2628681aa3811c5",
-    "/Users/kareemkalil/Documents/Codex/2026-10-19/referenced-chatgpt-conversation-this-is-an/work/Player_Type_Clustering/archetype_overrides.json": "02de254a0d79de7febb8631b7edb33ee21b4307f112c95bfc7c3a52f16e86d45",
+    "/Users/kareemkalil/Documents/Codex/2026-10-19/referenced-chatgpt-conversation-this-is-an/work/Player_Type_Clustering/archetype_overrides.json": "b199692f83736673fc2cf484036c2f79926f0dbc4eb581b7dc334daf75756ef4",
     "/Users/kareemkalil/Documents/Codex/2026-10-19/referenced-chatgpt-conversation-this-is-an/work/Player_Type_Clustering/clustering_features.json": "b5f1985ae454dca260a99f5e76fecc56e4733eb5dc19111194d02ba1671c156e"
   },
   "archetype_models": {
@@ -24,11 +24,11 @@
         "0": 65,
         "1": 28,
         "2": 48,
-        "4": 72,
+        "4": 73,
         "5": 38,
         "6": 75,
         "7": 17,
-        "8": 25,
+        "8": 24,
         "9": 35
       },
       "eligible_role_ids": [
@@ -54,15 +54,15 @@
       "reference_players": 403,
       "role_counts": {
         "0": 54,
-        "1": 33,
+        "1": 35,
         "3": 21,
         "4": 48,
         "5": 42,
         "6": 65,
-        "7": 46,
+        "7": 44,
         "8": 19,
-        "11": 32,
-        "12": 43
+        "11": 33,
+        "12": 42
       },
       "eligible_role_ids": [
         0,
@@ -138,10 +138,10 @@
   "modelled_players": 259,
   "rotation_players_missing_profiles": 26,
   "rotation_players_missing_archetypes": 0,
-  "offensive_overrides_stored": 30,
-  "defensive_overrides_stored": 92,
-  "overrides_stored": 122,
-  "overrides_present": 114,
+  "offensive_overrides_stored": 34,
+  "defensive_overrides_stored": 97,
+  "overrides_stored": 131,
+  "overrides_present": 123,
   "team_game_count_source": "User states no games played; all team counts initialized to zero",
   "roster_source": "User workbook, not a verified NBA roster",
   "feature_coverage": "Repository 2025-26 partial-season snapshots; games_played ranges 0 to 56",

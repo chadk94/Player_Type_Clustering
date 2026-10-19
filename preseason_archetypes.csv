@@ -6,7 +6,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 203468,CJ McCollum,CJ McCollum,ATL,1610612737,22026,28.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,analyst_review,0.0,Non POA Guard,manual_override
 1629652,Luguentz Dort,Luguentz Dort,ATL,1610612737,22026,24.0,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,historical_named_role,11.0,POA Defender,manual_override
 1630598,Aaron Wiggins,Aaron Wiggins,ATL,1610612737,22026,16.0,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,analyst_review,6.0,Long Wing/Secondary POA,analyst_review
-1629111,Jock Landale,Jock Landale,ATL,1610612737,22026,16.0,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,analyst_review,3.0,Bad/Slow Big Defender,analyst_review
+1629111,Jock Landale,Jock Landale,ATL,1610612737,22026,16.0,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,manual_override,3.0,Bad/Slow Big Defender,analyst_review
 1643412,Kingston Flemings,Kingston Flemings,ATL,1610612737,22026,16.0,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,11.0,POA Defender,manual_override
 1630557,Corey Kispert,Corey Kispert,ATL,1610612737,22026,10.0,22025.0,True,False,preseason_historical_prior,0.0,Catch & Shoot Wing,analyst_review,12.0,Non-POA Wing,analyst_review
 1642854,Asa Newell,Asa Newell,ATL,1610612737,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
@@ -23,7 +23,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1630549,Day'Ron Sharpe,Day'Ron Sharpe,BKN,1610612751,22026,26.0,22025.0,True,True,preseason_historical_prior,1.0,Athletic Roll Man,analyst_review,7.0,Turtles,analyst_review
 1631165,Keon Ellis,Keon Ellis,BKN,1610612751,22026,24.0,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,historical_named_role,11.0,POA Defender,historical_named_role
 1643414,Mikel Brown Jr.,Mikel Brown Jr.,BKN,1610612751,22026,22.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
-1641730,Noah Clowney,Noah Clowney,BKN,1610612751,22026,22.0,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,analyst_review,8.0,High Stock + D,analyst_review
+1641730,Noah Clowney,Noah Clowney,BKN,1610612751,22026,22.0,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,manual_override,8.0,High Stock + D,analyst_review
 1629021,Moritz Wagner,Moritz Wagner,BKN,1610612751,22026,16.0,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,analyst_review,3.0,Bad/Slow Big Defender,analyst_review
 1642849,Nolan Traore,Nolan Traore,BKN,1610612751,22026,16.0,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,analyst_review,0.0,Non POA Guard,analyst_review
 1643052,Chaney Johnson,Chaney Johnson,BKN,1610612751,22026,12.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,5.0,Big Wing Defender,manual_override
@@ -99,7 +99,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1626209,Mario Hezonja,Mario Hezonja,CLE,1610612739,22026,11.994291428809532,,False,True,missing_historical_profile,0.0,Catch & Shoot Wing,manual_override,12.0,Non-POA Wing,manual_override
 1641854,Craig Porter Jr.,Craig Porter Jr.,CLE,1610612739,22026,7.994291428809532,22025.0,True,False,preseason_historical_prior,6.0,Secondary Playmaker,analyst_review,4.0,Pesky Guard,analyst_review
 1643509,Meleek Thomas,Meleek Thomas,CLE,1610612739,22026,7.994291428809532,,False,False,missing_historical_profile,0.0,Catch & Shoot Wing,analyst_review,0.0,Non POA Guard,analyst_review
-1641772,Nae'Qwan Tomlin,Nae'Qwan Tomlin,CLE,1610612739,22026,7.994291428809532,22025.0,True,False,preseason_historical_prior,1.0,Athletic Roll Man,analyst_review,8.0,High Stock + D,analyst_review
+1641772,Nae'Qwan Tomlin,Nae'Qwan Tomlin,CLE,1610612739,22026,7.994291428809532,22025.0,True,False,preseason_historical_prior,1.0,Athletic Roll Man,manual_override,8.0,High Stock + D,analyst_review
 1643640,"Ernest Udeh, Jr.","Ernest Udeh, Jr.",CLE,1610612739,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1642434,Riley Minix,Riley Minix,CLE,1610612739,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1628418,Thomas Bryant,Thomas Bryant,CLE,1610612739,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
@@ -109,12 +109,12 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 202681,Kyrie Irving,Kyrie Irving,DAL,1610612742,22026,30.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
 1629023,P.J. Washington,P.J. Washington,DAL,1610612742,22026,30.0,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,analyst_review,8.0,High Stock + D,analyst_review
 1631108,Max Christie,Max Christie,DAL,1610612742,22026,28.0,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,historical_named_role,6.0,Long Wing/Secondary POA,manual_override
-1629655,Daniel Gafford,Daniel Gafford,DAL,1610612742,22026,24.0,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,historical_named_role,7.0,Turtles,historical_named_role
+1629655,Daniel Gafford,Daniel Gafford,DAL,1610612742,22026,24.0,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,historical_named_role,1.0,Rim Protector,manual_override
 1630230,Naji Marshall,Naji Marshall,DAL,1610612742,22026,24.0,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,analyst_review,5.0,Big Wing Defender,analyst_review
 1642258,Zaccharie Risacher,Zaccharie Risacher,DAL,1610612742,22026,24.0,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,analyst_review,6.0,Long Wing/Secondary POA,analyst_review
 1643516,Morez Johnson Jr.,Morez Johnson Jr.,DAL,1610612742,22026,16.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,8.0,High Stock + D,manual_override
 1643547,Sergio de Larrea,Sergio de Larrea,DAL,1610612742,22026,12.0,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,0.0,Non POA Guard,manual_override
-1628997,Caleb Martin,Caleb Martin,DAL,1610612742,22026,8.0,22025.0,True,False,preseason_historical_prior,0.0,Catch & Shoot Wing,analyst_review,6.0,Long Wing/Secondary POA,analyst_review
+1628997,Caleb Martin,Caleb Martin,DAL,1610612742,22026,8.0,22025.0,True,False,preseason_historical_prior,4.0,Spot-Up Role Player,manual_override,6.0,Long Wing/Secondary POA,analyst_review
 1630619,Moussa Cisse,Moussa Cisse,DAL,1610612742,22026,8.0,22025.0,True,False,preseason_historical_prior,1.0,Athletic Roll Man,analyst_review,1.0,Rim Protector,analyst_review
 1641726,Dereck Lively II,Dereck Lively II,DAL,1610612742,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1641724,Jett Howard,Jett Howard,DAL,1610612742,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
@@ -232,7 +232,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1642530,Yuki Kawamura,Yuki Kawamura,LAC,1610612746,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1630559,Austin Reaves,Austin Reaves,LAL,1610612747,22026,36.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,historical_named_role,4.0,Pesky Guard,historical_named_role
 1629029,Luka Dončić,Luka Dončić,LAL,1610612747,22026,36.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,analyst_review,5.0,Big Wing Defender,analyst_review
-1631117,Walker Kessler,Walker Kessler,LAL,1610612747,22026,32.0,22025.0,True,True,preseason_historical_prior,1.0,Athletic Roll Man,historical_named_role,7.0,Turtles,historical_named_role
+1631117,Walker Kessler,Walker Kessler,LAL,1610612747,22026,32.0,22025.0,True,True,preseason_historical_prior,1.0,Athletic Roll Man,historical_named_role,1.0,Rim Protector,manual_override
 1629656,Quentin Grimes,Quentin Grimes,LAL,1610612747,22026,30.0,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,analyst_review,6.0,Long Wing/Secondary POA,analyst_review
 1629680,Matisse Thybulle,Matisse Thybulle,LAL,1610612747,22026,26.0,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,analyst_review,11.0,POA Defender,manual_override
 1630572,Sandro Mamukelashvili,Sandro Mamukelashvili,LAL,1610612747,22026,20.0,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,analyst_review,7.0,Turtles,analyst_review
@@ -289,7 +289,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1642884,Vladislav Goldin,Vladislav Goldin,MIA,1610612748,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1629639,Tyler Herro,Tyler Herro,MIL,1610612749,22026,29.5,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,analyst_review,0.0,Non POA Guard,analyst_review
 1631170,Jaime Jaquez Jr.,Jaime Jaquez Jr.,MIL,1610612749,22026,27.5,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,analyst_review,5.0,Big Wing Defender,analyst_review
-1631157,Ryan Rollins,Ryan Rollins,MIL,1610612749,22026,25.5,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,analyst_review,4.0,Pesky Guard,analyst_review
+1631157,Ryan Rollins,Ryan Rollins,MIL,1610612749,22026,25.5,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,analyst_review,11.0,POA Defender,manual_override
 1626167,Myles Turner,Myles Turner,MIL,1610612749,22026,23.5,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,historical_named_role,1.0,Rim Protector,manual_override
 1631260,AJ Green,AJ Green,MIL,1610612749,22026,21.5,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,historical_named_role,0.0,Non POA Guard,manual_override
 1629645,Kevin Porter Jr.,Kevin Porter Jr.,MIL,1610612749,22026,21.5,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,analyst_review,0.0,Non POA Guard,analyst_review
@@ -383,7 +383,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1628976,Wendell Carter Jr.,Wendell Carter Jr.,ORL,1610612753,22026,29.9932063285006,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,historical_named_role,7.0,Turtles,manual_override
 1630591,Jalen Suggs,Jalen Suggs,ORL,1610612753,22026,27.984902952223557,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,analyst_review,11.0,POA Defender,analyst_review
 1641710,Anthony Black,Anthony Black,ORL,1610612753,22026,25.9932063285006,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,analyst_review,6.0,Long Wing/Secondary POA,analyst_review
-1641783,Tristan da Silva,Tristan da Silva,ORL,1610612753,22026,17.9932063285006,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,analyst_review,12.0,Non-POA Wing,analyst_review
+1641783,Tristan da Silva,Tristan da Silva,ORL,1610612753,22026,17.9932063285006,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,analyst_review,6.0,Long Wing/Secondary POA,manual_override
 1629048,Goga Bitadze,Goga Bitadze,ORL,1610612753,22026,13.993206328500603,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,analyst_review,1.0,Rim Protector,analyst_review
 1642859,Jase Richardson,Jase Richardson,ORL,1610612753,22026,11.993206328500603,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,analyst_review,0.0,Non POA Guard,analyst_review
 1642869,Noah Penda,Noah Penda,ORL,1610612753,22026,7.993206328500603,22025.0,True,False,preseason_historical_prior,6.0,Secondary Playmaker,analyst_review,8.0,High Stock + D,analyst_review
@@ -422,7 +422,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1628970,Miles Bridges,Miles Bridges,PHX,1610612756,22026,32.0,22025.0,True,True,preseason_historical_prior,5.0,High Usage Wing,analyst_review,5.0,Big Wing Defender,analyst_review
 1630224,Jalen Green,Jalen Green,PHX,1610612756,22026,30.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,analyst_review,12.0,Non-POA Wing,analyst_review
 1642345,Oso Ighodaro,Oso Ighodaro,PHX,1610612756,22026,30.0,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,analyst_review,1.0,Rim Protector,analyst_review
-1631221,Collin Gillespie,Collin Gillespie,PHX,1610612756,22026,24.0,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,historical_named_role,6.0,Long Wing/Secondary POA,historical_named_role
+1631221,Collin Gillespie,Collin Gillespie,PHX,1610612756,22026,24.0,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,historical_named_role,4.0,Pesky Guard,manual_override
 1630692,Jordan Goodwin,Jordan Goodwin,PHX,1610612756,22026,18.0,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,analyst_review,4.0,Pesky Guard,analyst_review
 1642863,Khaman Maluach,Khaman Maluach,PHX,1610612756,22026,18.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,1.0,Rim Protector,manual_override
 1642346,Ryan Dunn,Ryan Dunn,PHX,1610612756,22026,12.0,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,analyst_review,11.0,POA Defender,analyst_review
