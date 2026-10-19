@@ -114,11 +114,15 @@ def render_live_dashboard(ui, roster):
     projection_tab, best_tab, archetype_tab = ui.tabs(['Player vs Opponent', "🔥 Today's Best Matchups", 'Archetypes'])
     ui.caption('Last season’s stat rates for team games 1–4; current-season rates blend in from game 5. Opponent tendencies switch to this season after that opponent completes four games. Matchup samples are player-games with at least 5 minutes.')
     with projection_tab:
-        team = ui.selectbox('Player team', sorted(roster.TEAM_ABBREVIATION.unique()), key='projection_team')
+        team_col, player_col, opponent_col = ui.columns(3)
+        with team_col:
+            team = ui.selectbox('Player team', sorted(roster.TEAM_ABBREVIATION.unique()), key='projection_team')
         team_players = projections[projections.Team.eq(team)]
         names = team_players.sort_values('Projected minutes',ascending=False).Player.tolist()
-        player_name = ui.selectbox('Player',names,key='projection_player')
-        opponent = ui.selectbox('Opponent',[t for t in sorted(roster.TEAM_ABBREVIATION.unique()) if t != team],key='projection_opponent')
+        with player_col:
+            player_name = ui.selectbox('Player',names,key='projection_player')
+        with opponent_col:
+            opponent = ui.selectbox('Opponent',[t for t in sorted(roster.TEAM_ABBREVIATION.unique()) if t != team],key='projection_opponent')
         adjusted_on = ui.toggle('Apply opponent matchup adjustments',value=True,key='opponent_adjustments')
         baseline = team_players[team_players.Player.eq(player_name)]
         adjusted = apply_matchup(baseline,roster,teams,prior_effects,current_effects,opponent)
@@ -145,7 +149,9 @@ def render_live_dashboard(ui, roster):
             ui.write('These are matchup estimates, not confirmed lineups or availability. The model does not adjust for pace, injuries, starters or home court. Last season’s box scores are assigned the approved current archetypes, preserving manual overrides. Only players with matched archetype labels contribute to the matchup samples; sample counts show that coverage.')
     with best_tab:
         ui.subheader("🔥 Today's Best Matchup Opportunities")
-        date = ui.date_input('Slate date',value=datetime.now(ZoneInfo('America/Denver')).date(),key='matchup_date')
+        date_col, rank_col, sample_col = ui.columns(3)
+        with date_col:
+            date = ui.date_input('Slate date',value=datetime.now(ZoneInfo('America/Denver')).date(),key='matchup_date')
         try:
             schedule = today_schedule(SEASON,date)
         except (requests.RequestException, ValueError, KeyError, TypeError):
@@ -157,9 +163,11 @@ def render_live_dashboard(ui, roster):
             slate = projections.merge(schedule,on='TEAM_ID',how='inner',validate='many_to_one')
             slate = slate[slate['Projected minutes'].gt(0)]
             matchups = apply_matchup(slate,roster,teams,prior_effects,current_effects)
-            ranked_stat = ui.selectbox('Rank matchups by',HEAT_STATS,key='matchup_rank')
+            with rank_col:
+                ranked_stat = ui.selectbox('Rank matchups by',HEAT_STATS,key='matchup_rank')
+            with sample_col:
+                minimum = ui.number_input('Minimum samples per archetype',min_value=1,max_value=500,value=1,step=1,key='matchup_samples')
             include_negative = ui.checkbox('Show negative matchups too',value=True,key='negative_matchups')
-            minimum = ui.number_input('Minimum matchup samples per archetype',min_value=1,max_value=500,value=1,step=1,key='matchup_samples')
             eligible = matchups[matchups['Off samples'].ge(minimum) & matchups['Def samples'].ge(minimum)]
             eligible = eligible[eligible[f'{ranked_stat} %'].notna()]
             if not include_negative:
