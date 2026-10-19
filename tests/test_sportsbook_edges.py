@@ -52,6 +52,16 @@ class GameEdgeTests(unittest.TestCase):
         self.assertTrue(ranked.Projected.eq(20.).all())
         self.assertEqual(set(ranked['Matchup rating']),{'3 ↔️'})
 
+    def test_threes_edges_use_calibrated_values_and_original_opponent_rating(self):
+        self.players=self.players.iloc[:2].copy()
+        self.players['Baseline FG3M']=2.
+        self.players['Pre-team 3PM']=2.
+        self.players['FG3M']=4.
+        ranked,_=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,stats=['3PM'])
+        self.assertTrue(ranked.Projected.eq(4.).all())
+        self.assertTrue(ranked['Pre-team 3PM'].eq(2.).all())
+        self.assertEqual(set(ranked['Matchup rating']),{'3 ↔️'})
+
     def test_assist_and_pra_edges_use_final_totals_but_keep_opponent_ratings(self):
         import copy
         self.players=self.players.iloc[:2].copy()

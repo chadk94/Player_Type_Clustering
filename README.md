@@ -437,8 +437,8 @@ PTS. There is no partial blend. No intermediate rounding is used, so each team
 matches the market total before display rounding. Original point shares remain
 intact. This points step does not scale other stats. The team assist adjustment
 below then updates AST. Final PRA = market-adjusted PTS + existing REB + updated
-AST. Points, assists and PRA edges/ranks use these final projections. Matchup
-ratings retain the original opponent-only PTS/AST/PRA before team adjustments.
+AST. Points, assists, threes and PRA edges/ranks use their final projections.
+Matchup ratings retain the original opponent-only effects before team adjustments.
 
 Fresh same-event, same-book paired spreads/totals are required; posted game
 lines are used directly, not a juice-derived game mean. Quotes older than 15
@@ -466,7 +466,7 @@ are used, independently of current workbook team membership and manual overrides
 * Expected team FGM = selected sportsbook's implied team points / [50% × team
   PTS/FGM + 50% × opponent PTS allowed/FGM allowed]. The total-points-to-FGM ratio
   includes free throws and the mix of two- and three-point baskets. This is an
-  internal estimate used for assists; player shooting projections are unchanged.
+  internal estimate shared by the assist and three-point team targets.
 * Team AST target = expected assisted-basket rate × expected team FGM.
 * Player AST = team AST target × existing opponent-adjusted player AST / sum of
   existing opponent-adjusted AST for the full positive-minute roster.
@@ -489,6 +489,50 @@ Fresh verified game lines are required, using the existing book/event/freshness
 checks. Missing rates, invalid minutes, or incomplete positive-minute AST/PTS/REB
 coverage retain that team's existing assist estimate, with an explanatory caption;
 another team's valid adjustment can still apply. Zero-minute players receive no
-allocation. REB, 3PM, STL, BLK, TOV and manual archetypes remain unchanged. PRA
-always combines final PTS + REB + AST. Projection and edge CSVs retain the original
+allocation. The assist step leaves shooting and other stats unchanged; threes are
+calibrated separately below. PRA always combines final PTS + REB + AST. Projection and edge CSVs retain the original
 AST, team target, allocation factor, expected FGM and player share for auditing.
+
+### Team threes with normalized archetype effects
+
+Player vs Opponent and Top Sportsbook Edges apply the reviewed team-first model
+after points and assists. All 2025–26 regular-season appearances contribute to
+historical ratios; the same paired-game and 82-games-per-team checks apply.
+
+* Expected team FGM uses the same market team points / blended PTS-to-FGM estimate
+  as assists.
+* Team 3PM target = expected team FGM × [50% × historical team 3PM/FGM + 50% ×
+  historical opponent 3PM allowed/FGM allowed]. These ratios describe the share
+  of **made baskets** from three, not three-point shooting percentage.
+* Player 3PM = team 3PM target × current minute/archetype-adjusted player 3PM /
+  the full positive-minute roster's sum of those projections.
+
+This is equivalent to allocating the team target using pre-matchup shooting
+shares, then multiplying each player's archetype effect by the inverse of the
+team's baseline-three-weighted average archetype modifier. Shared defensive
+effects cancel, relative player effects remain, and final player threes sum to
+the target before rounding. The 50/50 blend and prior-season team style remain
+explicit modeling assumptions. Team rates stay on 2025–26; existing player and
+archetype rate updates still change the allocation weights.
+
+Supporting FG3A scales by the same factor as FG3M to preserve player conversion
+rates. This changes the shooting mix within the existing points estimate:
+**PTS, AST, REB and PRA are not increased or decreased again for the threes
+change**. Matchup ratings retain pre-calibration effects, while 3PM sportsbook
+edges/ranks use calibrated makes. CSVs preserve original makes/attempts, the team
+target and factor, historical rate and player share.
+
+Fresh matching game lines and complete positive-minute FG3M/FG3A/PTS coverage are
+required. Invalid or missing minutes, impossible shooting rates, or a result where
+three-point scoring would exceed any player's total points preserve that team's
+existing threes with a visible explanation. Another team's valid calculation may
+still apply. Zero-minute players receive no allocation; all manual overrides are
+preserved.
+
+**Minutes changes:** no player share or normalization factor is cached. When
+updated team minutes are imported, published to the app's roster snapshot, and
+the app reloads, both pages recalculate their player projections and shares. The
+team target remains tied to market points and historical matchup rates. A local
+spreadsheet edit alone does not synchronize with Streamlit. The individual slider
+recalculates that player's preview against the rest of the team's automatic
+minutes; it does not overwrite the saved team allocation used by the edges page.
