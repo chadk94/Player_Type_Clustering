@@ -65,6 +65,20 @@ class LiveProjectionTests(unittest.TestCase):
         self.assertEqual(self.project(3).PTS,12.)
         self.assertGreater(self.project(4).PTS,12.)
 
+    def test_custom_minutes_recompute_rates_including_zero_automatic_minutes(self):
+        teams = pd.DataFrame([{'TEAM_ID':TEAM_IDS['ATL'],'GAMES_PLAYED':0}])
+        self.roster.PROJECTED_MIN = 0.
+        result = build_projections(self.roster,self.history,teams,self.current,minutes_overrides={1:30.}).iloc[0]
+        self.assertEqual(result.PTS,15.)
+        self.assertEqual(result['Projected minutes'],30.)
+        self.assertEqual(result['Minutes source'],'Manual adjustment')
+        zero = build_projections(self.roster,self.history,teams,self.current,minutes_overrides={1:0.}).iloc[0]
+        self.assertEqual(zero.PTS,0.)
+        self.assertEqual(self.roster.iloc[0].PROJECTED_MIN,0.)
+        for invalid in [-1,49,np.nan]:
+            with self.assertRaises(ValueError):
+                build_projections(self.roster,self.history,teams,self.current,minutes_overrides={1:invalid})
+
     def test_ambiguous_names_and_unknown_team_counts_are_unavailable(self):
         duplicate = pd.concat([self.current,self.current.assign(ESPN_PLAYER_ID='200')])
         self.assertFalse(match_player_stats(self.roster,duplicate))

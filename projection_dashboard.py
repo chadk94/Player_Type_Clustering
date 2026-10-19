@@ -48,6 +48,15 @@ def heat_color(value):
     return f'background-color: {color}; color: {foreground}'
 
 
+def mark_manual_minutes(key, slider_key):
+    st.session_state[key] = st.session_state[slider_key]
+
+
+def reset_manual_minutes(flag_key, slider_key):
+    st.session_state.pop(flag_key, None)
+    st.session_state.pop(slider_key, None)
+
+
 @st.fragment(run_every=300)
 def render_live_dashboard(ui, roster):
     roster = apply_roster_rules(roster)
@@ -128,6 +137,24 @@ def render_live_dashboard(ui, roster):
             opponent = ui.selectbox('Opponent',[t for t in sorted(roster.TEAM_ABBREVIATION.unique()) if t != team],key='projection_opponent')
         adjusted_on = ui.toggle('Apply opponent matchup adjustments',value=True,key='opponent_adjustments')
         baseline = team_players[team_players.Player.eq(player_name)]
+        player_id = int(baseline.iloc[0].PLAYER_ID)
+        automatic_minutes = baseline.iloc[0]['Projected minutes']
+        default_minutes = min(48.,max(0.,float(automatic_minutes))) if pd.notna(automatic_minutes) else 0.
+        slider_key = f'player_minutes_{SEASON}_{player_id}'
+        flag_key = f'custom_minutes_{SEASON}_{player_id}'
+        st.session_state[slider_key] = st.session_state.get(flag_key,default_minutes)
+        custom_minutes = ui.slider('Projected minutes',min_value=0.,max_value=48.,step=0.5,
+                                   key=slider_key,format='%.1f min',on_change=mark_manual_minutes,args=(flag_key,slider_key))
+        ui.button('Use automatic minutes',key=f'reset_minutes_{player_id}',on_click=reset_manual_minutes,
+                  args=(flag_key,slider_key))
+        if flag_key in st.session_state:
+            baseline = build_projections(roster[roster.PLAYER_ID.eq(player_id)],history,teams,players,
+                opening_games=OPENING_GAMES,fallback=fallback,minutes_overrides={player_id:custom_minutes})
+            ui.caption('Custom minutes apply to this player’s projection in your current session. Use automatic minutes to return to the workbook/season-average setting.')
+        if pd.isna(automatic_minutes):
+            ui.caption('Automatic minutes are unavailable. Adjust the slider to set your own minutes.')
+        else:
+            ui.caption(f'Automatic setting: {automatic_minutes:.1f} minutes ({team_players.loc[team_players.Player.eq(player_name),"Minutes source"].iloc[0]}).')
         adjusted = apply_matchup(baseline,roster,teams,prior_effects,current_effects,opponent)
         row = adjusted.iloc[0]
         ui.subheader(f'{player_name} vs {opponent}')

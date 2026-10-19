@@ -145,10 +145,13 @@ def match_player_stats(roster, current):
     return matches
 
 
-def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5):
+def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None):
     """Workbook MPG for games 1–3, season MPG for game 4 onward; no fabricated fallbacks."""
     if opening_games < 0 or prior_minutes < 0:
         raise ValueError('Projection settings must be nonnegative')
+    minutes_overrides = minutes_overrides or {}
+    if any(not np.isfinite(value) or not 0 <= value <= 48 for value in minutes_overrides.values()):
+        raise ValueError('Custom minutes must be between 0 and 48')
     counts = teams.set_index('TEAM_ID').GAMES_PLAYED.to_dict()
     profiles = history.set_index('PLAYER_ID')
     matches = match_player_stats(roster, current)
@@ -168,6 +171,8 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
             minutes, source = player.PROJECTED_MIN, 'Your workbook'
         elif played is not None and observed is not None and observed.GP > 0:
             minutes, source = observed.MIN, 'Season average'
+        if played is not None and player.PLAYER_ID in minutes_overrides:
+            minutes, source = float(minutes_overrides[player.PLAYER_ID]), 'Manual adjustment'
         row = {'PLAYER_ID':player.PLAYER_ID,'Player':player.PLAYER_NAME,'Team':player.TEAM_ABBREVIATION,
                'TEAM_ID':player.TEAM_ID, 'Team games completed':played, 'Projected minutes':minutes,'Minutes source':source,
                'Offensive archetype':player.OffArchetype,'Defensive archetype':player.DefArchetype,
