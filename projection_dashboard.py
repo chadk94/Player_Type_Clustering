@@ -16,7 +16,7 @@ from matchup_projections import assign_game_archetypes, matchup_effects, apply_m
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
 from sportsbook_edges import scheduled_book_games, game_edges
-from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
+from sportsbook_lines import (BOOKS, MARKETS, STAT_ORDER, OddsFeedError, read_feed, next_matchup,
                               player_quotes, compare_with_book, comparison_style)
 
 
@@ -85,6 +85,11 @@ def mark_manual_minutes(key, slider_key):
 def reset_manual_minutes(flag_key, slider_key):
     st.session_state.pop(flag_key, None)
     st.session_state.pop(slider_key, None)
+
+
+def set_edge_stats(selected):
+    for stat in STAT_ORDER:
+        st.session_state[f'edges_stat_{stat}'] = selected
 
 
 @st.fragment
@@ -327,8 +332,13 @@ def render_live_dashboard(ui, roster):
             with direction_col:
                 edge_direction = ui.selectbox('Edge direction',['Both','Over','Under'],key='edges_direction')
             ui.write('Stats to show')
+            select_col,clear_col,_ = ui.columns([1,1,6])
+            with select_col:
+                ui.button('Select all',key='edges_select_all',on_click=set_edge_stats,args=(True,))
+            with clear_col:
+                ui.button('Clear all',key='edges_clear_all',on_click=set_edge_stats,args=(False,))
             selected_stats = []
-            for stat_col,stat in zip(ui.columns(8),['PTS','REB','AST','3PM','STL','BLK','TOV','PRA']):
+            for stat_col,stat in zip(ui.columns(8),STAT_ORDER):
                 with stat_col:
                     if ui.checkbox(stat,value=True,key=f'edges_stat_{stat}'):
                         selected_stats.append(stat)
