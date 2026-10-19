@@ -38,6 +38,20 @@ The **Player vs Opponent** tab selects a player and any other team, with an oppo
 
 Rebuild the historical snapshot with `python matchup_data.py --year 2026 --cache /path/to/local/boxscore-cache`. The cache holds raw source JSON outside the repository. Current-season schedules/box scores refresh every five minutes once a team reaches the matchup boundary; completed box scores are cached locally to avoid downloading them again. Every box score must match the requested season, type and completed status. Partial feed failures produce a visible warning.
 
+### Sportsbook comparison and juice-adjusted totals
+
+The player projection table now includes **Book line**, **Book implied total**, and **vs implied** for PTS/REB/AST/3PM/STL/BLK/TOV/PRA. Select FanDuel (default), DraftKings, or BetMGM. Green projected values exceed the implied total, red values fall below it, and unavailable comparisons remain uncolored. This is a numerical projection comparison, not an EV calculation or bet recommendation.
+
+The existing The Odds API access is reused. Prefer `ODDS_API_KEY` in environment variables or Streamlit secrets; the existing legacy feed configuration remains compatible. Credentials are not displayed or included in request-error messages. Upcoming NBA events are cached for five minutes; only the next future event matching the selected team/opponent is queried for the chosen bookmaker's eight standard prop markets. A real scheduled opponent is required; arbitrary matchup previews may have no book lines. Per-event props are also cached for five minutes, limiting requests to the selected event/book, rather than loading every NBA game on every rerun. “Refresh live data” clears both caches.
+
+Only exact normalized player matches and paired over/under prices on the **same book, game and posted line** are used. Different alternate lines, ambiguous/duplicated prices and unmatched player names are not combined. Timestamped quotes more than 15 minutes old (or without usable timestamps) cannot drive a colored comparison. Missing categories show blank comparisons rather than estimated or copied betting lines. The detail expander shows posted line, over/under odds, fair over probability, update time and availability status, with a CSV download.
+
+American prices give raw implied probabilities: negative `a` gives `abs(a)/(abs(a)+100)`; positive `a` gives `100/(a+100)`. Remove margin proportionally: `p_over_fair = p_over_raw / (p_over_raw + p_under_raw)`. Solve for a **Poisson-model mean** such that `P(X > floor(line)) = p_over_fair`. Integer lines instead use `P(X > line | X != line)` so pushes are handled correctly. This model-implied mean is not a sportsbook-published total; a single line and two prices do not uniquely determine the true statistical distribution. Poisson's variance assumption is a simplifying approximation, particularly for points and combined stats.
+
+Illustrative example, not a current Brunson quote: **over 2.5 threes -150 / under +120 → fair over probability 56.90% → implied mean approximately 2.965**, above 2.5. The under price is required to remove margin; -150 alone cannot determine a no-vig mean. Manual minutes and the opponent-adjustment toggle change the app projection, while the sportsbook implied total stays tied to its actual event and prices. Existing archetypes, override precedence, game-3 minutes and game-5 stat rules are unchanged.
+
+Feed documentation: [The Odds API v4 event odds](https://the-odds-api.com/liveapi/guides/v4/), [supported NBA prop markets](https://the-odds-api.com/sports-odds-data/betting-markets.html#nba-ncaab-wnba-player-props-api).
+
 Data guards require all 30 current-season regular-season team records. ESPN may
 silently return last year’s player summaries before games exist; the app explicitly
 rejects mismatched `requestedSeason` years and preseason/playoff summaries. Team

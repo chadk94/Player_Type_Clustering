@@ -14,6 +14,9 @@ from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import load_game_logs
 from matchup_projections import assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS, prior_season_profiles
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
+from FanduelScrape import get_odds_api_key
+from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
+                              player_quotes, compare_with_book, comparison_style)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -48,6 +51,23 @@ def heat_color(value):
     return f'background-color: {color}; color: {foreground}'
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def sportsbook_events(_api_key):
+    events = read_feed('/events',_api_key)
+    if not isinstance(events,list):
+        raise OddsFeedError('Sportsbook event list is unavailable.')
+    return events
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def sportsbook_props(event_id, bookmaker, _api_key):
+    payload = read_feed(f'/events/{event_id}/odds',_api_key,
+                        bookmakers=bookmaker,markets=','.join(MARKETS),oddsFormat='american')
+    if not isinstance(payload,dict):
+        raise OddsFeedError('Sportsbook prices are unavailable.')
+    return payload
+
+
 def mark_manual_minutes(key, slider_key):
     st.session_state[key] = st.session_state[slider_key]
 
@@ -66,6 +86,8 @@ def render_live_dashboard(ui, roster):
         live_state.clear()
         today_schedule.clear()
         current_matchup_logs.clear()
+        sportsbook_events.clear()
+        sportsbook_props.clear()
     with ui.spinner('Refreshing team records and season averages…'):
         try:
             state = live_state(SEASON)
@@ -169,7 +191,39 @@ def render_live_dashboard(ui, roster):
             'Baseline':[baseline.iloc[0][x] for x in stats],
             'Projected':[row[x] if adjusted_on else baseline.iloc[0][x] for x in stats]})
         preview['Change'] = preview.Projected - preview.Baseline
-        ui.dataframe(preview.round(2),hide_index=True,width='stretch')
+        book_name = ui.selectbox('Sportsbook',list(BOOKS),key='projection_sportsbook')
+        book_key = BOOKS[book_name]
+        quotes = player_quotes({},player_name,book_key)
+        try:
+            api_key = get_odds_api_key()
+            if not api_key:
+                raise OddsFeedError('Sportsbook feed access is not configured.')
+            event = next_matchup(sportsbook_events(api_key),team,opponent)
+            if event is None:
+                ui.caption(f'No upcoming {team} vs {opponent} sportsbook event was found. Choose an opponent with a scheduled game to compare current lines.')
+            else:
+                payload = sportsbook_props(event['id'],book_key,api_key)
+                if payload.get('id') != event['id'] or {payload.get('home_team'),payload.get('away_team')} != {event['home_team'],event['away_team']}:
+                    raise OddsFeedError('Sportsbook matchup could not be verified.')
+                quotes = player_quotes(payload,player_name,book_key)
+                game_time = pd.Timestamp(event['commence_time']).tz_convert('America/Denver')
+                ui.caption(f'{book_name} via The Odds API · {team} vs {opponent} · {game_time:%b %d, %Y at %I:%M %p %Z}. Quotes refresh every 5 minutes; quotes older than 15 minutes are excluded from comparison.')
+        except OddsFeedError as exc:
+            ui.caption(str(exc))
+        comparison = compare_with_book(preview,quotes)
+        display_columns = ['Stat','Baseline','Projected','Book line','Book implied total','vs implied','Change']
+        display = comparison[display_columns]
+        ui.caption('Green = projection above the book-implied total; red = below. The implied total is a Poisson-model mean calibrated to both over/under prices after removing the bookmaker margin—not the posted betting line.')
+        ui.dataframe(display.style.apply(comparison_style,axis=1).format(
+            {column:'{:.2f}' for column in display_columns if column!='Stat'},na_rep='—'),hide_index=True,width='stretch')
+        unavailable = comparison.loc[comparison['Book implied total'].isna(),'Stat'].tolist()
+        if unavailable:
+            ui.caption('No usable current two-sided line for: '+', '.join(unavailable)+'. Unavailable comparisons stay blank.')
+        with ui.expander('Sportsbook prices and implied-total calculation'):
+            ui.dataframe(comparison[['Stat','Book line','Over odds','Under odds','Fair over probability','Book implied total','Updated UTC','Market status']],hide_index=True,width='stretch')
+            ui.write('American odds convert to implied probabilities. Fair P(over) = raw P(over) / [raw P(over) + raw P(under)]. The implied total is the Poisson mean whose over probability matches that fair probability; integer lines account for a push. One line and its prices do not uniquely identify the real stat distribution, so this is an explicitly modeled mean, not a sportsbook-published forecast. Minutes changes update your projection; the market estimate remains tied to the book’s game and prices.')
+            ui.write('For illustration only: over 2.5 threes at -150 with under +120 implies a mean above 2.5. Both prices are needed to remove margin; the over price alone is insufficient.')
+            ui.download_button('Download stat and sportsbook comparison',comparison.to_csv(index=False),'player_sportsbook_comparison.csv','text/csv')
         effect_cols = [f'{stat} %' for stat in HEAT_STATS]
         ui.dataframe(adjusted[effect_cols].style.map(heat_color).format('{:+.1f}%',na_rep='—'),hide_index=True,width='stretch')
         ui.download_button('Download this projection CSV',(adjusted if adjusted_on else baseline).to_csv(index=False),'player_opponent_projection.csv','text/csv')

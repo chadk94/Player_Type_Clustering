@@ -1,7 +1,23 @@
 import pandas as pd
 import requests
+def get_odds_api_key():
+    # Prefer deployment secrets; retain compatibility with the existing feed.
+    import os
+    key = os.environ.get('ODDS_API_KEY')
+    if key:
+        return key
+    import streamlit as st
+    try:
+        key = st.secrets.get('ODDS_API_KEY')
+        if key:
+            return key
+    except (FileNotFoundError, KeyError):
+        pass
+    return '50d7871c8a201db4df96c55ed424cd6a'
+
+
 def getnbaprops():
-    API_KEY = '50d7871c8a201db4df96c55ed424cd6a'  # Replace with your Odds API key
+    API_KEY = get_odds_api_key()
     BASE_URL = 'https://api.the-odds-api.com/v4/sports'
 
     def get_event_ids(sport, region='us', market=''):
