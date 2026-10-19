@@ -356,3 +356,32 @@ recommendations. The audit validates approved roles against manual rules and
 never reapplies a stale candidate. The refreshed screen has 204 flagged players /
 268 sides, including 86 protected manual sides, with zero pending role changes.
 The earlier 209-player counts above describe the initial pre-approval screen.
+
+
+### Top 20 sportsbook edges per game
+
+The **💰 Top Sportsbook Edges** tab provides one-click game buttons plus date,
+sportsbook (FanDuel/DraftKings/BetMGM), and Over/Under filters. It defaults to the
+next date offered by the sportsbook feed and shows both teams' top 20 distinct
+player/stat comparisons, ranked by absolute signed percent gap between the
+opponent-adjusted projection and the no-vig, Poisson-implied book total. This is
+not a probability edge or expected return. Both sides' American prices and the
+posted line remain visible. Multiple props for one player can be correlated.
+
+The >5% play filter is on by default; exactly ±5% does not qualify. Disable it to
+view the strongest remaining comparisons without marking them as plays. Existing
+continuous edge colors apply. If fewer than 20 props qualify, only real eligible
+rows appear. CSV downloads include quote timestamps and matchup sample coverage.
+Game buttons include future sportsbook events that match the selected date's
+ESPN regular-season schedule on home/away teams and tip time (within five
+minutes). Past, postponed, canceled, suspended or delayed events are excluded.
+There is no fallback to a different game, book, one-sided line, stale quote, or
+invented projection. Both paired prices must be current within 15 minutes.
+
+Rankings use automatic rounded minutes (workbook for the first three team games,
+season MPG thereafter), the existing game-five stat/matchup policy, and approved
+manual archetype overrides. The individual player's minutes slider still affects
+that preview only. Zero/unavailable minutes, missing statistical baselines or
+incomplete matchup history exclude a player from this table; the coverage
+expander explains the underlying inputs. Props are loaded only for the selected
+edge game, cached for five minutes, and refreshed by the existing refresh button.

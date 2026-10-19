@@ -1,5 +1,5 @@
 """Streamlit player-stat projections, opponent previews and sportsbook comparison."""
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 import hashlib
@@ -15,6 +15,7 @@ from matchup_data import load_game_logs
 from matchup_projections import assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS, prior_season_profiles
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
+from sportsbook_edges import scheduled_book_games, game_edges
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
                               player_quotes, compare_with_book, comparison_style)
 
@@ -156,7 +157,7 @@ def render_live_dashboard(ui, roster):
                     ui.warning('Some current-season matchup games could not be loaded. Sample counts may be incomplete.')
             except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
                 ui.warning(f'Current-season matchup data unavailable: {exc}')
-    projection_tab, best_tab, archetype_tab = ui.tabs(['Player vs Opponent', "🔥 Today's Best Matchups", 'Archetypes'])
+    projection_tab, best_tab, edges_tab, archetype_tab = ui.tabs(['Player vs Opponent', "🔥 Today's Best Matchups", '💰 Top Sportsbook Edges', 'Archetypes'])
     ui.caption('Last season’s stat rates for team games 1–4; current-season rates blend in from game 5. Opponent tendencies switch to this season after that opponent completes four games. Matchup samples are player-games with at least 5 minutes.')
     with projection_tab:
         team_col, player_col, opponent_col = ui.columns(3)
@@ -300,6 +301,76 @@ def render_live_dashboard(ui, roster):
             with ui.expander('Projected stat lines for these matchups',expanded=True):
                 ui.dataframe(eligible[['Player','Team','Opponent','Projected minutes','PTS','REB','AST','FG3M','STL','BLK','TOV','PRA','Stat baseline','Status']].rename(columns={'FG3M':'3PM'}).round(2),hide_index=True,width='stretch')
             ui.download_button('Download matchup opportunities CSV',eligible.to_csv(index=False),'matchup_opportunities.csv','text/csv')
+    with edges_tab:
+        ui.subheader('💰 Top 20 Sportsbook Edges per Game')
+        ui.caption('Ranked by absolute percent edge versus the juice-adjusted book total, including Overs and Unders. Each row is one player/stat. Uses automatic workbook/season-average minutes and opponent adjustments.')
+        # Tabs execute together; only fetch props for the selected game, never the full slate.
+        try:
+            edge_key = get_odds_api_key()
+            if not edge_key:
+                raise OddsFeedError('Sportsbook feed access is not configured.')
+            edge_events = sportsbook_events(edge_key)
+            now = datetime.now(timezone.utc)
+            future_dates = []
+            for item in edge_events:
+                try:
+                    start = pd.Timestamp(item['commence_time'])
+                    if start.tzinfo is not None and start > pd.Timestamp(now):
+                        future_dates.append(start.tz_convert('America/Denver').date())
+                except (KeyError,ValueError,TypeError):
+                    continue
+            date_col, book_col, direction_col = ui.columns(3)
+            with date_col:
+                edge_date = ui.date_input('Game date',value=min(future_dates) if future_dates else datetime.now(ZoneInfo('America/Denver')).date(),key='edges_date')
+            with book_col:
+                edge_book_name = ui.selectbox('Sportsbook for edges',list(BOOKS),key='edges_book')
+            with direction_col:
+                edge_direction = ui.selectbox('Edge direction',['Both','Over','Under'],key='edges_direction')
+            plays_only = ui.checkbox('Only show plays above 5% edge',value=True,key='edges_plays_only')
+            edge_schedule = today_schedule(SEASON,edge_date)
+            games = scheduled_book_games(edge_events,edge_schedule,now=now)
+            if not games:
+                ui.info('No upcoming regular-season games with a verified sportsbook event were found for this date. Choose another date. Lines are never substituted from a different game.')
+            else:
+                by_id = {game['id']:game for game in games}
+                labels = {game['id']:f"{game['Away']} @ {game['Home']} · {game['GameTimeUTC'].tz_convert('America/Denver'):%I:%M %p %Z}" for game in games}
+                if st.session_state.get('edges_game') not in by_id:
+                    st.session_state['edges_game'] = games[0]['id']
+                game_id = ui.pills('Choose a game',list(by_id),format_func=lambda value:labels[value],selection_mode='single',key='edges_game')
+                if game_id is None:
+                    ui.info('Select a game to see its top edges.')
+                else:
+                    game = by_id[game_id]
+                    matchup_rows = []
+                    for side,opponent in [(game['Home'],game['Away']),(game['Away'],game['Home'])]:
+                        team_projection = projections[projections.Team.eq(side) & projections['Projected minutes'].gt(0)]
+                        if not team_projection.empty:
+                            matchup_rows.append(apply_matchup(team_projection,roster,teams,prior_effects,current_effects,opponent))
+                    payload = sportsbook_props(game_id,BOOKS[edge_book_name],edge_key)
+                    combined = pd.concat(matchup_rows,ignore_index=True) if matchup_rows else pd.DataFrame()
+                    ranked,total_edges = game_edges(combined,payload,game,BOOKS[edge_book_name],now=now,plays_only=plays_only,direction=edge_direction)
+                    ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
+                    ui.caption('Current paired Over/Under prices only; quotes older than 15 minutes are excluded. Refreshes every 5 minutes while open. Edge % is a projection gap, not a win probability or expected betting return.')
+                    if ranked.empty:
+                        ui.info('No eligible edges meet these filters. Props may not be posted yet, quotes may be stale, or projections may lack matchup history. Try another game/book or turn off the 5% filter.')
+                    else:
+                        ui.success(f'Showing {len(ranked)} of {total_edges} eligible player-stat edges')
+                        display_columns = ['Rank','Player','Team','Stat','Play','Projected minutes','Projected','Book line','Book implied total','Edge %','Over odds','Under odds']
+                        edge_display = ranked[display_columns]
+                        ui.dataframe(edge_display.style.apply(comparison_style,axis=1).format(
+                            {'Projected minutes':'{:.1f}','Projected':'{:.2f}','Book line':'{:g}',
+                             'Book implied total':'{:.2f}','Edge %':'{:+.2f}%',
+                             'Over odds':'{:+.0f}','Under odds':'{:+.0f}'},na_rep='—'),hide_index=True,width='stretch')
+                        ui.caption('Only edges strictly above +5% (Over) or below −5% (Under) are marked as plays. Color intensity grows with edge magnitude. Multiple stats for the same player may be correlated.')
+                        ui.download_button('Download this game’s top edges',ranked.to_csv(index=False),f"{game['Away']}_{game['Home']}_top_edges.csv",'text/csv',key='edges_download')
+                    with ui.expander('Game projection coverage'):
+                        if not combined.empty:
+                            ui.dataframe(combined[['Player','Team','Opponent','Projected minutes','Minutes source','Off samples','Def samples','Stat baseline','Matchup data','Status','Matchup status']],hide_index=True,width='stretch')
+                        ui.caption('Players with zero/unavailable minutes, incomplete statistical profiles, or missing archetype matchup history do not enter the rankings. Manual minutes on Player vs Opponent affect that preview only.')
+        except OddsFeedError as exc:
+            ui.info(str(exc))
+        except (requests.RequestException,ValueError,KeyError,TypeError):
+            ui.warning('Game edge rankings are temporarily unavailable. Refresh live data to retry.')
     with archetype_tab:
         with ui.expander('Review the 100 corrected players'):
             audit = pd.read_csv(ROOT / 'data/audit/reviewed_100_players.csv')
