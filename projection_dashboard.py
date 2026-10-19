@@ -254,7 +254,7 @@ def render_live_dashboard(ui, roster):
                 ui.caption(str(exc))
             comparison = compare_with_book(preview,quotes)
             comparison['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(comparison['Book line'],comparison['Over odds'])]
-            display_columns = ['Stat','Baseline','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Play','Change']
+            display_columns = ['Stat','Baseline','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Play']
             display = comparison[display_columns]
             ui.caption('Edge % = (projection ÷ book-implied total − 1) × 100. Over plays require more than +5%; Under plays require less than −5%. Only qualifying edges are shaded, from light to dark as the edge grows. The 5% buffer is your extra projection margin; the implied total already removes bookmaker margin.')
             ui.dataframe(display.style.apply(comparison_style,axis=1).format(
