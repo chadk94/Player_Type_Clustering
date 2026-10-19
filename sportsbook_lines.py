@@ -139,11 +139,27 @@ def player_quotes(payload, player_name, book_key, now=None, max_age_seconds=900)
 
 def compare_with_book(preview, quotes):
     comparison=preview.merge(quotes,on='Stat',how='left',validate='one_to_one')
-    comparison['vs implied']=comparison.Projected-comparison['Book implied total']
+    implied=comparison['Book implied total']
+    valid=implied.gt(0) & np.isfinite(implied) & np.isfinite(comparison.Projected)
+    comparison['Edge %']=np.nan
+    comparison.loc[valid,'Edge %']=(comparison.loc[valid,'Projected']/implied[valid]-1)*100
+    # Round for consistent display and threshold decisions: exactly 5% is not >5%.
+    comparison['Edge %']=comparison['Edge %'].round(2)
+    comparison['Play']=comparison['Edge %'].map(
+        lambda edge: 'Over' if edge>5 else 'Under' if edge < -5 else '')
     return comparison
 
 
 def comparison_style(row):
-    edge=row['vs implied']
-    color='' if pd.isna(edge) else 'background-color: #c8eed2; color: #155b2a' if edge>0 else 'background-color: #f6d2d6; color: #8b1f32' if edge<0 else 'background-color: #eeeeee; color: #333333'
-    return [color if column in ['Projected','vs implied'] else '' for column in row.index]
+    edge=row['Edge %']
+    if pd.isna(edge) or abs(edge)<=5:
+        return ['' for _ in row.index]
+    # Continuous scale: pale at the 5% cutoff, saturated at 25% and beyond.
+    strength=float(np.clip((abs(edge)-5)/20,0,1))
+    pale=np.array([224,244,230] if edge>0 else [253,230,231])
+    deep=np.array([25,135,65] if edge>0 else [194,40,56])
+    rgb=np.rint(pale+(deep-pale)*strength).astype(int)
+    background='#'+''.join(f'{value:02x}' for value in rgb)
+    foreground='#ffffff' if strength>=0.65 else '#143c24' if edge>0 else '#701823'
+    style=f'background-color: {background}; color: {foreground}'
+    return [style if column in ['Edge %','Play'] else '' for column in row.index]

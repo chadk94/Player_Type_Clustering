@@ -211,11 +211,11 @@ def render_live_dashboard(ui, roster):
         except OddsFeedError as exc:
             ui.caption(str(exc))
         comparison = compare_with_book(preview,quotes)
-        display_columns = ['Stat','Baseline','Projected','Book line','Book implied total','vs implied','Change']
+        display_columns = ['Stat','Baseline','Projected','Book line','Book implied total','Edge %','Play','Change']
         display = comparison[display_columns]
-        ui.caption('Green = projection above the book-implied total; red = below. The implied total is a Poisson-model mean calibrated to both over/under prices after removing the bookmaker margin—not the posted betting line.')
+        ui.caption('Edge % = (projection ÷ book-implied total − 1) × 100. Over plays require more than +5%; Under plays require less than −5%. Only qualifying edges are shaded, from light to dark as the edge grows. The 5% buffer is your extra projection margin; the implied total already removes bookmaker margin.')
         ui.dataframe(display.style.apply(comparison_style,axis=1).format(
-            {column:'{:.2f}' for column in display_columns if column!='Stat'},na_rep='—'),hide_index=True,width='stretch')
+            {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %']},'Edge %':'{:+.2f}%'},na_rep='—'),hide_index=True,width='stretch')
         unavailable = comparison.loc[comparison['Book implied total'].isna(),'Stat'].tolist()
         if unavailable:
             ui.caption('No usable current two-sided line for: '+', '.join(unavailable)+'. Unavailable comparisons stay blank.')

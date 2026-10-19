@@ -75,10 +75,29 @@ class SportsbookTests(unittest.TestCase):
         preview=pd.DataFrame({'Stat':['3PM','TOV'],'Projected':[2.7,1.]})
         result=compare_with_book(preview,quotes)
         # 2.7 exceeds posted 2.5, but is below the juice-adjusted implied mean.
-        self.assertLess(result.iloc[0]['vs implied'],0)
-        self.assertIn('#f6d2d6',comparison_style(result.iloc[0])[1])
-        self.assertTrue(pd.isna(result.iloc[1]['vs implied']))
+        self.assertLess(result.iloc[0]['Edge %'],0)
+        self.assertEqual(result.iloc[0]['Play'],'Under')
+        self.assertTrue(any('background-color' in style for style in comparison_style(result.iloc[0])))
+        self.assertEqual(comparison_style(result.iloc[0])[1],'')
+        self.assertTrue(pd.isna(result.iloc[1]['Edge %']))
         self.assertTrue(all(style=='' for style in comparison_style(result.iloc[1])))
+    def test_percent_edge_and_strict_five_percent_play_buffer(self):
+        preview=pd.DataFrame({'Stat':['PTS','REB','AST','3PM','STL','BLK','TOV','PRA'],
+                              'Projected':[105.,105.01,95.,94.99,100.,125.,75.,np.nan]})
+        quotes=pd.DataFrame({'Stat':preview.Stat,'Book implied total':[100.]*8})
+        result=compare_with_book(preview,quotes)
+        self.assertEqual(result['Edge %'].iloc[:7].tolist(),[5.,5.01,-5.,-5.01,0.,25.,-25.])
+        self.assertEqual(result.Play.tolist(),['','Over','','Under','','Over','Under',''])
+        for index in [0,2,4,7]:
+            self.assertTrue(all(style=='' for style in comparison_style(result.iloc[index])))
+        weak=comparison_style(result.iloc[1])
+        strong=comparison_style(result.iloc[5])
+        self.assertNotEqual(weak,strong)
+        self.assertTrue(all(not style for col,style in zip(result.columns,strong) if col not in ['Edge %','Play']))
+        quotes['Book implied total']=0.
+        unavailable=compare_with_book(preview,quotes)
+        self.assertTrue(unavailable['Edge %'].isna().all())
+        self.assertTrue(unavailable.Play.eq('').all())
 
 
 if __name__=='__main__':unittest.main()
