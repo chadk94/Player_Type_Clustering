@@ -2,6 +2,7 @@
 from datetime import datetime
 from pathlib import Path
 import tempfile
+import hashlib
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -9,7 +10,7 @@ import requests
 import streamlit as st
 
 from live_projections import (ESPN, build_projections, fetch_json, load_live_state, parse_schedule)
-from season_pipeline import ROOT, SEASON, OPENING_GAMES
+from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import load_game_logs
 from matchup_projections import assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS, prior_season_profiles
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
@@ -34,7 +35,7 @@ def current_matchup_logs(year, team_ids):
 
 
 @st.cache_data(show_spinner=False)
-def prior_matchup_effects(roster):
+def prior_matchup_effects(roster, role_policy_version):
     logs = pd.read_csv(ROOT / 'data' / 'game_logs_2026.csv.gz', dtype={'GAME_ID':str,'ESPN_PLAYER_ID':str})
     return matchup_effects(assign_game_archetypes(logs, roster))
 
@@ -49,6 +50,7 @@ def heat_color(value):
 
 @st.fragment(run_every=300)
 def render_live_dashboard(ui, roster):
+    roster = apply_roster_rules(roster)
     ui.title(f'🏀 Player Stat Projections ({SEASON})')
     ui.caption(f'Your workbook minutes for each team’s first {OPENING_GAMES} games; season-average minutes from game {OPENING_GAMES + 1}. Counts include completed regular-season team games, not player appearances.')
     if ui.button('Refresh live data'):
@@ -100,7 +102,8 @@ def render_live_dashboard(ui, roster):
         elif fallback is None:
             ui.caption('No RotoWire export has been loaded yet. Missing-profile projections stay unavailable until an authorized export is supplied.')
     projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback)
-    prior_effects = prior_matchup_effects(roster)
+    role_policy_version = hashlib.sha256(b''.join((ROOT / p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_overrides.json','archetype_model.py'])).hexdigest()
+    prior_effects = prior_matchup_effects(roster, role_policy_version)
     current_effects = {}
     if not teams.empty and teams.GAMES_PLAYED.ge(4).any():
         with ui.spinner('Refreshing current-season matchup history…'):
@@ -183,6 +186,11 @@ def render_live_dashboard(ui, roster):
                 ui.dataframe(eligible[['Player','Team','Opponent','Projected minutes','PTS','REB','AST','FG3M','STL','BLK','TOV','PRA','Stat baseline','Status']].rename(columns={'FG3M':'3PM'}).round(2),hide_index=True,width='stretch')
             ui.download_button('Download matchup opportunities CSV',eligible.to_csv(index=False),'matchup_opportunities.csv','text/csv')
     with archetype_tab:
+        with ui.expander('Review the 100 corrected players'):
+            audit = pd.read_csv(ROOT / 'data/audit/reviewed_100_players.csv')
+            ui.write('All 100 previously uncategorized or unnamed assignments have been reviewed. Your manual overrides take precedence. Developing roles remain provisional.')
+            ui.dataframe(audit[['Player','Team','Offense','Defense','Confidence']],hide_index=True,width='stretch')
+            ui.download_button('Download the full 100-player audit',audit.to_csv(index=False),'archetype_audit_100_players.csv','text/csv')
         ui.caption('Approved 2026–27 archetypes and the original workbook minutes. Manual overrides remain authoritative.')
         team = ui.selectbox('Team', ['All'] + sorted(roster.TEAM_ABBREVIATION.unique()), key='archetype_team')
         selected = roster if team == 'All' else roster[roster.TEAM_ABBREVIATION.eq(team)]

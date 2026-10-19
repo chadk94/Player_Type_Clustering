@@ -99,7 +99,7 @@ Other players' assignments and all minutes are unchanged.
   team abbreviations map to stable NBA franchise IDs. Workbook team membership is
   the user's roster scenario and was not independently verified against NBA rosters.
 * Matched **381 players** to archived 2025–26 profiles. Of **285 players above
-  10 projected minutes**, **259 were reclustered** and **26 lack a saved profile and now have approved manual assignments**.
+  10 projected minutes**, **259 had usable feature profiles for named-role assignment** and **26 lack a saved profile and now have approved manual assignments**.
   `preseason_archetypes.csv` includes all 541 players, including missing profiles
   and players outside the model's strict >10-minute cutoff. 318 players have positive
   minutes; 223 have zero. No missing profile is filled with invented numbers.
@@ -131,13 +131,13 @@ Other players' assignments and all minutes are unchanged.
 * `override_verification.csv`: every stored offensive/defensive override and its applied result
   or absence from the workbook.
 * `season_refresh.json`, `minutes_import.json`: season, mode, input and reference
-  hashes, workbook provenance, default assumptions and label alignment maps.
+  hashes, workbook provenance, default assumptions and named-reference model policy.
 
 `SEASON_ID=22026` is the assignment season. `SourceSeasonID=22025` identifies observed
 feature provenance. `FeatureDataStatus=preseason_historical_prior` marks reused
 profiles. Missing profiles have no source season. `AssignmentSource` distinguishes
-`kmeans_aligned`, `manual_override`, `outside_minutes_cutoff` and
-`missing_historical_profile`. Eligibility and profile availability are separate flags.
+`historical_named_role`, `named_reference_centroid`, `analyst_review`,
+`manual_override`, `outside_minutes_cutoff` and `missing_historical_profile`. Eligibility and profile availability are separate flags.
 A manual override can assign a player without model eligibility or a profile.
 
 ## Limitations of “last year's stats”
@@ -154,17 +154,23 @@ based statistical profile is silently introduced. All 26 previously pending rota
 Their underlying historical features remain missing. Full-season 2025–26 features
 can replace the snapshot when available.
 
-The original 34 offensive and 13 defensive features are standardized for KMeans
-(`random_state=42`, `n_init=10`). Cluster counts stay at their historical values.
-Fresh centroids are matched one-to-one to historical centroids using minimum
-squared distance in the reference feature scale. This preserves label continuity
-heuristically; basketball review remains useful. Unnamed historical defensive IDs
-remain visible as `Cluster N (unnamed)`; no new descriptive role is invented.
-The original offensive `Uncategorized` name is preserved.
+The former KMeans/Hungarian alignment has been removed from the validated season runner. It forced dissimilar newly fitted groups onto historical IDs and allowed an old one-player outlier category to absorb 44 players. The original defensive name dictionary also omitted four historical IDs. Numeric cluster IDs were therefore being mistaken for stable basketball roles.
 
-Precedence: KMeans → aligned historical IDs → manual player override → archetype name.
-Observed counts remain divided by observed `MIN` for per-36 features. Projected
-minutes do not replace that denominator or create fake observations.
+`archetype_model.py` now uses the original 34 offensive and 13 defensive features with **fixed, named reference roles**. In preseason prior mode, the same archived player features keep their named historical/reviewed role; changing roster composition or the projected-minutes cutoff does not refit or permute roles. For genuinely new/current feature profiles, standardized distances to fixed named reference centroids provide a role estimate. Centroids use observed profiles with at least 10 MPG and five archived appearances; invalid/unnamed labels cannot be anchors. Automatic guard-sized profiles cannot be assigned center-only categories; explicit human rules can authorize exceptions. No one-to-one matching, requirement to populate every class, or arbitrary raw cluster number is used. These are role estimates, not a guarantee of perfect basketball classification.
+
+Precedence (highest first): **existing user manual override → analyst role review → named historical role (preseason) or fixed named centroid (new features)**. `archetype_overrides.json` is unchanged by the repair. `Uncategorized` remains only a legacy dictionary entry and is ineligible for automatic assignment. Undefined defensive IDs 2/9/10/13 cannot be published. Validation blocks exports and live loading containing unnamed assigned roles. Genuinely missing profiles and players outside the existing >10-minute model cutoff may remain unassigned; they are not silently given invented profiles or catch-all roles.
+
+Observed counts remain divided by observed `MIN` for per-36 features. Projected minutes do not replace that denominator or create fake observations. Full-season statistical-rate projections, RotoWire fallbacks and the game-3/game-5 timing rules are unchanged by this role repair.
+
+### Complete role audit (2026-10-19)
+
+`data/audit/affected_players_before.csv` freezes the original **100 distinct players**: 44 with offensive `Uncategorized`, 62 with unnamed defense, and six in both lists. `archetype_reviews.csv` records an offensive and defensive decision, role rationale, source and confidence for every one of the 100. All have named roles in the rebuilt roster. The audit includes scoring/creation roles, off-ball shooters/cutters, guard versus wing defense, interior defenders and existing manually assigned exceptions; this is a player-by-player semantic review, not a cosmetic renaming of whole mixed clusters.
+
+The same defective fit had changed already-named assignments for 90 other players. These were also checked in `archetype_reference_reviews.csv` while rebuilding the semantic anchors. Examples include restoring a perimeter role for Derrick White, an interior finishing role for Aaron Gordon and rim protection for Victor Wembanyama. All preexisting user overrides remain authoritative. These additional judgments are separately recorded from the requested 100-player audit.
+
+Sources are the immutable archived 2025–26 tracking/shot-profile snapshots and player-role interpretation within the existing archetype vocabulary. These snapshots are partial-season evidence, not newly observed 2026–27 games. Developing or small-sample roles are flagged provisional. The legacy `Spot-Up Role Player` bucket is used for low-usage complementary roles, including cutters; no new archetype vocabulary was invented. All per-player reasons and archived GP/MPG/per-36 evidence are downloadable in `data/audit/reviewed_100_players.csv` and the live **Archetypes → Review the 100 corrected players** expander. `data/audit/additional_90_players.csv` records the additional semantic review. `data/audit/all_assignment_changes.csv` lists actual before/after role changes across the roster, and `review_manifest.json` records source hashes and protected-rule counts.
+
+Reviewed roles also relabel historical opponent samples. Historical players outside the current roster and profiled players below the minutes cutoff are mapped to named reference roles for matchup sample construction; old unnamed IDs cannot survive as hidden statistical groups. Current roster assignments win, and all user rules are reapplied at the live-app boundary. Cached matchup effects include the review/rules/model hash so role changes invalidate stale results.
 
 ## Run or refresh
 
@@ -172,6 +178,7 @@ minutes do not replace that denominator or create fake observations.
 python -m pip install -r requirements.txt
 python import_minutes.py /path/to/Custom_Team_Minutes_2026-10-18.xlsx --output data/preseason
 python preseason_bootstrap.py --minutes data/preseason/projected_minutes.csv --output . --opening-games 3
+python audit_archetypes.py
 python -m unittest discover -s tests -v
 streamlit run main.py
 ```

@@ -8,36 +8,7 @@
     "projected_minutes.csv",
     "team_games.csv"
   ],
-  "label_maps": {
-    "off": {
-      "0": 1,
-      "1": 4,
-      "2": 3,
-      "3": 2,
-      "4": 7,
-      "5": 8,
-      "6": 0,
-      "7": 6,
-      "8": 5,
-      "9": 9
-    },
-    "def": {
-      "0": 5,
-      "1": 1,
-      "2": 8,
-      "3": 2,
-      "4": 6,
-      "5": 7,
-      "6": 0,
-      "7": 9,
-      "8": 3,
-      "9": 10,
-      "10": 11,
-      "11": 4,
-      "12": 13,
-      "13": 12
-    }
-  },
+  "label_maps": {},
   "sha256": {
     "historical_player_data.csv": "bab301eb68303368b87d1b8299eabbdaca6f82bfb5864936b830ac5a6ae92421",
     "projected_minutes.csv": "d0a5b14f4d50f92d6b130744eef511e98cacecde1da28e045e0a67fe2b3a71b6",
@@ -45,6 +16,77 @@
     "/Users/kareemkalil/Documents/Codex/2026-10-19/referenced-chatgpt-conversation-this-is-an/work/Player_Type_Clustering/archetype_overrides.json": "819bfd29dc733c99b8fc191defdeaba30e02ad94bd08d6283e0fce4fc2816504",
     "/Users/kareemkalil/Documents/Codex/2026-10-19/referenced-chatgpt-conversation-this-is-an/work/Player_Type_Clustering/clustering_features.json": "b5f1985ae454dca260a99f5e76fecc56e4733eb5dc19111194d02ba1671c156e"
   },
+  "archetype_models": {
+    "off": {
+      "method": "historical_named_roles",
+      "reference_players": 403,
+      "role_counts": {
+        "0": 62,
+        "1": 25,
+        "2": 48,
+        "4": 79,
+        "5": 40,
+        "6": 70,
+        "7": 18,
+        "8": 27,
+        "9": 34
+      },
+      "eligible_role_ids": [
+        0,
+        1,
+        2,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "forced_cluster_permutation": false,
+      "precedence": [
+        "user_manual_override",
+        "analyst_review",
+        "historical_named_role"
+      ]
+    },
+    "def": {
+      "method": "historical_named_roles",
+      "reference_players": 403,
+      "role_counts": {
+        "0": 54,
+        "1": 30,
+        "3": 22,
+        "4": 45,
+        "5": 39,
+        "6": 68,
+        "7": 49,
+        "8": 18,
+        "11": 36,
+        "12": 42
+      },
+      "eligible_role_ids": [
+        0,
+        1,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        11,
+        12
+      ],
+      "forced_cluster_permutation": false,
+      "precedence": [
+        "user_manual_override",
+        "analyst_review",
+        "historical_named_role"
+      ]
+    }
+  },
+  "archetype_reference_reviews_sha256": "2ec69d7ef070f96843f640e3ea79a83f3a27588bdf7ec1d5f9274b5e57d81864",
+  "archetype_reviews_sha256": "abac4e29852c7f8d4eee72d3d6a1c01edce2c2c195e11bf4184b49e12524939a",
+  "classification_policy": "Named references only; no new KMeans fit or forced label permutation",
   "workbook_source": {
     "workbook": "/Users/kareemkalil/Downloads/Custom_Team_Minutes_2026-10-18.xlsx",
     "sha256": "7e4b810ecb2ea2d1b7f0c32b16dd519900a64043ad149cf033f8d5566c1828cd",

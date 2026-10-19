@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from season_pipeline import (ROOT, SEASON_ID, align_labels, apply_overrides,
+from season_pipeline import (ROOT, SEASON_ID, apply_overrides,
                              choose_minutes, load_rules, read_season_clusters, run)
 
 
@@ -27,7 +27,7 @@ class SeasonPipelineTests(unittest.TestCase):
         rules['OFF_CLUSTER_OVERRIDES'] = {'Example': 2}
         result = apply_overrides(frame, 'off', rules)
         self.assertEqual(result.Cluster.tolist(), [2, 1])
-        self.assertEqual(result.AssignmentSource.tolist(), ['manual_override', 'kmeans_aligned'])
+        self.assertEqual(result.AssignmentSource.tolist(), ['manual_override', 'auto_model'])
 
     def test_first_x_team_games_and_zero_projection(self):
         self.assertEqual(choose_minutes(25, 32, 0, 10), 32)
@@ -38,14 +38,6 @@ class SeasonPipelineTests(unittest.TestCase):
         for value in [-1, np.nan, 49]:
             with self.assertRaises(ValueError):
                 choose_minutes(25, value, 1)
-
-    def test_label_permutation_preserves_meanings(self):
-        reference = pd.DataFrame({'Cluster': [4, 4, 8, 8], 'f': [0., 1., 10., 11.]})
-        new = reference.copy()
-        new.Cluster = [1, 1, 0, 0]
-        result, mapping = align_labels(new, reference, ['f'])
-        self.assertEqual(mapping, {0: 8, 1: 4})
-        self.assertEqual(result.Cluster.tolist(), reference.Cluster.tolist())
 
     def test_reject_historical_exports(self):
         with self.assertRaises(ValueError):

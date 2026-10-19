@@ -1,0 +1,101 @@
+PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PROJECTED_MIN,SourceSeasonID,HasHistoricalProfile,ModelEligibleMinutes,FeatureDataStatus,OffCluster,OffArchetype,OffAssignmentSource,DefCluster,DefArchetype,DefAssignmentSource
+1630700,Dyson Daniels,Dyson Daniels,ATL,1610612737,22026,32.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+1629638,Nickeil Alexander-Walker,Nickeil Alexander-Walker,ATL,1610612737,22026,32.0,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1630598,Aaron Wiggins,Aaron Wiggins,ATL,1610612737,22026,16.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1629111,Jock Landale,Jock Landale,ATL,1610612737,22026,16.0,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1642856,Egor Dëmin,Egor Dëmin,BKN,1610612751,22026,28.0,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1629021,Moritz Wagner,Moritz Wagner,BKN,1610612751,22026,16.0,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1642849,Nolan Traore,Nolan Traore,BKN,1610612751,22026,16.0,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1630573,Sam Hauser,Sam Hauser,BOS,1610612738,22026,21.80612676763386,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1642864,Hugo González,Hugo González,BOS,1610612738,22026,17.954818467574395,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+1641775,Jordan Walsh,Jordan Walsh,BOS,1610612738,22026,10.41225623836702,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+1642851,Kon Knueppel,Kon Knueppel,CHA,1610612766,22026,32.0,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1629675,Naz Reid,Naz Reid,CHA,1610612766,22026,28.0,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1642883,Sion James,Sion James,CHA,1610612766,22026,16.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+203471,Dennis Schröder,Dennis Schröder,CHA,1610612766,22026,12.0,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1641824,Matas Buzelis,Matas Buzelis,CHI,1610612741,22026,30.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1630200,Tre Jones,Tre Jones,CHI,1610612741,22026,22.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1630171,Isaac Okoro,Isaac Okoro,CHI,1610612741,22026,16.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1631212,Peyton Watson,Peyton Watson,CLE,1610612739,22026,29.99429142880953,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1628386,Jarrett Allen,Jarrett Allen,CLE,1610612739,22026,27.99429142880953,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1642281,Jaylon Tyson,Jaylon Tyson,CLE,1610612739,22026,23.99429142880953,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,11.0,POA Defender,manual_override
+1630241,Sam Merrill,Sam Merrill,CLE,1610612739,22026,21.99429142880953,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1630230,Naji Marshall,Naji Marshall,DAL,1610612742,22026,24.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,5.0,Big Wing Defender,kmeans_aligned
+1642258,Zaccharie Risacher,Zaccharie Risacher,DAL,1610612742,22026,24.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1629661,Cameron Johnson,Cameron Johnson,DEN,1610612743,22026,30.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,manual_override
+1631128,Christian Braun,Christian Braun,DEN,1610612743,22026,30.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,12.0,Non-POA Wing,kmeans_aligned
+1642461,Spencer Jones,Spencer Jones,DEN,1610612743,22026,20.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1626145,Tyus Jones,Tyus Jones,DEN,1610612743,22026,12.0,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1631105,Jalen Duren,Jalen Duren,DET,1610612765,22026,30.905303030303035,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1629130,Duncan Robinson,Duncan Robinson,DET,1610612765,22026,26.905303030303035,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1630198,Isaiah Joe,Isaiah Joe,DET,1610612765,22026,19.905303030303035,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1641842,Ronald Holland II,Ronald Holland II,DET,1610612765,22026,19.405303030303035,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+1642450,Daniss Jenkins,Daniss Jenkins,DET,1610612765,22026,17.405303030303035,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1641764,Brandin Podziemski,Brandin Podziemski,GSW,1610612744,22026,32.110354440160286,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+203110,Draymond Green,Draymond Green,GSW,1610612744,22026,28.11035444016029,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,8.0,High Stock + D,kmeans_aligned
+1630314,Brandon Williams,Brandon Williams,GSW,1610612744,22026,16.11035444016029,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1627780,Gary Payton II,Gary Payton II,GSW,1610612744,22026,16.11035444016029,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+1630611,Gui Santos,Gui Santos,GSW,1610612744,22026,14.919120376332277,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1642954,Will Richard,Will Richard,GSW,1610612744,22026,12.11035444016029,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+1631106,Tari Eason,Tari Eason,HOU,1610612745,22026,26.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+203500,Steven Adams,Steven Adams,HOU,1610612745,22026,22.0,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1629614,Andrew Nembhard,Andrew Nembhard,IND,1610612754,22026,30.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1627826,Ivica Zubac,Ivica Zubac,IND,1610612754,22026,30.0,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1626162,Kelly Oubre Jr.,Kelly Oubre Jr.,IND,1610612754,22026,26.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+1627884,Derrick Jones Jr.,Derrick Jones Jr.,LAC,1610612746,22026,25.94557802515804,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,11.0,POA Defender,manual_override
+1627739,Kris Dunn,Kris Dunn,LAC,1610612746,22026,21.94557802515804,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+1629656,Quentin Grimes,Quentin Grimes,LAL,1610612747,22026,30.0,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1629680,Matisse Thybulle,Matisse Thybulle,LAL,1610612747,22026,26.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,11.0,POA Defender,manual_override
+1629012,Collin Sexton,Collin Sexton,LAL,1610612747,22026,14.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1631222,Jake LaRavia,Jake LaRavia,LAL,1610612747,22026,14.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+203924,Jerami Grant,Jerami Grant,MEM,1610612763,22026,24.0,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1641713,GG Jackson,GG Jackson,MEM,1610612763,22026,16.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,5.0,Big Wing Defender,manual_override
+1631200,Kris Murray,Kris Murray,MEM,1610612763,22026,12.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,12.0,Non-POA Wing,kmeans_aligned
+203952,Andrew Wiggins,Andrew Wiggins,MIA,1610612748,22026,30.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1630558,Davion Mitchell,Davion Mitchell,MIA,1610612748,22026,28.0,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1641796,Pelle Larsson,Pelle Larsson,MIA,1610612748,22026,26.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1626171,Bobby Portis,Bobby Portis Jr.,MIA,1610612748,22026,16.0,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1631107,Nikola Jović,Nikola Jović,MIA,1610612748,22026,16.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1627747,Caris LeVert,Caris LeVert,MIL,1610612749,22026,11.5,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1629018,Gary Trent Jr.,Gary Trent Jr.,MIL,1610612749,22026,11.5,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1630183,Jaden McDaniels,Jaden McDaniels,MIN,1610612750,22026,33.99084961873412,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,11.0,POA Defender,manual_override
+1630163,LaMelo Ball,LaMelo Ball,MIN,1610612750,22026,31.990849618734114,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1630245,Ayo Dosunmu,Ayo Dosunmu,MIN,1610612750,22026,27.990849618734114,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1630545,Terrence Shannon Jr.,Terrence Shannon Jr,MIN,1610612750,22026,15.990849618734114,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,12.0,Non-POA Wing,kmeans_aligned
+1630538,Bones Hyland,Bones Hyland,MIN,1610612750,22026,11.990849618734114,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1630529,Herbert Jones,Herbert Jones,NOP,1610612740,22026,28.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+1631097,Bennedict Mathurin,Bennedict Mathurin,NOP,1610612740,22026,24.0,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1628969,Mikal Bridges,Mikal Bridges,NYK,1610612752,22026,32.663636363636364,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1629013,Landry Shamet,Landry Shamet,NYK,1610612752,22026,16.883636363636363,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1630540,Miles McBride,Miles McBride,NYK,1610612752,22026,16.883636363636363,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+203083,Andre Drummond,Andre Drummond,NYK,1610612752,22026,14.883636363636365,22025.0,True,True,preseason_historical_prior,1.0,Athletic Roll Man,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1630631,Jose Alvarado,Jose Alvarado,NYK,1610612752,22026,12.893636363636364,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1641717,Cason Wallace,Cason Wallace,OKC,1610612760,22026,28.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,11.0,POA Defender,kmeans_aligned
+1642349,Ajay Mitchell,Ajay Mitchell,OKC,1610612760,22026,26.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1628392,Isaiah Hartenstein,Isaiah Hartenstein,OKC,1610612760,22026,24.0,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1630532,Franz Wagner,Franz Wagner,ORL,1610612753,22026,32.993206328500605,22025.0,True,True,preseason_historical_prior,5.0,High Usage Wing,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1630217,Desmond Bane,Desmond Bane,ORL,1610612753,22026,32.076240091271025,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1641783,Tristan da Silva,Tristan da Silva,ORL,1610612753,22026,17.9932063285006,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,12.0,Non-POA Wing,kmeans_aligned
+1642859,Jase Richardson,Jase Richardson,ORL,1610612753,22026,11.993206328500603,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1642845,VJ Edgecombe,VJ Edgecombe,PHI,1610612755,22026,32.33223140495868,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1629731,Dean Wade,Dean Wade,PHI,1610612755,22026,17.90495867768595,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1630692,Jordan Goodwin,Jordan Goodwin,PHX,1610612756,22026,18.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+1642346,Ryan Dunn,Ryan Dunn,PHX,1610612756,22026,12.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1641739,Toumani Camara,Toumani Camara,POR,1610612757,22026,34.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1629630,Ja Morant,Ja Morant,POR,1610612757,22026,24.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1627734,Domantas Sabonis,Domantas Sabonis,SAC,1610612758,22026,32.0,22025.0,True,True,preseason_historical_prior,1.0,Athletic Roll Man,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1642363,Nique Clifford,Nique Clifford,SAC,1610612758,22026,24.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1628368,De'Aaron Fox,De'Aaron Fox,SAS,1610612759,22026,30.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1642264,Stephon Castle,Stephon Castle,SAS,1610612759,22026,30.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1630170,Devin Vassell,Devin Vassell,SAS,1610612759,22026,28.0,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1642844,Dylan Harper,Dylan Harper,SAS,1610612759,22026,28.0,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+203084,Harrison Barnes,Harrison Barnes,SAS,1610612759,22026,12.0,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1630193,Immanuel Quickley,Immanuel Quickley,TOR,1610612761,22026,30.2786,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1627751,Jakob Poeltl,Jakob Poeltl,TOR,1610612761,22026,24.8176,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1642347,Jamal Shead,Jamal Shead,TOR,1610612761,22026,23.3176,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1642266,Ja'Kobe Walter,Ja'Kobe Walter,TOR,1610612761,22026,19.9376,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned
+203994,Jusuf Nurkić,Jusuf Nurkić,UTA,1610612762,22026,26.0,22025.0,True,True,preseason_historical_prior,1.0,Athletic Roll Man,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1629004,Svi Mykhailiuk,Svi Mykhailiuk,UTA,1610612762,22026,14.0,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
+1629028,Deandre Ayton,Deandre Ayton,WAS,1610612764,22026,18.0,22025.0,True,True,preseason_historical_prior,8.0,Traditional Center,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned
+1642848,Tre Johnson,Tre Johnson,WAS,1610612764,22026,18.0,22025.0,True,True,preseason_historical_prior,4.0,Spot-Up Role Player,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
+1641731,Bilal Coulibaly,Bilal Coulibaly,WAS,1610612764,22026,16.0,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,6.0,Long Wing/Secondary POA,kmeans_aligned

@@ -7,9 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import linear_sum_assignment
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
+from archetype_model import apply_reviews, assign_named_roles, validate_named_roles
 
 ROOT = Path(__file__).resolve().parent
 SEASON = os.environ.get('NBA_SEASON', '2026-27')
@@ -27,19 +25,21 @@ def read_season_clusters(path):
     frame = pd.read_csv(path)
     if frame.empty or not frame.SEASON_ID.eq(SEASON_ID).all():
         raise ValueError(f'{path} is not a complete {SEASON} export; run season_pipeline.py')
+    side = 'def' if Path(path).name.startswith('def_') else 'off'
+    validate_named_roles(frame, side, load_rules())
     return frame
 
 
 def apply_overrides(frame, side, rules=None):
     """Manual assignment wins after automatic semantic label alignment."""
-    frame = frame.copy()
     rules = rules or load_rules()
+    frame = apply_reviews(frame, side, rules)
     overrides = rules.get(f'{side.upper()}_CLUSTER_OVERRIDES', {})
     mask = frame.PLAYER_NAME.isin(overrides)
     frame.loc[mask, 'Cluster'] = frame.loc[mask, 'PLAYER_NAME'].map(overrides)
     names = rules[f'{side.upper()}_CLUSTER_NAMES']
     frame['Archetype'] = frame.Cluster.map(lambda x: names.get(str(int(x)), f'Cluster {int(x)} (unnamed)') if pd.notna(x) else None)
-    frame['AssignmentSource'] = np.where(mask, 'manual_override', frame.get('AssignmentSource', 'kmeans_aligned'))
+    frame['AssignmentSource'] = np.where(mask, 'manual_override', frame.get('AssignmentSource', 'auto_model'))
     return frame
 
 
@@ -87,19 +87,6 @@ def validate_minutes(minutes_path, games_path):
     return minutes, counts
 
 
-def align_labels(frame, reference, features):
-    """One-to-one nearest historical centroids retain named archetype meanings."""
-    labels = sorted(reference.Cluster.unique())
-    scaler = StandardScaler().fit(reference[features])
-    old = scaler.transform(reference.groupby('Cluster')[features].mean().loc[labels])
-    new = scaler.transform(frame.groupby('Cluster')[features].mean())
-    rows, cols = linear_sum_assignment(((new[:, None] - old[None, :]) ** 2).sum(axis=2))
-    mapping = {int(r): int(labels[c]) for r, c in zip(rows, cols)}
-    result = frame.copy()
-    result['Cluster'] = result.Cluster.map(mapping)
-    return result, mapping
-
-
 def run(input_path, minutes_path, games_path, output, window=OPENING_GAMES, prior_season_id=None):
     data = pd.read_csv(input_path)
     expected_season = SEASON_ID if prior_season_id is None else prior_season_id
@@ -139,16 +126,14 @@ def run(input_path, minutes_path, games_path, output, window=OPENING_GAMES, prio
         if data.empty or not np.isfinite(data[features].to_numpy(dtype=float)).all():
             raise ValueError(f'Missing or nonfinite {side} features; no silent zero imputation')
         reference = pd.read_csv(ROOT / 'references' / filename)
-        k = reference.Cluster.nunique()
-        if len(data) < k:
-            raise ValueError(f'Need at least {k} qualified players for {side}')
-        result = data.copy()
-        result['Cluster'] = KMeans(n_clusters=k, random_state=42, n_init=10).fit_predict(StandardScaler().fit_transform(data[features]))
-        if result.Cluster.nunique() != k:
-            raise ValueError('Insufficient distinct player profiles')
-        result, mapping = align_labels(result, reference, features)
-        audit['label_maps'][side] = mapping
-        exports[filename] = apply_overrides(result, side)
+        result, model_info = assign_named_roles(data, reference, features, side,
+                                                load_rules(), apply_overrides,
+                                                prior_mode=prior_season_id is not None)
+        audit.setdefault('archetype_models', {})[side] = model_info
+        exports[filename] = result
+    audit['archetype_reference_reviews_sha256'] = hashlib.sha256((ROOT / 'archetype_reference_reviews.csv').read_bytes()).hexdigest()
+    audit['archetype_reviews_sha256'] = hashlib.sha256((ROOT / 'archetype_reviews.csv').read_bytes()).hexdigest()
+    audit['classification_policy'] = 'Named references only; no new KMeans fit or forced label permutation'
     # Validate both models before writing either export.
     destination = Path(output)
     destination.mkdir(parents=True, exist_ok=True)
@@ -156,6 +141,22 @@ def run(input_path, minutes_path, games_path, output, window=OPENING_GAMES, prio
         frame.to_csv(destination / filename, index=False)
     (destination / 'season_refresh.json').write_text(json.dumps(audit, indent=2) + '\n')
     return exports
+
+
+
+def apply_roster_rules(roster):
+    """Enforce reviewed roles and user overrides at the live-app boundary too."""
+    result=roster.copy()
+    rules=load_rules()
+    for kind in ['Off','Def']:
+        frame=result[['PLAYER_ID','PLAYER_NAME',f'{kind}Cluster',f'{kind}AssignmentSource']].rename(
+            columns={f'{kind}Cluster':'Cluster',f'{kind}AssignmentSource':'AssignmentSource'})
+        final=apply_overrides(frame,kind.lower(),rules)
+        validate_named_roles(final,kind.lower(),rules)
+        result[f'{kind}Cluster']=final.Cluster
+        result[f'{kind}Archetype']=final.Archetype
+        result[f'{kind}AssignmentSource']=final.AssignmentSource
+    return result
 
 
 if __name__ == '__main__':

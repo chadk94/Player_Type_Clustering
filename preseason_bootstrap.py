@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from season_pipeline import ROOT, SEASON_ID, OPENING_GAMES, apply_overrides, load_rules, run
+from archetype_model import validate_named_roles
 
 
 def bootstrap(minutes_path, output, window=OPENING_GAMES):
@@ -52,10 +53,12 @@ def bootstrap(minutes_path, output, window=OPENING_GAMES):
         model = exports[filename].set_index('PLAYER_ID')
         result = base.copy()
         result['Cluster'] = result.PLAYER_ID.map(model.Cluster)
-        result['AssignmentSource'] = np.select(
+        result['AssignmentSource'] = result.PLAYER_ID.map(model.AssignmentSource)
+        result['AssignmentSource'] = result.AssignmentSource.fillna(pd.Series(np.select(
             [result.Cluster.notna(), ~result.ModelEligibleMinutes],
-            ['kmeans_aligned', 'outside_minutes_cutoff'], default='missing_historical_profile')
+            ['auto_model', 'outside_minutes_cutoff'], default='missing_historical_profile'), index=result.index))
         result = apply_overrides(result, side, rules)
+        validate_named_roles(result, side, rules)
         result['ArchetypeStatus'] = np.where(result.Cluster.notna(), 'assigned_provisional', result.AssignmentSource)
         result.to_csv(output / filename, index=False)
         report[f'{side.title()}Cluster'] = result.Cluster

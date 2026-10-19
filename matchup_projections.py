@@ -3,7 +3,8 @@ import json
 import numpy as np
 import pandas as pd
 from live_projections import STAT_NAMES, name_key
-from season_pipeline import ROOT
+from season_pipeline import ROOT, apply_overrides, load_rules
+from archetype_model import assign_named_roles, validate_named_roles
 
 OFF_STATS = ['PTS','AST','OREB','FGM','FGA','FG3M','FG3A','FTM','FTA','TOV']
 DEF_STATS = ['DREB','STL','BLK']
@@ -13,24 +14,36 @@ START_GAME = 5
 
 def assign_game_archetypes(logs, roster):
     """Current approved labels win; archived labels cover former NBA players."""
-    off = pd.read_csv(ROOT / 'references/player_clusters_detailed.csv')
-    defense = pd.read_csv(ROOT / 'references/def_player_clusters_detailed.csv')
-    archived = off[['PLAYER_ID','PLAYER_NAME','Cluster']].rename(columns={'Cluster':'OffCluster'})
-    archived = archived.merge(defense[['PLAYER_ID','Cluster']].rename(columns={'Cluster':'DefCluster'}),on='PLAYER_ID',how='left')
-    archived = archived[~archived.PLAYER_ID.isin(roster.PLAYER_ID)]
-    labels = pd.concat([roster[['PLAYER_ID','PLAYER_NAME','OffCluster','DefCluster']],archived],ignore_index=True)
-    overrides = json.loads((ROOT / 'archetype_overrides.json').read_text())
+    rules = load_rules()
+    features = json.loads((ROOT / 'clustering_features.json').read_text())
+    # Former/low-minute players also need semantic roles before entering matchup
+    # samples. Raw archived unnamed IDs must not form separate hidden groups.
+    archives = []
+    for side, filename in [('off','player_clusters_detailed.csv'),('def','def_player_clusters_detailed.csv')]:
+        reference = pd.read_csv(ROOT / 'references' / filename)
+        assigned, _ = assign_named_roles(reference, reference, features[f'cluster_players_{side}'],
+                                         side, rules, apply_overrides, prior_mode=True)
+        archives.append(assigned[['PLAYER_ID','PLAYER_NAME','Cluster']].rename(columns={'Cluster':f'{side.title()}Cluster'}))
+    archived = archives[0].merge(archives[1][['PLAYER_ID','DefCluster']],on='PLAYER_ID',validate='one_to_one')
+    # A low-minute player may lack a roster assignment but have real historical
+    # features. Use that player's reviewed/named historical role for samples.
+    labels = roster[['PLAYER_ID','PLAYER_NAME','OffCluster','DefCluster']].copy()
+    historical = archived.set_index('PLAYER_ID')
     for kind in ['Off','Def']:
-        mapping = overrides[f'{kind.upper()}_CLUSTER_OVERRIDES']
-        for index,row in labels.iterrows():
-            if row.PLAYER_NAME in mapping:
-                labels.loc[index,f'{kind}Cluster'] = mapping[row.PLAYER_NAME]
+        labels[f'{kind}Cluster'] = labels[f'{kind}Cluster'].fillna(labels.PLAYER_ID.map(historical[f'{kind}Cluster']))
+    archived = archived[~archived.PLAYER_ID.isin(roster.PLAYER_ID)]
+    labels = pd.concat([labels,archived],ignore_index=True)
+    for kind in ['Off','Def']:
+        final = apply_overrides(labels.rename(columns={f'{kind}Cluster':'Cluster'}),kind.lower(),rules)
+        validate_named_roles(final,kind.lower(),rules)
+        labels[f'{kind}Cluster'] = final.Cluster
     keys = []
     for row in labels.itertuples():
         keys.append({'_key':name_key(row.PLAYER_NAME),'OffCluster':row.OffCluster,'DefCluster':row.DefCluster})
     for row in roster.itertuples():
         if hasattr(row,'WorkbookPlayerName'):
-            keys.append({'_key':name_key(row.WorkbookPlayerName),'OffCluster':row.OffCluster,'DefCluster':row.DefCluster})
+            finalized = labels.loc[labels.PLAYER_ID.eq(row.PLAYER_ID)].iloc[0]
+            keys.append({'_key':name_key(row.WorkbookPlayerName),'OffCluster':finalized.OffCluster,'DefCluster':finalized.DefCluster})
     lookup = pd.DataFrame(keys).drop_duplicates()
     lookup = lookup[~lookup._key.duplicated(keep=False)]
     frame = logs.copy()
