@@ -1,11 +1,12 @@
 import unittest
+from datetime import datetime,timezone
 
 import numpy as np
 import pandas as pd
 
 from import_minutes import TEAM_IDS
 from live_projections import (STAT_NAMES, build_projections, match_player_stats,
-                              parse_player_summary, parse_schedule, parse_standings)
+                              parse_player_summary, parse_schedule, parse_standings, next_regular_season_game)
 
 
 class LiveProjectionTests(unittest.TestCase):
@@ -128,6 +129,19 @@ class LiveProjectionTests(unittest.TestCase):
         event['season']['type'] = 2
         event['status']['type']['completed'] = True
         self.assertTrue(parse_schedule({'events':[event]},2027).empty)
+    def test_next_opponent_uses_first_future_regular_game_not_list_order(self):
+        now=datetime(2026,10,19,19,tzinfo=timezone.utc)
+        def event(day, opponent='MIA',year=2027,kind=2,status='STATUS_SCHEDULED',completed=False):
+            return {'id':str(day)+opponent,'date':f'2026-10-{day:02d}T23:00:00Z',
+                    'season':{'year':year},'seasonType':{'type':kind},
+                    'competitions':[{'status':{'type':{'name':status,'completed':completed}},
+                    'competitors':[{'team':{'abbreviation':'ATL'}},{'team':{'abbreviation':opponent}}]}]}
+        payload={'events':[event(24,'NYK'),event(18),event(20,'BOS',kind=1),
+                           event(20,'DEN',status='STATUS_POSTPONED'),event(20,'CHI',year=2026),
+                           event(20,'CLE',completed=True),event(21,'MIA')]}
+        self.assertEqual(next_regular_season_game(payload,2027,'ATL',now)['Opponent'],'MIA')
+        self.assertIsNone(next_regular_season_game(payload,2027,'LAL',now))
+        self.assertIsNone(next_regular_season_game({'events':[]},2027,'ATL',now))
 
 
 if __name__ == '__main__':

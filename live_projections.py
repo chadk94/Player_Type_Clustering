@@ -218,3 +218,29 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
             row['PRA'] = np.nan
         output.append(row)
     return pd.DataFrame(output)
+
+
+def next_regular_season_game(payload, season_year, team_abbreviation, now=None):
+    """Earliest verified future regular-season game, independent of response order."""
+    now = now or datetime.now(timezone.utc)
+    games=[]
+    for event in payload.get('events',[]):
+        try:
+            if event.get('season',{}).get('year') != season_year or int(event.get('seasonType',{}).get('type',0)) != 2:
+                continue
+            competition=event['competitions'][0]
+            status=competition.get('status',{}).get('type',{})
+            if status.get('completed') or status.get('name') in ['STATUS_POSTPONED','STATUS_CANCELED','STATUS_CANCELLED','STATUS_SUSPENDED']:
+                continue
+            start=datetime.fromisoformat(event['date'].replace('Z','+00:00'))
+            if start.tzinfo is None or start<=now:
+                continue
+            participants=competition['competitors']
+            abbreviations=[ALIASES.get(p['team']['abbreviation'],p['team']['abbreviation']) for p in participants]
+            if len(abbreviations)!=2 or team_abbreviation not in abbreviations or any(t not in TEAM_IDS for t in abbreviations):
+                continue
+            opponent=next(t for t in abbreviations if t != team_abbreviation)
+            games.append({'Opponent':opponent,'GameTimeUTC':start.astimezone(timezone.utc).isoformat(),'GameID':str(event['id'])})
+        except (KeyError,ValueError,TypeError,StopIteration):
+            continue
+    return min(games,key=lambda game:game['GameTimeUTC']) if games else None
