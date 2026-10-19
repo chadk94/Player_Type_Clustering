@@ -46,18 +46,24 @@ class LiveProjectionTests(unittest.TestCase):
         result = self.project(0,current=no_current,history=no_history)
         self.assertTrue(pd.isna(result.PTS))
         self.assertIn('Needs statistical profile',result.Status)
-        result = self.project(1,history=no_history)
-        self.assertEqual(result.PTS,0.)  # A real workbook zero still takes precedence.
+        self.assertEqual(self.project(2).PTS,0.)  # Workbook zero takes precedence in opening window.
         self.roster.PROJECTED_MIN = 32.
-        self.assertEqual(self.project(1,history=no_history).PTS,16.)
+        self.assertTrue(pd.isna(self.project(1,history=no_history).PTS))
+        self.assertEqual(self.project(4,history=no_history).PTS,12.)
 
     def test_rate_blend_does_not_replace_observed_denominator(self):
         self.current.loc[0,'PTS'] = 24.
-        result = self.project(0)
+        result = self.project(4)
         weight = 48 / (48 + 200)
         expected_rate = (1-weight) * (10/20) + weight * (24/24)
-        self.assertAlmostEqual(result.PTS, expected_rate * 32)
+        self.assertAlmostEqual(result.PTS, expected_rate * 24)
         self.assertAlmostEqual(result.PRA,result.PTS+result.REB+result.AST)
+
+    def test_stat_rates_wait_until_team_game_five(self):
+        self.current.loc[0,'PTS'] = 24.
+        self.assertEqual(self.project(2).PTS,16.)
+        self.assertEqual(self.project(3).PTS,12.)
+        self.assertGreater(self.project(4).PTS,12.)
 
     def test_ambiguous_names_and_unknown_team_counts_are_unavailable(self):
         duplicate = pd.concat([self.current,self.current.assign(ESPN_PLAYER_ID='200')])

@@ -145,7 +145,7 @@ def match_player_stats(roster, current):
     return matches
 
 
-def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None):
+def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5):
     """Workbook MPG for games 1–3, season MPG for game 4 onward; no fabricated fallbacks."""
     if opening_games < 0 or prior_minutes < 0:
         raise ValueError('Projection settings must be nonnegative')
@@ -174,7 +174,7 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
                'Season appearances':0 if observed is None else observed.GP}
         total_current_minutes = 0 if observed is None else observed.MIN * observed.GP
         prior_ok = profile is not None and pd.notna(profile.MIN) and profile.MIN > 0
-        current_ok = observed is not None and total_current_minutes > 0
+        current_ok = observed is not None and total_current_minutes > 0 and played is not None and played >= stats_start_game - 1
         prior_label = profile.get('BaselineLabel') if prior_ok else None
         if not isinstance(prior_label,str) or not prior_label:
             prior_label = '2025–26 archived snapshot'

@@ -41,6 +41,9 @@ class RotoWireFallbackTests(unittest.TestCase):
         row = build_projections(self.roster,self.history,teams,observed,fallback=fallback).iloc[0]
         self.assertEqual(row['Projected minutes'],24.)
         self.assertEqual(row['Minutes source'],'Season average')
+        self.assertEqual(row['Stat baseline'],'RotoWire 2026–27 projection')
+        teams.GAMES_PLAYED = 4
+        row = build_projections(self.roster,self.history,teams,observed,fallback=fallback).iloc[0]
         self.assertEqual(row['Stat baseline'],'RotoWire projection + current season')
 
     def test_existing_historical_profile_takes_precedence(self):

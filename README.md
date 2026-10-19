@@ -6,7 +6,7 @@ This update uses the user's 2026-10-18 minutes workbook and the repository's sav
 
 ## Live player-stat projections
 
-The deployed app now opens **Player Stat Projections**, with the original roster
+The deployed app now opens **Player vs Opponent**, with the original roster
 available in a separate **Archetypes** tab. Live regular-season records and player
 summaries refresh every five minutes while the page is open; a manual refresh button
 clears the caches. Public ESPN endpoints provide the data because the official NBA
@@ -19,19 +19,24 @@ The player’s season MPG divides minutes by appearances, excluding DNPs; the te
 count is not the denominator. There is no post-window fallback to workbook minutes
 for a player without matched season appearances. Unknown values remain blank.
 
-Per-game stat estimates use prior-season archived per-minute rates multiplied by
-the selected minutes. As actual regular-season minutes accumulate, current-season
+Per-game stat estimates use full 2025–26 regular-season per-minute rates multiplied by
+the selected minutes. These stay on the prior through team game 4. From game 5, current-season
 per-minute rates receive weight `current minutes / (current minutes + 200)`; the
 200-minute prior weight is an explicit smoothing assumption, separate from the
 user’s three-game minutes rule. Players without a prior profile can receive estimates
-from observed current-season stats once available; a manual archetype alone cannot
+from observed current-season stats from team game 5; a manual archetype alone cannot
 create numeric rates. Counts, minutes sources, statistical baselines and missing-data
 statuses are shown per player. Workbook zeroes are retained during the opening window.
 
-These are baseline estimates: no opponent, pace, injury or starting-lineup adjustments
-are applied. The schedule provides opponent/venue context, not an adjustment factor.
-The app can filter today’s uncompleted regular-season games; with no games it still
-shows clearly labeled per-game previews. Rosters remain the user’s workbook scenario.
+The **Player vs Opponent** tab selects a player and any other team, with an opponent-adjustment toggle and baseline/adjusted stat comparison. The **Today’s Best Matchups** tab uses the day’s verified upcoming regular-season schedule (date selectable), ranks by any supported percentage, includes a negative-matchup toggle and minimum-sample filter, and displays a green/red heatmap, home/away, archetypes, sample counts, projected lines and CSV download. Empty slates stay empty; choose another date for previews. Rosters remain the user's workbook scenario, not confirmed lineups.
+
+`matchup_projections.py` restores the legacy app's per-36 archetype-versus-opponent model. Only player-games with at least five minutes qualify. Each archetype's mean per-36 rate against an opponent is compared with its overall mean; deviations decay with half-lives of 15 samples for AST, 10 for OREB/DREB/STL/BLK and 999 for other stats, then shrink toward zero with three neutral samples. Offensive clusters drive PTS/AST/OREB/shooting/TOV; defensive clusters drive DREB/STL/BLK. Three-point makes use the attempts percentage to preserve individual conversion rates. REB = OREB + DREB and PRA = PTS + REB + AST. Sample counts are **player-games**, not unique team games. Missing/zero cluster baselines or missing matchup history remain blank, never an assumed neutral adjustment.
+
+**Game-5 policy:** player stat-rate blending begins after the player's team completes four games; opponent tendencies use last season until the opponent completes four games, then use only current-season games. The minutes boundary remains game 4. This separates a player's rate sample from the opponent's defensive sample and lets teams cross the boundary independently. Current samples remain small, so the model retains neutral shrinkage and exposes counts. No pace, injury, starting-lineup or home-court adjustment is applied.
+
+`data/game_logs_2026.csv.gz` contains 26,547 player appearances across all **1,230 2025–26 regular-season games**, retrieved 2026-10-19 from ESPN team schedules and summary box scores. Each of 30 teams has 82 games. The NBA Cup Championship is explicitly excluded even though ESPN tags it season type 2. Source details are in `data/game_logs_2026.csv.source.json`. Current approved archetypes/manual overrides label these historical appearances; archived labels cover players outside the current roster. Exact unambiguous canonical/workbook name matching links providers; unmatched players do not contribute cluster samples. Full-season averages derived from these box scores supersede partial archived stat baselines where matched; archived feature data remains unchanged for clustering. RotoWire still covers players without actual prior-season profiles.
+
+Rebuild the historical snapshot with `python matchup_data.py --year 2026 --cache /path/to/local/boxscore-cache`. The cache holds raw source JSON outside the repository. Current-season schedules/box scores refresh every five minutes once a team reaches the matchup boundary; completed box scores are cached locally to avoid downloading them again. Every box score must match the requested season, type and completed status. Partial feed failures produce a visible warning.
 
 Data guards require all 30 current-season regular-season team records. ESPN may
 silently return last year’s player summaries before games exist; the app explicitly
@@ -225,7 +230,7 @@ password or uploaded subscriber file is stored in GitHub. An optional normalized
 Only players without usable historical profiles use the RotoWire baseline. The
 per-minute statistical rates still scale to the user's selected minutes. RotoWire
 minutes never override workbook minutes in games 1–3 or season MPG from game 4.
-Current observations gradually replace the RotoWire prior using the same 200-minute
+From team game 5, current observations gradually replace the RotoWire prior using the same 200-minute
 weight. All rows identify RotoWire as a forecast source, not actual prior-season stats.
 
 An existing authorized RotoWire export was found in the user's Downloads directory:

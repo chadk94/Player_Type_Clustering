@@ -1,0 +1,15 @@
+{
+  "season_ending_year": 2026,
+  "scheduled_completed_games": 1231,
+  "loaded_games": 1230,
+  "player_games": 26547,
+  "errors": [],
+  "retrieved_at": "2026-10-19T18:07:04.902779+00:00",
+  "source": "ESPN team schedules and completed regular-season summary box scores",
+  "endpoint": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event={event_id}",
+  "excluded_non_statistical_games": [
+    "401809839: NBA Cup Championship"
+  ],
+  "sha256": "6ab1009d50eadb32f13e96b035bbea49f6880b61069e1b172dbe00dbeb6089b5",
+  "coverage": "All 30 NBA teams: 82 regular-season games each. Only unambiguously matched, classified players contribute to archetype effects."
+}
