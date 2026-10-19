@@ -52,6 +52,27 @@ class GameEdgeTests(unittest.TestCase):
         self.assertTrue(ranked.Projected.eq(20.).all())
         self.assertEqual(set(ranked['Matchup rating']),{'3 ↔️'})
 
+    def test_assist_and_pra_edges_use_final_totals_but_keep_opponent_ratings(self):
+        import copy
+        self.players=self.players.iloc[:2].copy()
+        for market in ['player_assists','player_points_rebounds_assists']:
+            quote=copy.deepcopy(self.payload['bookmakers'][0]['markets'][0])
+            quote['key']=market
+            self.payload['bookmakers'][0]['markets'].append(quote)
+        self.players['Baseline AST']=5.
+        self.players['Pre-team AST']=5.
+        self.players['AST']=8.
+        self.players['Baseline PTS']=10.
+        self.players['Baseline REB']=5.
+        self.players['Pre-market PRA']=20.
+        self.players['PRA']=28.
+        ranked,_=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,stats=['AST','PRA'])
+        self.assertEqual(set(ranked.Stat),{'AST','PRA'})
+        self.assertTrue(ranked.loc[ranked.Stat.eq('AST'),'Projected'].eq(8.).all())
+        self.assertTrue(ranked.loc[ranked.Stat.eq('PRA'),'Projected'].eq(28.).all())
+        self.assertEqual(set(ranked['Matchup rating']),{'3 ↔️'})
+        self.assertTrue(ranked['Pre-team AST'].eq(5.).all())
+
     def test_direction_and_optional_subthreshold_rows(self):
         under,_=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,direction='Under')
         self.assertTrue(under['Edge %'].lt(-5).all())

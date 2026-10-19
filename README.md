@@ -435,10 +435,10 @@ points = (total − home spread)/2; away = (total + home spread)/2. Each player'
 PTS is multiplied by market team points / the full positive-minute team's model
 PTS. There is no partial blend. No intermediate rounding is used, so each team
 matches the market total before display rounding. Original point shares remain
-intact. REB, AST, 3PM, STL, BLK, TOV, minutes and archetypes are unchanged.
-PRA is recalculated as market-adjusted PTS + existing REB + existing AST.
-Points and PRA edges/ranks use these updated projections. Matchup ratings use
-pre-market PTS/PRA, so market scaling does not change the opponent-only rating.
+intact. This points step does not scale other stats. The team assist adjustment
+below then updates AST. Final PRA = market-adjusted PTS + existing REB + updated
+AST. Points, assists and PRA edges/ranks use these final projections. Matchup
+ratings retain the original opponent-only PTS/AST/PRA before team adjustments.
 
 Fresh same-event, same-book paired spreads/totals are required; posted game
 lines are used directly, not a juice-derived game mean. Quotes older than 15
@@ -450,3 +450,45 @@ refresh policy. The player slider updates that player's contribution in the full
 team denominator before scaling; other session slider values do not affect this
 preview or the automatic-minute edge rankings. Disabling opponent adjustments
 uses the unadjusted team baseline as the denominator; market matching still applies.
+
+### Team assists with normalized archetype shares
+
+Both Player vs Opponent and Top Sportsbook Edges use the same assist calculation
+after points calibration. Historical rates use all player appearances across the
+validated 1,230-game **2025–26 regular season**, with 82 games per team, from
+`data/game_logs_2026.csv.gz`. Team totals include appearances shorter than five
+minutes and players without archetype assignments. Rates are ratios of season
+totals, not averages of individual percentages. Historical team/opponent records
+are used, independently of current workbook team membership and manual overrides.
+
+* Expected assisted-basket rate = 50% × team AST/FGM + 50% × opponent AST
+  allowed/FGM allowed.
+* Expected team FGM = selected sportsbook's implied team points / [50% × team
+  PTS/FGM + 50% × opponent PTS allowed/FGM allowed]. The total-points-to-FGM ratio
+  includes free throws and the mix of two- and three-point baskets. This is an
+  internal estimate used for assists; player shooting projections are unchanged.
+* Team AST target = expected assisted-basket rate × expected team FGM.
+* Player AST = team AST target × existing opponent-adjusted player AST / sum of
+  existing opponent-adjusted AST for the full positive-minute roster.
+
+Thus player assists sum exactly to the team target before display rounding.
+Shared defensive multipliers cancel in the normalized shares; relative archetype
+differences remain. Equivalently, each archetype modifier is divided by the team's
+baseline-assist-weighted average modifier. No second archetype multiplier is
+applied after allocation. Custom minutes update the selected player's production
+and share in the full roster; the edges page retains automatic minutes. With the
+opponent-adjustment toggle off, the allocation uses unadjusted player shares.
+
+The 50/50 blends and last season's team styles are explicit modeling assumptions,
+not sportsbook-published assist totals or optimized weights. Team-target rates
+remain on 2025–26 until that policy is revised; the existing game-5 player-rate
+and opponent-archetype policies still govern the allocation weights. Roster
+turnover can make last year's team style less representative.
+
+Fresh verified game lines are required, using the existing book/event/freshness
+checks. Missing rates, invalid minutes, or incomplete positive-minute AST/PTS/REB
+coverage retain that team's existing assist estimate, with an explanatory caption;
+another team's valid adjustment can still apply. Zero-minute players receive no
+allocation. REB, 3PM, STL, BLK, TOV and manual archetypes remain unchanged. PRA
+always combines final PTS + REB + AST. Projection and edge CSVs retain the original
+AST, team target, allocation factor, expected FGM and player share for auditing.

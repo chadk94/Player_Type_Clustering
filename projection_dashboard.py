@@ -16,10 +16,11 @@ from matchup_projections import assign_game_archetypes, matchup_effects, apply_m
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
 from market_points import market_targets, apply_market_points
+from team_assists import historical_assist_rates, apply_team_assists
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS
 from projection_presentation import over_line_label, matchup_rating
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
-                              player_quotes, compare_with_book, comparison_style)
+                              player_quotes, compare_with_book, comparison_style, TEAM_NAMES)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -86,19 +87,36 @@ def sportsbook_game_lines(event_id, bookmaker, _api_key):
                      bookmakers=bookmaker,markets='spreads,totals',oddsFormat='american')
 
 
-def market_points_preview(ui, frame, event, book, api_key):
+@st.cache_data(show_spinner=False)
+def prior_team_assist_rates():
+    logs = pd.read_csv(ROOT / 'data' / 'game_logs_2026.csv.gz', dtype={'GAME_ID':str})
+    return historical_assist_rates(logs, expected_games=82)
+
+
+def team_projection_preview(ui, frame, event, book, api_key):
     try:
-        targets=market_targets(sportsbook_game_lines(event['id'],book,api_key),event,book)
-        adjusted,summary,issues=apply_market_points(frame,targets)
-        if not summary.empty:
-            details=[f"{r.Team}: {r['Original PTS']:.2f} → {r['Market team total']:.2f} points ({(r.Factor-1)*100:+.2f}%)" for _,r in summary.iterrows()]
-            ui.caption('Full market adjustment — points only · '+'; '.join(details)+'. PRA uses the updated points plus unchanged rebounds and assists. All other stats stay unchanged. Matchup ratings remain opponent-only.')
-        if issues:
-            ui.caption('Points kept at model estimates for incomplete coverage: '+'; '.join(issues))
-        return adjusted
+        targets = market_targets(sportsbook_game_lines(event['id'],book,api_key),event,book)
     except (OddsFeedError,ValueError,KeyError,TypeError,AttributeError):
-        ui.caption('Market points adjustment unavailable: no usable current spread/total for this sportsbook and game. Points remain at model estimates.')
+        ui.caption('Team points and assist adjustments unavailable: no usable current spread/total for this sportsbook and game. Existing model estimates are retained.')
         return frame
+    adjusted,summary,issues = apply_market_points(frame,targets)
+    if not summary.empty:
+        details = [f"{r.Team}: {r['Original PTS']:.2f} → {r['Market team total']:.2f} points ({(r.Factor-1)*100:+.2f}%)" for _,r in summary.iterrows()]
+        ui.caption('Full market points adjustment · '+'; '.join(details)+'.')
+    if issues:
+        ui.caption('Points kept at model estimates for incomplete coverage: '+'; '.join(issues))
+    try:
+        home,away = TEAM_NAMES[event['home_team']],TEAM_NAMES[event['away_team']]
+        adjusted,assist_summary,assist_issues = apply_team_assists(adjusted,targets,prior_team_assist_rates(),{home:away,away:home})
+        if not assist_summary.empty:
+            details = [f"{r.Team}: {r['Original AST']:.2f} → {r['Team AST target']:.2f} assists ({(r.Factor-1)*100:+.2f}%)" for _,r in assist_summary.iterrows()]
+            ui.caption('Team assist adjustment · '+'; '.join(details)+'. Uses a 50/50 blend of last season’s team assist rate and opponent assist rate allowed. Player shares preserve relative archetype effects and sum to the team target.')
+        if assist_issues:
+            ui.caption('Assists kept at model estimates for incomplete coverage: '+'; '.join(assist_issues))
+    except (ValueError,KeyError,TypeError,OSError):
+        ui.caption('Team assist adjustment unavailable: historical team rates could not be verified. Existing assist estimates are retained.')
+    ui.caption('PRA uses updated points + rebounds + updated assists. Matchup ratings show the original opponent effect before team adjustments.')
+    return adjusted
 
 
 def mark_manual_minutes(key, slider_key):
@@ -273,14 +291,19 @@ def render_live_dashboard(ui, roster):
                             if column in team_baselines:
                                 team_baselines.loc[team_baselines.PLAYER_ID.eq(player_id),column] = baseline.iloc[0][column]
                     full_team = apply_matchup(team_baselines,roster,teams,prior_effects,current_effects,opponent) if adjusted_on else team_baselines
-                    market_team = market_points_preview(ui,full_team,event,book_key,api_key)
+                    market_team = team_projection_preview(ui,full_team,event,book_key,api_key)
                     market_player = market_team[market_team.PLAYER_ID.eq(player_id)].iloc[0]
-                    for stat in ['PTS','PRA']:
+                    for stat in ['PTS','AST','PRA']:
                         preview.loc[preview.Stat.eq(stat),'Projected'] = market_player[stat]
                         if adjusted_on:
                             adjusted.loc[adjusted.PLAYER_ID.eq(player_id),stat] = market_player[stat]
                         else:
                             baseline.loc[baseline.PLAYER_ID.eq(player_id),stat] = market_player[stat]
+                    destination = adjusted if adjusted_on else baseline
+                    for column in ['Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total',
+                                   'Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share']:
+                        if column in market_player:
+                            destination.loc[destination.PLAYER_ID.eq(player_id),column] = market_player[column]
                     payload = sportsbook_props(event['id'],book_key,api_key)
                     if payload.get('id') != event['id'] or {payload.get('home_team'),payload.get('away_team')} != {event['home_team'],event['away_team']}:
                         raise OddsFeedError('Sportsbook matchup could not be verified.')
@@ -312,6 +335,7 @@ def render_live_dashboard(ui, roster):
             with ui.expander('How matchup projections work'):
                 ui.write('Each archetype’s per-36 production against the selected opponent is compared with its league-wide per-36 average. Percent changes are weighted toward recent player-games and shrunk toward zero with three neutral samples. Offensive archetypes drive points, assists, offensive rebounds and shooting; defensive archetypes drive defensive rebounds, steals and blocks. Projected rebounds equal offensive plus defensive rebounds. Three-point makes use the attempts adjustment to preserve the player’s own shooting rate.')
                 ui.write('Minutes use your workbook for team games 1–3, then observed season minutes per appearance from game 4. Stat rates stay on last season (or the supplied RotoWire fallback) through game 4; from game 5, current rates blend with the prior using a 200-minute prior weight. Opponent matchup history uses last season until that opponent has completed four games, then only this season. Missing history stays unavailable. Samples count player-games, not unique team games.')
+                ui.write('Team assists use last season’s assist-to-made-field-goal rates, blended equally with the opponent’s allowed rate. Expected field goals come from market team points divided by the equally blended historical total-points-to-field-goals ratios. The team assist total is allocated in proportion to existing archetype-adjusted player assists, so shared defensive penalties cancel while relative archetype differences remain. No second assist multiplier is applied. PRA combines the final points, rebounds and assists.')
                 ui.write('These are matchup estimates, not confirmed lineups or availability. The model does not adjust for pace, injuries, starters or home court. Last season’s box scores are assigned the approved current archetypes, preserving manual overrides. Only players with matched archetype labels contribute to the matchup samples; sample counts show that coverage.')
     with best_tab:
         ui.subheader("🔥 Today's Best Matchup Opportunities")
@@ -408,7 +432,7 @@ def render_live_dashboard(ui, roster):
                     combined = pd.concat(matchup_rows,ignore_index=True) if matchup_rows else pd.DataFrame()
                     if not combined.empty:
                         market_event = {**game,'commence_time':game['GameTimeUTC'].isoformat()}
-                        combined = market_points_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key)
+                        combined = team_projection_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key)
                     ranked,total_edges = game_edges(combined,payload,game,BOOKS[edge_book_name],now=now,plays_only=plays_only,direction=edge_direction,stats=selected_stats)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
                     ui.caption('Snapshot of paired Over/Under prices; quotes older than 15 minutes are excluded when loaded. Use Refresh live data to update. Edge % is a projection gap, not a win probability or expected betting return.')
