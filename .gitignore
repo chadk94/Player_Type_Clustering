@@ -1,0 +1,5 @@
+__pycache__/
+.venv/
+projected_minutes.csv
+team_games.csv
+player_data.csv

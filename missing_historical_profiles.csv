@@ -1,0 +1,161 @@
+PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PROJECTED_MIN,SourceSeasonID,HasHistoricalProfile,ModelEligibleMinutes,FeatureDataStatus,OffCluster,OffArchetype,OffAssignmentSource,DefCluster,DefArchetype,DefAssignmentSource
+1643412,Kingston Flemings,Kingston Flemings,ATL,1610612737,22026,16.0,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,11.0,POA Defender,manual_override
+1643539,Henri Veesaar,Henri Veesaar,ATL,1610612737,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643544,Zuby Ejiofor,Zuby Ejiofor,ATL,1610612737,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643414,Mikel Brown Jr.,Mikel Brown Jr.,BKN,1610612751,22026,22.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1643052,Chaney Johnson,Chaney Johnson,BKN,1610612751,22026,12.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,5.0,Big Wing Defender,manual_override
+1643538,Joshua Jefferson,Joshua Jefferson,BKN,1610612751,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643548,Tyler Bilodeau,Tyler Bilodeau,BKN,1610612751,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1628369,Jayson Tatum,Jayson Tatum,BOS,1610612738,22026,32.98992593507928,,False,True,missing_historical_profile,5.0,High Usage Wing,manual_override,5.0,Big Wing Defender,manual_override
+1642873,Amari Williams,Amari Williams,BOS,1610612738,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643416,Chris Cenac Jr.,Chris Cenac Jr.,BOS,1610612738,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641759,Dillon Mitchell,Dillon Mitchell,BOS,1610612738,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642870,Milos Uzan,Milos Uzan,BOS,1610612738,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643620,Tucker DeVries,Tucker DeVries,BOS,1610612738,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643515,Christian Anderson,Christian Anderson,CHA,1610612766,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643419,Hannes Steinbach,Hannes Steinbach,CHA,1610612766,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643573,Kylan Boswell,Kylan Boswell,CHA,1610612766,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642369,Michael Ajayi,Michael Ajayi,CHA,1610612766,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1626192,Pat Connaughton,Pat Connaughton,CHA,1610612766,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643410,Caleb Wilson,Caleb Wilson,CHI,1610612741,22026,32.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,8.0,High Stock + D,manual_override
+1643517,Dailyn Swain,Dailyn Swain,CHI,1610612741,22026,8.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1631159,Leonard Miller,Leonard Miller,CHI,1610612741,22026,8.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643637,Jaylin Sellers,Jaylin Sellers,CHI,1610612741,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642855,Noa Essengue,Noa Essengue,CHI,1610612741,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643591,Tobe Awaka,Tobe Awaka,CHI,1610612741,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1626209,Mario Hezonja,Mario Hezonja,CLE,1610612739,22026,11.994291428809532,,False,True,missing_historical_profile,0.0,Catch & Shoot Wing,manual_override,12.0,Non-POA Wing,manual_override
+1643509,Meleek Thomas,Meleek Thomas,CLE,1610612739,22026,7.994291428809532,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643640,"Ernest Udeh, Jr.","Ernest Udeh, Jr.",CLE,1610612739,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642434,Riley Minix,Riley Minix,CLE,1610612739,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642400,Tristan Enaruna,Tristan Enaruna,CLE,1610612739,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+202681,Kyrie Irving,Kyrie Irving,DAL,1610612742,22026,30.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1643516,Morez Johnson Jr.,Morez Johnson Jr.,DAL,1610612742,22026,16.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,8.0,High Stock + D,manual_override
+1643547,Sergio de Larrea,Sergio de Larrea,DAL,1610612742,22026,12.0,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,0.0,Non POA Guard,manual_override
+1642967,John Poulakidas,John Poulakidas,DAL,1610612742,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1631204,Marcus Sasser,Marcus Sasser,DAL,1610612742,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641844,Tarik Biberovic,Tarik Biberovic,DAL,1610612742,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643588,Tobi Lawal,Tobi Lawal,DAL,1610612742,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643813,Alpha Diallo,Alpha Diallo,DEN,1610612743,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643624,Bryce Hopkins,Bryce Hopkins,DEN,1610612743,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642350,Trevon Brazile,Trevon Brazile,DEN,1610612743,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642404,Chaz Lanier,Chaz Lanier,DET,1610612765,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643536,Ebuka Okorie,Ebuka Okorie,DET,1610612765,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641989,Elijah Harkless,Elijah Harkless,DET,1610612765,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642403,Isaac Jones,Isaac Jones,DET,1610612765,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642391,Ugonna Onyenso,Ugonna Onyenso,DET,1610612765,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642865,Yaxel Lendeborg,Yaxel Lendeborg,GSW,1610612744,22026,30.11035444016029,,False,True,missing_historical_profile,5.0,High Usage Wing,manual_override,8.0,High Stock + D,manual_override
+1627777,Georges Niang,Georges Niang,GSW,1610612744,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643018,LJ Cryer,LJ Cryer,GSW,1610612744,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642502,Malevy Leons,Malevy Leons,GSW,1610612744,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1627832,Fred VanVleet,Fred VanVleet,HOU,1610612745,22026,28.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,4.0,Pesky Guard,manual_override
+1643570,Bruce Thornton,Bruce Thornton,HOU,1610612745,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642384,Isaiah Crawford,Isaiah Crawford,HOU,1610612745,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1630256,Jae'Sean Tate,Jae'Sean Tate,HOU,1610612745,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641763,Julian Phillips,Julian Phillips,HOU,1610612745,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1631131,Oscar Tshiebwe,Oscar Tshiebwe,HOU,1610612745,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643595,Quadir Copeland,Quadir Copeland,HOU,1610612745,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642951,Sean Pedulla,Sean Pedulla,HOU,1610612745,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1630169,Tyrese Haliburton,Tyrese Haliburton,IND,1610612754,22026,30.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1643552,Braden Smith,Braden Smith,IND,1610612754,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641771,Jalen Slawson,Jalen Slawson,IND,1610612754,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641738,Kobe Brown,Kobe Brown,IND,1610612754,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643413,Keaton Wagler,Keaton Wagler,LAC,1610612746,22026,21.94557802515804,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1642949,Yanic Konan Niederhäuser,Yanic Konan Niederhäuser,LAC,1610612746,22026,7.945578025158043,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642394,Baba Miller,Baba Miller,LAC,1610612746,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642353,Cam Christie,Cam Christie,LAC,1610612746,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1629622,Max Strus,Max Strus,LAC,1610612746,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643568,Nick Martinelli,Nick Martinelli,LAC,1610612746,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643418,Cameron Carr,Cameron Carr,LAL,1610612747,22026,16.0,,False,True,missing_historical_profile,4.0,Spot-Up Role Player,manual_override,6.0,Long Wing/Secondary POA,manual_override
+1643758,AK Okereke,AK Okereke,LAL,1610612747,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642876,Adou Thiero,Adou Thiero,LAL,1610612747,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641751,Arthur Kaluma,Arthur Kaluma,LAL,1610612747,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642355,Bronny James,Bronny James,LAL,1610612747,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643024,Chris Mañon,Chris Mañon,LAL,1610612747,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643409,Cameron Boozer,Cameron Boozer,MEM,1610612763,22026,30.0,,False,True,missing_historical_profile,7.0,Dominant Big,manual_override,5.0,Big Wing Defender,manual_override
+1643510,Karim Lopez,Karim Lopez,MEM,1610612763,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643016,Bez Mbeng,Bez Mbeng,MIA,1610612748,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643727,J'Vonne Hadley,J'Vonne Hadley,MIA,1610612748,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642352,Keshad Johnson,Keshad Johnson,MIA,1610612748,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642066,Myron Gardner,Myron Gardner,MIA,1610612748,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643553,Ryan Conwell,Ryan Conwell,MIA,1610612748,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643621,Tre Donaldson,Tre Donaldson,MIA,1610612748,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642884,Vladislav Goldin,Vladislav Goldin,MIA,1610612748,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643415,Brayden Burries,Brayden Burries,MIL,1610612749,22026,19.5,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,4.0,Pesky Guard,manual_override
+1642881,Bogoljub Marković,Bogoljub Marković,MIL,1610612749,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642504,Cormac Ryan,Cormac Ryan,MIL,1610612749,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641780,Johni Broome,Johni Broome,MIL,1610612749,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643417,Nate Ament,Nate Ament,MIL,1610612749,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642866,Joan Beringer,Joan Beringer,MIN,1610612750,22026,15.990849618734114,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,1.0,Rim Protector,manual_override
+1626168,Trey Lyles,Trey Lyles,MIN,1610612750,22026,5.9908496187341145,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642402,Enrique Freeman,Enrique Freeman,MIN,1610612750,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642912,Isaiah Evans,Isaiah Evans,MIN,1610612750,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642911,Rocco Zikarsky,Rocco Zikarsky,MIN,1610612750,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642389,Zyon Pullin,Zyon Pullin,MIN,1610612750,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1627749,Dejounte Murray,Dejounte Murray,NOP,1610612740,22026,30.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,4.0,Pesky Guard,manual_override
+1642358,AJ Johnson,AJ Johnson,NOP,1610612740,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643555,Jaron Pierre Jr.,Jaron Pierre Jr.,NOP,1610612740,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642882,Julian Reese,Julian Reese,NOP,1610612740,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642359,Pacôme Dadiet,Pacôme Dadiet,NYK,1610612752,22026,10.753636363636362,,False,True,missing_historical_profile,0.0,Catch & Shoot Wing,manual_override,12.0,Non-POA Wing,manual_override
+1642885,Mohamed Diawara,Mohamed Diawara,NYK,1610612752,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643589,Tyler Nickel,Tyler Nickel,NYK,1610612752,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643530,Aday Mara,Aday Mara,OKC,1610612760,22026,12.0,,False,True,missing_historical_profile,8.0,Traditional Center,manual_override,1.0,Rim Protector,manual_override
+1642892,Bennett Stirtz,Bennett Stirtz,OKC,1610612760,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642964,Brooks Barnhizer,Brooks Barnhizer,OKC,1610612760,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643717,Josh Dix,Josh Dix,OKC,1610612760,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642923,Otega Oweh,Otega Oweh,OKC,1610612760,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642850,Thomas Sorber,Thomas Sorber,OKC,1610612760,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1631457,Alex Morales,Alex Morales,ORL,1610612753,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1630658,Colin Castleton,Colin Castleton,ORL,1610612753,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643593,Izaiyah Nelson,Izaiyah Nelson,ORL,1610612753,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1631120,JD Davison,JD Davison,ORL,1610612753,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1631288,Jamal Cain,Jamal Cain,ORL,1610612753,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1628371,Jonathan Isaac,Jonathan Isaac,ORL,1610612753,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1631103,Malaki Branham,Malaki Branham,ORL,1610612753,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1630574,Ariel Hukporti,Ariel Hukporti,PHI,1610612755,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641794,Dillon Jones,Dillon Jones,PHI,1610612755,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643575,Duke Miles,Duke Miles,PHI,1610612755,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642392,Jameer Nelson Jr.,Jameer Nelson Jr.,PHI,1610612755,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642889,Labaron Philon,Labaron Philon,PHI,1610612755,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643148,Saint Thomas,Saint Thomas,PHI,1610612755,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1629605,Tacko Fall,Tacko Fall,PHI,1610612755,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642863,Khaman Maluach,Khaman Maluach,PHX,1610612756,22026,18.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,1.0,Rim Protector,manual_override
+1643047,CJ Huntley,CJ Huntley,PHX,1610612756,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1629312,Haywood Highsmith,Haywood Highsmith,PHX,1610612756,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643520,Koa Peat,Koa Peat,PHX,1610612756,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642886,Koby Brea,Koby Brea,PHX,1610612756,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642853,Rasheer Fleming,Rasheer Fleming,PHX,1610612756,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+203081,Damian Lillard,Damian Lillard,POR,1610612757,22026,32.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1642959,Chris Youngblood,Chris Youngblood,POR,1610612757,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643257,Jayson Kent,Jayson Kent,POR,1610612757,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642910,John Tonje,John Tonje,POR,1610612757,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642905,Yang Hansen,Yang Hansen,POR,1610612757,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643411,Darius Acuff Jr.,Darius Acuff Jr.,SAC,1610612758,22026,32.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1627732,Ben Simmons,Ben Simmons,SAC,1610612758,22026,18.0,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,5.0,Big Wing Defender,manual_override
+1641745,Adam Flagler,Adam Flagler,SAC,1610612758,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642284,Alex Karaban,Alex Karaban,SAC,1610612758,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643567,Emanuel Sharp,Emanuel Sharp,SAC,1610612758,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642367,Jonathan Mogbo,Jonathan Mogbo,SAC,1610612758,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642868,Carter Bryant,Carter Bryant,SAS,1610612759,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642357,David Jones Garcia,David Jones Garcia,SAS,1610612759,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643551,Ja'Kobi Gillespie,Ja'Kobi Gillespie,SAS,1610612759,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643519,Jayden Quaintance,Jayden Quaintance,SAS,1610612759,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1629162,Jordan McLaughlin,Jordan McLaughlin,SAS,1610612759,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643576,Maliq Brown,Maliq Brown,SAS,1610612759,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643007,Taelon Peter,Taelon Peter,SAS,1610612759,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643542,Tarris Reed Jr.,Tarris Reed Jr.,SAS,1610612759,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643512,Allen Graves,Allen Graves,TOR,1610612761,22026,9.937600000000002,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642918,Alijah Martin,Alijah Martin,TOR,1610612761,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642935,Chucky Hepburn,Chucky Hepburn,TOR,1610612761,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643558,Jaden Bradley,Jaden Bradley,TOR,1610612761,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642419,Jamison Battle,Jamison Battle,TOR,1610612761,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641869,Malachi Smith,Malachi Smith,TOR,1610612761,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642927,Nate Bittle,Nate Bittle,TOR,1610612761,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641998,Trey Jemison III,Trey Jemison III,TOR,1610612761,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643408,Darryn Peterson,Darryn Peterson,UTA,1610612762,22026,28.0,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,6.0,Long Wing/Secondary POA,manual_override
+1631127,Harrison Ingram,Harrison Ingram,UTA,1610612762,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1628964,Mo Bamba,Mo Bamba,UTA,1610612762,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642926,Tamar Bates,Tamar Bates,UTA,1610612762,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641725,Trey Alexander,Trey Alexander,UTA,1610612762,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643407,AJ Dybantsa,AJ Dybantsa,WAS,1610612764,22026,28.0,,False,True,missing_historical_profile,5.0,High Usage Wing,manual_override,6.0,Long Wing/Secondary POA,manual_override
+1630264,Anthony Gill,Anthony Gill,WAS,1610612764,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643590,Felix Okpara,Felix Okpara,WAS,1610612764,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff

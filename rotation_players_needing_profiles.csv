@@ -1,0 +1,27 @@
+PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PROJECTED_MIN,SourceSeasonID,HasHistoricalProfile,ModelEligibleMinutes,FeatureDataStatus,OffCluster,OffArchetype,OffAssignmentSource,DefCluster,DefArchetype,DefAssignmentSource
+1643412,Kingston Flemings,Kingston Flemings,ATL,1610612737,22026,16.0,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,11.0,POA Defender,manual_override
+1643414,Mikel Brown Jr.,Mikel Brown Jr.,BKN,1610612751,22026,22.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1643052,Chaney Johnson,Chaney Johnson,BKN,1610612751,22026,12.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,5.0,Big Wing Defender,manual_override
+1628369,Jayson Tatum,Jayson Tatum,BOS,1610612738,22026,32.98992593507928,,False,True,missing_historical_profile,5.0,High Usage Wing,manual_override,5.0,Big Wing Defender,manual_override
+1643410,Caleb Wilson,Caleb Wilson,CHI,1610612741,22026,32.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,8.0,High Stock + D,manual_override
+1626209,Mario Hezonja,Mario Hezonja,CLE,1610612739,22026,11.994291428809532,,False,True,missing_historical_profile,0.0,Catch & Shoot Wing,manual_override,12.0,Non-POA Wing,manual_override
+202681,Kyrie Irving,Kyrie Irving,DAL,1610612742,22026,30.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1643516,Morez Johnson Jr.,Morez Johnson Jr.,DAL,1610612742,22026,16.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,8.0,High Stock + D,manual_override
+1643547,Sergio de Larrea,Sergio de Larrea,DAL,1610612742,22026,12.0,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,0.0,Non POA Guard,manual_override
+1642865,Yaxel Lendeborg,Yaxel Lendeborg,GSW,1610612744,22026,30.11035444016029,,False,True,missing_historical_profile,5.0,High Usage Wing,manual_override,8.0,High Stock + D,manual_override
+1627832,Fred VanVleet,Fred VanVleet,HOU,1610612745,22026,28.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,4.0,Pesky Guard,manual_override
+1630169,Tyrese Haliburton,Tyrese Haliburton,IND,1610612754,22026,30.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1643413,Keaton Wagler,Keaton Wagler,LAC,1610612746,22026,21.94557802515804,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1643418,Cameron Carr,Cameron Carr,LAL,1610612747,22026,16.0,,False,True,missing_historical_profile,4.0,Spot-Up Role Player,manual_override,6.0,Long Wing/Secondary POA,manual_override
+1643409,Cameron Boozer,Cameron Boozer,MEM,1610612763,22026,30.0,,False,True,missing_historical_profile,7.0,Dominant Big,manual_override,5.0,Big Wing Defender,manual_override
+1643415,Brayden Burries,Brayden Burries,MIL,1610612749,22026,19.5,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,4.0,Pesky Guard,manual_override
+1642866,Joan Beringer,Joan Beringer,MIN,1610612750,22026,15.990849618734114,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,1.0,Rim Protector,manual_override
+1627749,Dejounte Murray,Dejounte Murray,NOP,1610612740,22026,30.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,4.0,Pesky Guard,manual_override
+1642359,Pacôme Dadiet,Pacôme Dadiet,NYK,1610612752,22026,10.753636363636362,,False,True,missing_historical_profile,0.0,Catch & Shoot Wing,manual_override,12.0,Non-POA Wing,manual_override
+1643530,Aday Mara,Aday Mara,OKC,1610612760,22026,12.0,,False,True,missing_historical_profile,8.0,Traditional Center,manual_override,1.0,Rim Protector,manual_override
+1642863,Khaman Maluach,Khaman Maluach,PHX,1610612756,22026,18.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,1.0,Rim Protector,manual_override
+203081,Damian Lillard,Damian Lillard,POR,1610612757,22026,32.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1643411,Darius Acuff Jr.,Darius Acuff Jr.,SAC,1610612758,22026,32.0,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
+1627732,Ben Simmons,Ben Simmons,SAC,1610612758,22026,18.0,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,5.0,Big Wing Defender,manual_override
+1643408,Darryn Peterson,Darryn Peterson,UTA,1610612762,22026,28.0,,False,True,missing_historical_profile,6.0,Secondary Playmaker,manual_override,6.0,Long Wing/Secondary POA,manual_override
+1643407,AJ Dybantsa,AJ Dybantsa,WAS,1610612764,22026,28.0,,False,True,missing_historical_profile,5.0,High Usage Wing,manual_override,6.0,Long Wing/Secondary POA,manual_override

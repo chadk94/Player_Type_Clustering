@@ -1,3 +1,4 @@
+from season_pipeline import (SEASON, SEASON_ID, read_season_clusters, load_rules, projected_minutes)
 import time
 import math
 import difflib
@@ -138,7 +139,6 @@ def _calc_poisson_ev(mu, line, over_odds, under_odds):
     return ev_over, ev_under, p_over * 100
 
 
-@st.cache_data(ttl=21600)
 def _build_player_season_stats(merged, min_date, max_date):
     """Compute per-player season averages and last-10-game median minutes in one pass."""
     all_cols = _OFFENSIVE_STATS + _DEFENSIVE_STATS
@@ -155,6 +155,9 @@ def _build_player_season_stats(merged, min_date, max_date):
         .groupby('PLAYER_NAME')['MIN']
         .median()
     )
+    for name in player_last10_min.index:
+        games = merged[merged["PLAYER_NAME"] == name]
+        player_last10_min.loc[name] = projected_minutes(games, player_last10_min.loc[name])
     return player_avgs, player_last10_min
 
 
@@ -461,9 +464,9 @@ def build_player_list(): ##builds a list of players in todays games as well as t
         awayid= matchup[0]
         homeid =matchup[1]
         time.sleep(1)
-        awayroster=commonteamroster.CommonTeamRoster(team_id=awayid,season='2025-26')
+        awayroster=commonteamroster.CommonTeamRoster(team_id=awayid,season=SEASON)
         time.sleep(1)
-        homeroster = commonteamroster.CommonTeamRoster(team_id=homeid,season='2025-26')
+        homeroster = commonteamroster.CommonTeamRoster(team_id=homeid,season=SEASON)
         awayroster=pd.DataFrame(awayroster.get_data_frames()[0].PLAYER_ID)
         awayroster['Home']=False
         awayroster['OPP']=str(homeabb)
@@ -476,7 +479,7 @@ def build_player_list(): ##builds a list of players in todays games as well as t
     return playeroutput
 
 
-def get_playtype_stats(season='2025-26'):
+def get_playtype_stats(season=SEASON):
     """Get synergy play type stats - both offensive and defensive frequencies."""
 
     # Define play types to pull
@@ -564,7 +567,7 @@ def get_playtype_stats(season='2025-26'):
     except Exception as e:
         print(f"Error merging play type stats: {e}")
         return None, None, None
-def get_shot_chart_data(player_id, season='2025-26', max_retries=3):
+def get_shot_chart_data(player_id, season=SEASON, max_retries=3):
     """Get detailed shot chart data for a player."""
     for attempt in range(max_retries):
         try:
@@ -575,7 +578,7 @@ def get_shot_chart_data(player_id, season='2025-26', max_retries=3):
             shot_chart = ShotChartDetail(
                 player_id=player_id,
                 team_id=0,
-                season_nullable='2025-26',
+                season_nullable=season,
                 season_type_all_star='Regular Season',
                 context_measure_simple='FGA'
             ).get_data_frames()[0]
@@ -583,7 +586,7 @@ def get_shot_chart_data(player_id, season='2025-26', max_retries=3):
             # Calculate zone-based metrics
             shot_profile = {
                 'PLAYER_ID': player_id,
-                'SEASON_ID': season
+                'SEASON_ID': 20000 + int(season[:4])
             }
 
             # Get actual games played
@@ -652,7 +655,7 @@ def get_shot_chart_data(player_id, season='2025-26', max_retries=3):
                 return None
 
 
-def get_hustle_stats(season='2025-26'):
+def get_hustle_stats(season=SEASON):
     """Get hustle stats for all players - contested shots and deflections."""
 
     max_retries = 3
@@ -699,7 +702,7 @@ def get_hustle_stats(season='2025-26'):
                 return None
             print("Waiting 60 seconds before retry...")
             time.sleep(60)
-def get_tracking_stats(season='2025-26'):
+def get_tracking_stats(season=SEASON):
     """Get tracking stats - speed, distance, catch & shoot, passing, drives, and rebounding."""
 
     # Speed/Distance tracking
@@ -886,7 +889,7 @@ def enhance_player_data(player_averages, min_games=10):
     for idx, player in qualified_players.iterrows():
         print(f"\nProcessing player {idx + 1}/{total_players}: {player['PLAYER_NAME']} (ID: {player['PLAYER_ID']})")
 
-        shot_data = get_shot_chart_data(player['PLAYER_ID'], player['SEASON_ID'])
+        shot_data = get_shot_chart_data(player['PLAYER_ID'], f"{int(player['SEASON_ID']) % 10000}-{(int(player['SEASON_ID']) % 10000 + 1) % 100:02d}")
 
         if shot_data is not None:
             all_shot_data.append(shot_data)
@@ -912,50 +915,23 @@ def enhance_player_data(player_averages, min_games=10):
         for p in failed_players[:10]:  # Show first 10
             print(f"  - {p['PLAYER_NAME']} ({p['PLAYER_ID']})")
 
-    # ============ NEW: GET TRACKING STATS FOR EACH SEASON ============
-    print("\nGetting tracking stats...")
-    tracking_stats_2023 = get_tracking_stats(season='2023-24')
-    tracking_stats_2023['SEASON_ID'] = 22023
-
-    tracking_stats_2024 = get_tracking_stats(season='2024-25')
-    tracking_stats_2024['SEASON_ID'] = 22024
-
-    tracking_stats_2025 = get_tracking_stats(season='2025-26')
-    tracking_stats_2025['SEASON_ID'] = 22025
-
-    # Concat all tracking stats
-    tracking_stats = pd.concat([tracking_stats_2023, tracking_stats_2024, tracking_stats_2025], ignore_index=True)
-    print(f"✓ Combined tracking stats: {len(tracking_stats)} records")
-
-    # ============ NEW: GET HUSTLE STATS FOR EACH SEASON ============
-    print("\nGetting hustle stats...")
-    hustle_stats_2023 = get_hustle_stats(season='2023-24')
-    hustle_stats_2023['SEASON_ID'] = 22023
-
-    hustle_stats_2024 = get_hustle_stats(season='2024-25')
-    hustle_stats_2024['SEASON_ID'] = 22024
-
-    hustle_stats_2025 = get_hustle_stats(season='2025-26')
-    hustle_stats_2025['SEASON_ID'] = 22025
-
-    # Concat all hustle stats
-    hustle_stats = pd.concat([hustle_stats_2023, hustle_stats_2024, hustle_stats_2025], ignore_index=True)
-    print(f"✓ Combined hustle stats: {len(hustle_stats)} records")
-
-    # ============ NEW: GET PLAY TYPE STATS FOR EACH SEASON ============
-    print("\nGetting play type stats...")
-    playtype_stats_2023, _, _ = get_playtype_stats(season='2023-24')
-    playtype_stats_2023['SEASON_ID'] = 22023
-
-    playtype_stats_2024, _, _ = get_playtype_stats(season='2024-25')
-    playtype_stats_2024['SEASON_ID'] = 22024
-
-    playtype_stats_2025, _, _ = get_playtype_stats(season='2025-26')
-    playtype_stats_2025['SEASON_ID'] = 22025
-
-    # Concat all play type stats
-    playtype_stats = pd.concat([playtype_stats_2023, playtype_stats_2024, playtype_stats_2025], ignore_index=True)
-    print(f"✓ Combined play type stats: {len(playtype_stats)} records")
+    seasons = sorted(player_averages['SEASON_ID'].astype(int).unique())
+    def collect(fetch, playtypes=False):
+        frames = []
+        for sid in seasons:
+            year = sid % 10000
+            frame = fetch(season=f"{year}-{(year + 1) % 100:02d}")
+            if playtypes:
+                frame = frame[0]
+            if frame is None or frame.empty:
+                raise ValueError(f"Missing enrichment data for {year}")
+            frame = frame.copy()
+            frame['SEASON_ID'] = sid
+            frames.append(frame)
+        return pd.concat(frames, ignore_index=True)
+    tracking_stats = collect(get_tracking_stats)
+    hustle_stats = collect(get_hustle_stats)
+    playtype_stats = collect(get_playtype_stats, playtypes=True)
 
     # ============ MERGE EVERYTHING TOGETHER ============
     qualified_players = qualified_players.fillna(0)
@@ -1163,7 +1139,7 @@ def cluster_players_off(data, n_clusters):
     # Add cluster labels to the dataset
     result_data = clean_data.copy()
     result_data['Cluster'] = clusters
-    result_data = result_data[result_data['SEASON_ID'] == 22025]
+    result_data = result_data[result_data['SEASON_ID'] == SEASON_ID]
     # Create cluster visualization
     plt.figure(figsize=(12, 8))
 
@@ -1361,7 +1337,7 @@ def cluster_players_def(data, n_clusters):
     # Add cluster labels to the dataset
     result_data = clean_data.copy()
     result_data['Cluster'] = clusters
-    result_data = result_data[result_data['SEASON_ID'] == 22025]
+    result_data = result_data[result_data['SEASON_ID'] == SEASON_ID]
     # Create cluster visualization
     plt.figure(figsize=(12, 8))
 
@@ -1425,7 +1401,7 @@ def cluster_players_def(data, n_clusters):
 
 
 def get_player_box():
-    seasons = ['2023-24', '2024-25', '2025-26']
+    seasons = [f'{year}-{(year + 1) % 100:02d}' for year in range(int(SEASON[:4]) - 2, int(SEASON[:4]) + 1)]
     season_types = ['Regular Season', 'Playoffs']
     frames = []
     for season in seasons:
@@ -1517,46 +1493,9 @@ def basic_clustering(data):
 
 
 def create_clusters():
-    # data = get_player_box()
-    # print("got data")
-    # player_averages = box_to_avg(data)
-    # print("converted to avg")
-    # print(player_averages)
-    # player_averages = add_height_weight_pos(player_averages)
-    # print("added height weight")
-    #
-    # # ============ UPDATED: Now includes tracking and hustle stats ============
-    # enhanced_data = enhance_player_data(player_averages)
-    #
-    # # Save the enhanced data with ALL features
-    # enhanced_data.to_csv('player_data.csv', index=False)
-    # print("\n✓ Saved enhanced player data to 'player_data.csv'")
-
-    # Read it back
-    enhanced_data = pd.read_csv("player_data.csv").fillna(0)
-    # Perform clustering with new features
-    print("\n" + "=" * 60)
-    print("STARTING OFFENSIVE CLUSTERING")
-    print("=" * 60)
-    clustered_data = cluster_players_off(enhanced_data, None)
-    clustered_data.to_csv('player_clusters_detailed.csv', index=False)
-    print("✓ Saved offensive clusters to 'player_clusters_detailed.csv'")
-
-    print("\n" + "=" * 60)
-    print("STARTING DEFENSIVE CLUSTERING")
-    print("=" * 60)
-    defcluster = cluster_players_def(enhanced_data, None)
-    defcluster.to_csv('def_player_clusters_detailed.csv', index=False)
-    print("✓ Saved defensive clusters to 'def_player_clusters_detailed.csv'")
-
-    print("\n" + "=" * 60)
-    print("CLUSTERING COMPLETE!")
-    print("=" * 60)
-    print(f"Total players clustered: {len(clustered_data)}")
-    print(f"Offensive clusters created: {clustered_data['Cluster'].nunique()}")
-    print(f"Defensive clusters created: {defcluster['Cluster'].nunique()}")
-
-    return
+    """Use the validated season runner; see README for required input paths."""
+    from season_pipeline import run
+    run('player_data.csv', 'projected_minutes.csv', 'team_games.csv', '.')
 
 
 st.set_page_config(page_title="NBA Player Archetype Dashboard", layout="wide")
@@ -1564,69 +1503,29 @@ st.set_page_config(page_title="NBA Player Archetype Dashboard", layout="wide")
 
 @st.cache_data
 def load_data():
-    DEF_CLUSTER_OVERRIDES = {
-        'Scottie Barnes': 8, 'Anthony Davis': 1, 'Rudy Gobert': 1, 'Jaren Jackson Jr.': 8,
-        'Myles Turner': 1, "Kel'el Ware": 1, 'Bam Adebayo': 8, 'Wendell Carter Jr.': 7,
-        'Zach Edey': 7, 'Joel Embiid': 7, 'Nikola Jokić': 7, 'Jalen Smith': 7,
-        'Karl-Anthony Towns': 7, 'Jaden McDaniels': 11, 'Anfernee Simons': 0,
-        'Amen Thompson': 11, 'Jaylon Tyson': 11, 'Shaedon Sharpe': 6, 'Marcus Smart': 11,
-        'Trae Young': 0, 'Kyle Anderson': 12, 'Donte DiVincenzo': 4, 'Jrue Holiday': 4,
-        'Derrick Jones Jr.': 11, 'Larry Nance Jr.': 7, 'Jarred Vanderbilt': 6,
-        'Kenrich Williams': 7, 'GG Jackson': 5, 'Jonathan Kuminga': 5, 'Dalen Terry': 6,
-        'Sharife Cooper': 4, 'Saddiq Bey': 5, 'Dillon Brooks': 11, 'Max Christie': 6,
-        'Walter Clayton Jr.': 4, 'Luguentz Dort': 11, 'Anthony Edwards': 6, 'AJ Green': 0,
-        'Tim Hardaway Jr.': 0, 'Cameron Johnson': 6, 'Zach LaVine': 0, 'Tre Mann': 0,
-        'CJ McCollum': 0, 'Khris Middleton': 12, 'Jamal Murray': 0, 'Aaron Nesmith': 6,
-        'Jalen Pickett': 0, 'Will Riley': 12, 'Klay Thompson': 12, 'Coby White': 0,
-        'Karlo Matković': 3, 'Brandon Clarke': 3, 'Ty Jerome': 4, 'Lawson Lovering': 3,
-        'Cody Martin': 6, 'Jahmai Mashack': 4, 'Mac McClung': 0, 'De\'Anthony Melton': 11,
-        'Drew Peterson': 12, 'Scotty Pippen Jr.': 4, 'Isaiah Stevens': 4,
-        'Matisse Thybulle': 11, 'Tolu Smith': 3, 'Jaylen Wells': 4,
-    }
-    OFF_CLUSTER_NAMES = {
-        0: 'Catch & Shoot Wing',
-        1: 'Athletic Roll Man',
-        2: 'Primary Ball Handler',
-        3: 'Uncategorized',
-        4: 'Spot-Up Role Player',
-        5: 'High Usage Wing',
-        6: 'Secondary Playmaker',
-        7: 'Dominant Big',
-        8: 'Traditional Center',
-        9: 'Stretch Big',
-    }
-    DEF_CLUSTER_NAMES = {
-        8: 'High Stock + D',
-        7: 'Turtles',
-        6: 'Long Wing/Secondary POA',
-        4: 'Pesky Guard',
-        11: 'POA Defender',
-        5: 'Big Wing Defender',
-        0: 'Non POA Guard',
-        3: 'Bad/Slow Big Defender',
-        12: 'Non-POA Wing',
-        1: 'Rim Protector',
-    }
+    rules = load_rules()
+    OFF_CLUSTER_NAMES = {int(k): v for k, v in rules["OFF_CLUSTER_NAMES"].items()}
+    DEF_CLUSTER_NAMES = {int(k): v for k, v in rules["DEF_CLUSTER_NAMES"].items()}
     playerbox = LeagueGameLog(
         player_or_team_abbreviation='P',
         season_type_all_star='Regular Season',
-        season='2025-26'
+        season=SEASON
     ).get_data_frames()[0]
     time.sleep(1)
     try:
         playoffs = LeagueGameLog(
             player_or_team_abbreviation='P',
             season_type_all_star='Playoffs',
-            season='2025-26'
+            season=SEASON
         ).get_data_frames()[0]
         if not playoffs.empty:
             playerbox = pd.concat([playerbox, playoffs], ignore_index=True)
     except Exception:
         pass
 
-    offcluster = pd.read_csv('player_clusters_detailed.csv')[['PLAYER_ID', 'Cluster']].rename(
+    offcluster = read_season_clusters('player_clusters_detailed.csv')[['PLAYER_ID', 'Cluster']].rename(
         columns={'Cluster': 'OffCluster'})
-    defcluster = pd.read_csv('def_player_clusters_detailed.csv')[['PLAYER_ID', 'Cluster']].rename(
+    defcluster = read_season_clusters('def_player_clusters_detailed.csv')[['PLAYER_ID', 'Cluster']].rename(
         columns={'Cluster': 'DefCluster'})
 
     merged = (
@@ -1636,9 +1535,11 @@ def load_data():
     )
     merged['GAME_DATE'] = pd.to_datetime(merged['GAME_DATE'])
 
-    # Apply manual DefCluster overrides by player name
-    override_mask = merged['PLAYER_NAME'].isin(DEF_CLUSTER_OVERRIDES)
-    merged.loc[override_mask, 'DefCluster'] = merged.loc[override_mask, 'PLAYER_NAME'].map(DEF_CLUSTER_OVERRIDES)
+    # Reapply final manual rules for either side, including players missing a model row.
+    for side, column in [('off', 'OffCluster'), ('def', 'DefCluster')]:
+        overrides = rules.get(f'{side.upper()}_CLUSTER_OVERRIDES', {})
+        mask = merged['PLAYER_NAME'].isin(overrides)
+        merged.loc[mask, column] = merged.loc[mask, 'PLAYER_NAME'].map(overrides)
     merged['OffClusterName'] = merged['OffCluster'].map(
         lambda x: OFF_CLUSTER_NAMES.get(int(x)) if pd.notna(x) else None
     )
@@ -1650,8 +1551,43 @@ def load_data():
 
 
 def main():
-    merged = load_data()
-    st.title("🏀 NBA Player Archetype Dashboard (2024–25 Season)")
+    # Show provisional roster assignments without inventing current-season game logs.
+    from pathlib import Path
+    import json
+    audit_path = Path('season_refresh.json')
+    roster_path = Path('preseason_archetypes.csv')
+    if audit_path.exists() and roster_path.exists():
+        audit = json.loads(audit_path.read_text())
+        counts = pd.read_csv('team_games.csv')
+        if (audit.get('mode') == 'preseason_historical_prior'
+                and audit.get('season') == SEASON
+                and counts.SEASON_ID.eq(SEASON_ID).all()
+                and not counts.empty and counts.GAMES_PLAYED.eq(0).all()):
+            roster = pd.read_csv(roster_path)
+            st.title(f"🏀 NBA Player Archetypes ({SEASON} Preseason)")
+            st.caption("Provisional assignments use archived 2025–26 profiles and your workbook minutes. No current-season games are included.")
+            st.info(f"{audit['modelled_players']} players reclustered; {audit['rotation_players_missing_profiles']} players above 10 projected minutes lack historical profiles; {audit.get('rotation_players_missing_archetypes', 0)} still need archetype assignments. Manual overrides take precedence.")
+            team = st.selectbox('Team', ['All'] + sorted(roster.TEAM_ABBREVIATION.unique()))
+            if team != 'All':
+                roster = roster[roster.TEAM_ABBREVIATION.eq(team)]
+            if st.checkbox('Only players with projected minutes', value=True):
+                roster = roster[roster.PROJECTED_MIN.gt(0)]
+            columns = ['PLAYER_NAME', 'TEAM_ABBREVIATION', 'PROJECTED_MIN',
+                       'OffArchetype', 'DefArchetype', 'OffAssignmentSource',
+                       'DefAssignmentSource', 'HasHistoricalProfile']
+            st.dataframe(roster[columns], hide_index=True, use_container_width=True)
+            st.download_button('Download archetypes CSV', roster.to_csv(index=False),
+                               'preseason_archetypes.csv', 'text/csv')
+            return
+    try:
+        merged = load_data()
+    except ValueError as exc:
+        st.error(str(exc))
+        st.stop()
+    if merged.empty:
+        st.info(f"No {SEASON} game logs available yet.")
+        st.stop()
+    st.title(f"🏀 NBA Player Archetype Dashboard ({SEASON} Season)")
 
     # Build cluster name maps from merged data
     off_cluster_name_map = (
@@ -2158,7 +2094,7 @@ def main():
 
                     if not player_games.empty:
                         median_min = player_games['MIN'].median()
-                        default_min = round(median_min, 1)
+                        default_min = round(projected_minutes(player_games, median_min), 1)
                     else:
                         default_min = 30.0  # fallback default
 
@@ -2828,10 +2764,10 @@ def main():
                             "Minutes per game:",
                             min_value=0.0,
                             max_value=48.0,
-                            value=float(median_min),
+                            value=float(projected_minutes(player_season_stats, median_min)),
                             step=0.5,
                             key=f"minutes_{selected_today_player}",
-                            help=f"Default is median of last 10 games ({median_min:.1f} min)"
+                            help="Uses user minutes during the opening window, then the last 10 games median."
                         )
 
                         minutes_multiplier = selected_minutes / player_avg_stats['MIN'] if player_avg_stats[

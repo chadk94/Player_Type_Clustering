@@ -1,0 +1,117 @@
+Side,PLAYER_NAME,ExpectedCluster,PresentInWorkbook,ActualCluster
+off,Kingston Flemings,6,True,6.0
+off,Mikel Brown Jr.,2,True,2.0
+off,Chaney Johnson,1,True,1.0
+off,Jayson Tatum,5,True,5.0
+off,Caleb Wilson,1,True,1.0
+off,Mario Hezonja,0,True,0.0
+off,Kyrie Irving,2,True,2.0
+off,Morez Johnson Jr.,1,True,1.0
+off,Sergio de Larrea,6,True,6.0
+off,Yaxel Lendeborg,5,True,5.0
+off,Fred VanVleet,2,True,2.0
+off,Tyrese Haliburton,2,True,2.0
+off,Keaton Wagler,2,True,2.0
+off,Cameron Carr,4,True,4.0
+off,Cameron Boozer,7,True,7.0
+off,Brayden Burries,6,True,6.0
+off,Joan Beringer,1,True,1.0
+off,Dejounte Murray,2,True,2.0
+off,Pacôme Dadiet,0,True,0.0
+off,Aday Mara,8,True,8.0
+off,Khaman Maluach,1,True,1.0
+off,Damian Lillard,2,True,2.0
+off,Darius Acuff Jr.,2,True,2.0
+off,Ben Simmons,6,True,6.0
+off,Darryn Peterson,6,True,6.0
+off,AJ Dybantsa,5,True,5.0
+def,Scottie Barnes,8,True,8.0
+def,Anthony Davis,1,True,1.0
+def,Rudy Gobert,1,True,1.0
+def,Jaren Jackson Jr.,8,True,8.0
+def,Myles Turner,1,True,1.0
+def,Kel'el Ware,1,True,1.0
+def,Bam Adebayo,8,True,8.0
+def,Wendell Carter Jr.,7,True,7.0
+def,Zach Edey,7,True,7.0
+def,Joel Embiid,7,True,7.0
+def,Nikola Jokić,7,True,7.0
+def,Jalen Smith,7,True,7.0
+def,Karl-Anthony Towns,7,True,7.0
+def,Jaden McDaniels,11,True,11.0
+def,Anfernee Simons,0,True,0.0
+def,Amen Thompson,11,True,11.0
+def,Jaylon Tyson,11,True,11.0
+def,Shaedon Sharpe,6,True,6.0
+def,Marcus Smart,11,True,11.0
+def,Trae Young,0,True,0.0
+def,Kyle Anderson,12,True,12.0
+def,Donte DiVincenzo,4,True,4.0
+def,Jrue Holiday,4,True,4.0
+def,Derrick Jones Jr.,11,True,11.0
+def,Larry Nance Jr.,7,True,7.0
+def,Jarred Vanderbilt,6,True,6.0
+def,Kenrich Williams,7,True,7.0
+def,GG Jackson,5,True,5.0
+def,Jonathan Kuminga,5,True,5.0
+def,Dalen Terry,6,False,
+def,Sharife Cooper,4,False,
+def,Saddiq Bey,5,True,5.0
+def,Dillon Brooks,11,True,11.0
+def,Max Christie,6,True,6.0
+def,Walter Clayton Jr.,4,True,4.0
+def,Luguentz Dort,11,True,11.0
+def,Anthony Edwards,6,True,6.0
+def,AJ Green,0,True,0.0
+def,Tim Hardaway Jr.,0,True,0.0
+def,Cameron Johnson,6,True,6.0
+def,Zach LaVine,0,True,0.0
+def,Tre Mann,0,True,0.0
+def,CJ McCollum,0,True,0.0
+def,Khris Middleton,12,True,12.0
+def,Jamal Murray,0,True,0.0
+def,Aaron Nesmith,6,True,6.0
+def,Jalen Pickett,0,True,0.0
+def,Will Riley,12,True,12.0
+def,Klay Thompson,12,True,12.0
+def,Coby White,0,True,0.0
+def,Karlo Matković,3,True,3.0
+def,Brandon Clarke,3,False,
+def,Ty Jerome,4,True,4.0
+def,Lawson Lovering,3,False,
+def,Cody Martin,6,False,
+def,Jahmai Mashack,4,True,4.0
+def,Mac McClung,0,False,
+def,De'Anthony Melton,11,True,11.0
+def,Drew Peterson,12,False,
+def,Scotty Pippen Jr.,4,True,4.0
+def,Isaiah Stevens,4,False,
+def,Matisse Thybulle,11,True,11.0
+def,Tolu Smith,3,True,3.0
+def,Jaylen Wells,4,True,4.0
+def,Kingston Flemings,11,True,11.0
+def,Mikel Brown Jr.,0,True,0.0
+def,Chaney Johnson,5,True,5.0
+def,Jayson Tatum,5,True,5.0
+def,Caleb Wilson,8,True,8.0
+def,Mario Hezonja,12,True,12.0
+def,Kyrie Irving,0,True,0.0
+def,Morez Johnson Jr.,8,True,8.0
+def,Sergio de Larrea,0,True,0.0
+def,Yaxel Lendeborg,8,True,8.0
+def,Fred VanVleet,4,True,4.0
+def,Tyrese Haliburton,0,True,0.0
+def,Keaton Wagler,0,True,0.0
+def,Cameron Carr,6,True,6.0
+def,Cameron Boozer,5,True,5.0
+def,Brayden Burries,4,True,4.0
+def,Joan Beringer,1,True,1.0
+def,Dejounte Murray,4,True,4.0
+def,Pacôme Dadiet,12,True,12.0
+def,Aday Mara,1,True,1.0
+def,Khaman Maluach,1,True,1.0
+def,Damian Lillard,0,True,0.0
+def,Darius Acuff Jr.,0,True,0.0
+def,Ben Simmons,5,True,5.0
+def,Darryn Peterson,6,True,6.0
+def,AJ Dybantsa,6,True,6.0
