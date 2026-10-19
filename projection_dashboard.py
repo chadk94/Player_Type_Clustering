@@ -9,7 +9,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from live_projections import (ESPN, build_projections, fetch_json, load_live_state, parse_schedule, next_regular_season_game)
+from live_projections import (ESPN, build_projections, fetch_json, load_live_state, parse_schedule, next_regular_season_game, round_projected_minutes)
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import load_game_logs
 from matchup_projections import assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS, prior_season_profiles
@@ -89,6 +89,7 @@ def reset_manual_minutes(flag_key, slider_key):
 @st.fragment(run_every=300)
 def render_live_dashboard(ui, roster):
     roster = apply_roster_rules(roster)
+    roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)
     ui.title(f'🏀 Player Stat Projections ({SEASON})')
     ui.caption(f'Your workbook minutes for each team’s first {OPENING_GAMES} games; season-average minutes from game {OPENING_GAMES + 1}. Counts include completed regular-season team games, not player appearances.')
     if ui.button('Refresh live data'):
@@ -197,7 +198,7 @@ def render_live_dashboard(ui, roster):
             default_minutes = min(48.,max(0.,float(automatic_minutes))) if pd.notna(automatic_minutes) else 0.
             slider_key = f'player_minutes_{SEASON}_{player_id}'
             flag_key = f'custom_minutes_{SEASON}_{player_id}'
-            st.session_state[slider_key] = st.session_state.get(flag_key,default_minutes)
+            st.session_state[slider_key] = round_projected_minutes(st.session_state.get(flag_key,default_minutes))
             custom_minutes = ui.slider('Projected minutes',min_value=0.,max_value=48.,step=0.5,
                                        key=slider_key,format='%.1f min',on_change=mark_manual_minutes,args=(flag_key,slider_key))
             ui.button('Use automatic minutes',key=f'reset_minutes_{player_id}',on_click=reset_manual_minutes,
@@ -310,7 +311,7 @@ def render_live_dashboard(ui, roster):
             ui.write('Roles are available even at 10 minutes or fewer. Existing manual assignments take precedence; developing roles remain provisional.')
             ui.dataframe(rotation_audit[['PLAYER_NAME','TEAM_ABBREVIATION','OffArchetype','DefArchetype','Confidence']],hide_index=True,width='stretch')
             ui.download_button('Download the 33-player assignments',rotation_audit.to_csv(index=False),'additional_33_archetypes.csv','text/csv')
-        ui.caption('Approved 2026–27 archetypes and the original workbook minutes. Manual overrides remain authoritative.')
+        ui.caption('Approved 2026–27 archetypes and projected minutes rounded to the nearest 0.5. Manual overrides remain authoritative.')
         team = ui.selectbox('Team', ['All'] + sorted(roster.TEAM_ABBREVIATION.unique()), key='archetype_team')
         selected = roster if team == 'All' else roster[roster.TEAM_ABBREVIATION.eq(team)]
         if ui.checkbox('Only players with projected minutes', value=True, key='archetype_rotation'):

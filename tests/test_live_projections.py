@@ -36,6 +36,23 @@ class LiveProjectionTests(unittest.TestCase):
         # Team has played eight games, player only two: use 48 / 2, not 48 / 8.
         self.assertEqual(self.project(8)['Projected minutes'],24.)
 
+    def test_half_minute_rounding_preserves_source_and_rate_denominators(self):
+        self.roster.loc[0, 'PROJECTED_MIN'] = 32.9943
+        result = self.project(0)
+        self.assertEqual(result['Projected minutes'], 33.)
+        self.assertEqual(result.PTS, 16.5)
+        self.assertEqual(self.roster.iloc[0].PROJECTED_MIN, 32.9943)
+        self.current.loc[0, 'MIN'] = 24.26
+        result = self.project(3)
+        self.assertEqual(result['Projected minutes'], 24.5)
+        result = self.project(4)
+        weight = (24.26 * 2) / (24.26 * 2 + 200)
+        self.assertAlmostEqual(result.PTS, ((1-weight)*10/20 + weight*12/24.26)*24.5)
+        teams = pd.DataFrame([{'TEAM_ID':TEAM_IDS['ATL'],'GAMES_PLAYED':0}])
+        custom = build_projections(self.roster,self.history,teams,self.current,
+                                   minutes_overrides={1:16.25}).iloc[0]
+        self.assertEqual(custom['Projected minutes'],16.5)
+
     def test_zero_minutes_missing_profile_and_post_window_no_appearances(self):
         self.roster.PROJECTED_MIN = 0.
         self.assertEqual(self.project(2)['PTS'],0.)

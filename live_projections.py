@@ -20,6 +20,11 @@ STAT_NAMES = {'PTS': 'avgPoints', 'REB': 'avgRebounds', 'AST': 'avgAssists',
               'FTA': 'avgFreeThrowsAttempted', 'OREB': 'avgOffensiveRebounds', 'DREB': 'avgDefensiveRebounds'}
 
 
+def round_projected_minutes(value):
+    """Round effective projected minutes to half-minutes; quarter ties round up."""
+    return float(np.floor(value * 2 + 0.5) / 2)
+
+
 def name_key(name):
     text = unicodedata.normalize('NFKD', str(name)).encode('ascii', 'ignore').decode().lower()
     words = re.sub(r'[^a-z0-9 ]', '', text).split()
@@ -173,6 +178,7 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
             minutes, source = observed.MIN, 'Season average'
         if played is not None and player.PLAYER_ID in minutes_overrides:
             minutes, source = float(minutes_overrides[player.PLAYER_ID]), 'Manual adjustment'
+        minutes = round_projected_minutes(minutes)
         row = {'PLAYER_ID':player.PLAYER_ID,'Player':player.PLAYER_NAME,'Team':player.TEAM_ABBREVIATION,
                'TEAM_ID':player.TEAM_ID, 'Team games completed':played, 'Projected minutes':minutes,'Minutes source':source,
                'Offensive archetype':player.OffArchetype,'Defensive archetype':player.DefArchetype,
