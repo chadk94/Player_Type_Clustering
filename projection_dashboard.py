@@ -133,7 +133,7 @@ def render_live_dashboard(ui, roster):
         elif fallback is None:
             ui.caption('No RotoWire export has been loaded yet. Missing-profile projections stay unavailable until an authorized export is supplied.')
     projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback)
-    role_policy_version = hashlib.sha256(b''.join((ROOT / p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_overrides.json','archetype_model.py'])).hexdigest()
+    role_policy_version = hashlib.sha256(b''.join((ROOT / p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv','archetype_overrides.json','archetype_model.py'])).hexdigest()
     prior_effects = prior_matchup_effects(roster, role_policy_version)
     current_effects = {}
     if not teams.empty and teams.GAMES_PLAYED.ge(4).any():
@@ -272,6 +272,11 @@ def render_live_dashboard(ui, roster):
             ui.write('All 100 previously uncategorized or unnamed assignments have been reviewed. Your manual overrides take precedence. Developing roles remain provisional.')
             ui.dataframe(audit[['Player','Team','Offense','Defense','Confidence']],hide_index=True,width='stretch')
             ui.download_button('Download the full 100-player audit',audit.to_csv(index=False),'archetype_audit_100_players.csv','text/csv')
+        with ui.expander('Review the 33 additional rotation players'):
+            rotation_audit = pd.read_csv(ROOT / 'data/audit/low_minute_33_players.csv')
+            ui.write('Roles are available even at 10 minutes or fewer. Existing manual assignments take precedence; developing roles remain provisional.')
+            ui.dataframe(rotation_audit[['PLAYER_NAME','TEAM_ABBREVIATION','OffArchetype','DefArchetype','Confidence']],hide_index=True,width='stretch')
+            ui.download_button('Download the 33-player assignments',rotation_audit.to_csv(index=False),'additional_33_archetypes.csv','text/csv')
         ui.caption('Approved 2026–27 archetypes and the original workbook minutes. Manual overrides remain authoritative.')
         team = ui.selectbox('Team', ['All'] + sorted(roster.TEAM_ABBREVIATION.unique()), key='archetype_team')
         selected = roster if team == 'All' else roster[roster.TEAM_ABBREVIATION.eq(team)]

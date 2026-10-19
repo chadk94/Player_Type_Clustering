@@ -7,13 +7,14 @@
   },
   "manual_override_file_sha256": "819bfd29dc733c99b8fc191defdeaba30e02ad94bd08d6283e0fce4fc2816504",
   "additional_reference_reviews": 90,
+  "low_minute_reviews": 33,
   "reference_review_file_sha256": "2ec69d7ef070f96843f640e3ea79a83f3a27588bdf7ec1d5f9274b5e57d81864",
   "review_file_sha256": "abac4e29852c7f8d4eee72d3d6a1c01edce2c2c195e11bf4184b49e12524939a",
   "role_policy": "User manual override > analyst review > fixed named historical role/centroid",
   "notes": "Analyst judgments within existing role vocabulary, not new observed 2026\u201327 data. Developing/small-sample roles remain provisional. Offense Spot-Up Role Player is the legacy low-usage complementary-role bucket, including cutters.",
-  "total_players_with_changed_roles": 176,
-  "additional_players_with_changed_roles": 76,
+  "total_players_with_changed_roles": 209,
+  "additional_players_with_changed_roles": 109,
   "unchanged_workbook_minutes": true,
   "named_eligible_players": 285,
-  "role_policy_version": "c19262f7e8b11d119a5f717f537266ef9860e26cd236804ed2599194352d3601"
+  "role_policy_version": "974f7562dff34d88848a7fd599593d49fa9594a66f8f495f901612e08e50e9f9"
 }

@@ -18,7 +18,7 @@ def named_roles(rules, side):
 
 
 def load_reviews():
-    reviews = pd.concat([pd.read_csv(ROOT / filename) for filename in ['archetype_reviews.csv','archetype_reference_reviews.csv']],ignore_index=True)
+    reviews = pd.concat([pd.read_csv(ROOT / filename) for filename in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv']],ignore_index=True)
     required = ['PLAYER_ID','PLAYER_NAME','OffCluster','DefCluster','OffReason','DefReason']
     if not set(required).issubset(reviews) or reviews.PLAYER_ID.duplicated().any() or reviews.PLAYER_NAME.duplicated().any():
         raise ValueError('Role reviews require unique player IDs/names and per-side reasons')

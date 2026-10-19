@@ -131,6 +131,7 @@ def run(input_path, minutes_path, games_path, output, window=OPENING_GAMES, prio
                                                 prior_mode=prior_season_id is not None)
         audit.setdefault('archetype_models', {})[side] = model_info
         exports[filename] = result
+    audit['archetype_rotation_reviews_sha256'] = hashlib.sha256((ROOT / 'archetype_rotation_reviews.csv').read_bytes()).hexdigest()
     audit['archetype_reference_reviews_sha256'] = hashlib.sha256((ROOT / 'archetype_reference_reviews.csv').read_bytes()).hexdigest()
     audit['archetype_reviews_sha256'] = hashlib.sha256((ROOT / 'archetype_reviews.csv').read_bytes()).hexdigest()
     audit['classification_policy'] = 'Named references only; no new KMeans fit or forced label permutation'

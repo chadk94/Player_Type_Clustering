@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from season_pipeline import ROOT, SEASON_ID, OPENING_GAMES, apply_overrides, load_rules, run
-from archetype_model import validate_named_roles
+from archetype_model import validate_named_roles, assign_named_roles
 
 
 def bootstrap(minutes_path, output, window=OPENING_GAMES):
@@ -57,6 +57,17 @@ def bootstrap(minutes_path, output, window=OPENING_GAMES):
         result['AssignmentSource'] = result.AssignmentSource.fillna(pd.Series(np.select(
             [result.Cluster.notna(), ~result.ModelEligibleMinutes],
             ['auto_model', 'outside_minutes_cutoff'], default='missing_historical_profile'), index=result.index))
+        # A role is independent of the >10 MPG model-training cutoff. Fill positive-
+        # minute players from real named historical profiles, then human rules win.
+        reference = pd.read_csv(ROOT / 'references' / filename)
+        features = json.loads((ROOT / 'clustering_features.json').read_text())[f'cluster_players_{side}']
+        historical_roles, _ = assign_named_roles(reference, reference, features, side, rules,
+                                                 apply_overrides, prior_mode=True)
+        known = historical_roles[historical_roles.MIN.gt(0)].set_index('PLAYER_ID')
+        fallback_roles = result.PLAYER_ID.map(known.Cluster)
+        fill = result.Cluster.isna() & result.PROJECTED_MIN.gt(0) & fallback_roles.notna()
+        result.loc[fill,'Cluster'] = fallback_roles[fill]
+        result.loc[fill,'AssignmentSource'] = 'historical_named_role_low_minutes'
         result = apply_overrides(result, side, rules)
         validate_named_roles(result, side, rules)
         result['ArchetypeStatus'] = np.where(result.Cluster.notna(), 'assigned_provisional', result.AssignmentSource)

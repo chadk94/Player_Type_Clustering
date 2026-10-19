@@ -21,15 +21,15 @@
       "method": "historical_named_roles",
       "reference_players": 403,
       "role_counts": {
-        "0": 62,
-        "1": 25,
-        "2": 48,
-        "4": 79,
-        "5": 40,
-        "6": 70,
-        "7": 18,
-        "8": 27,
-        "9": 34
+        "0": 65,
+        "1": 28,
+        "2": 49,
+        "4": 73,
+        "5": 38,
+        "6": 73,
+        "7": 17,
+        "8": 25,
+        "9": 35
       },
       "eligible_role_ids": [
         0,
@@ -54,15 +54,15 @@
       "reference_players": 403,
       "role_counts": {
         "0": 54,
-        "1": 30,
-        "3": 22,
-        "4": 45,
-        "5": 39,
-        "6": 68,
-        "7": 49,
-        "8": 18,
-        "11": 36,
-        "12": 42
+        "1": 33,
+        "3": 21,
+        "4": 48,
+        "5": 42,
+        "6": 65,
+        "7": 46,
+        "8": 19,
+        "11": 32,
+        "12": 43
       },
       "eligible_role_ids": [
         0,
@@ -84,6 +84,7 @@
       ]
     }
   },
+  "archetype_rotation_reviews_sha256": "09daa4eb6a1b06f9dae9deeb770ca2ad51d6e483d5feb2f0e6373efe7002d314",
   "archetype_reference_reviews_sha256": "2ec69d7ef070f96843f640e3ea79a83f3a27588bdf7ec1d5f9274b5e57d81864",
   "archetype_reviews_sha256": "abac4e29852c7f8d4eee72d3d6a1c01edce2c2c195e11bf4184b49e12524939a",
   "classification_policy": "Named references only; no new KMeans fit or forced label permutation",

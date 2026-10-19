@@ -103,6 +103,29 @@ class ArchetypeAuditTests(unittest.TestCase):
         for side,cluster,opponent in effects:
             self.assertIn(cluster,named_roles(load_rules(),side.lower()))
 
+    def test_all_33_additional_players_keep_roles_below_training_cutoff(self):
+        reviewed=pd.read_csv(ROOT/'archetype_rotation_reviews.csv')
+        self.assertEqual(len(reviewed),33)
+        roster=pd.read_csv(ROOT/'preseason_archetypes.csv').set_index('PLAYER_ID')
+        selected=roster.loc[reviewed.PLAYER_ID]
+        self.assertTrue(selected.PROJECTED_MIN.le(10).all())
+        self.assertTrue(selected[['OffCluster','DefCluster']].notna().all().all())
+        self.assertTrue(roster.loc[roster.PROJECTED_MIN.gt(0),['OffCluster','DefCluster']].notna().all().all())
+        kyle=roster[roster.PLAYER_NAME.eq('Kyle Anderson')].iloc[0]
+        self.assertEqual(kyle.DefCluster,12)
+        self.assertEqual(kyle.DefAssignmentSource,'manual_override')
+        from preseason_bootstrap import bootstrap
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            refreshed,_=bootstrap(ROOT/'data/preseason/projected_minutes.csv',folder)
+        refreshed=refreshed.set_index('PLAYER_ID').loc[reviewed.PLAYER_ID]
+        self.assertEqual(refreshed.OffCluster.tolist(),selected.OffCluster.tolist())
+        self.assertEqual(refreshed.DefCluster.tolist(),selected.DefCluster.tolist())
+        # A player with no saved features receives labels, not invented observations.
+        swain=roster[roster.PLAYER_NAME.eq('Dailyn Swain')].iloc[0]
+        self.assertFalse(swain.HasHistoricalProfile)
+        self.assertTrue(pd.isna(swain.SourceSeasonID))
+
 
 
 if __name__=='__main__':

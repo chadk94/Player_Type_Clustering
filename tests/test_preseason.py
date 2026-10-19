@@ -76,7 +76,7 @@ class PreseasonTests(unittest.TestCase):
             self.assertTrue(minutes.groupby('TEAM_ID').PROJECTED_MIN.sum().sub(240).abs().lt(1e-8).all())
             unresolved = result[~result.HasHistoricalProfile]
             for side in ['Off', 'Def']:
-                nonmanual = unresolved[unresolved[f'{side}AssignmentSource'] != 'manual_override']
+                nonmanual = unresolved[~unresolved[f'{side}AssignmentSource'].isin(['manual_override','analyst_review'])]
                 self.assertTrue(nonmanual[f'{side}Cluster'].isna().all())
             zero = result[result.PROJECTED_MIN.eq(0)]
             self.assertFalse(zero.ModelEligibleMinutes.any())

@@ -18,13 +18,13 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1642369,Michael Ajayi,Michael Ajayi,CHA,1610612766,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1626192,Pat Connaughton,Pat Connaughton,CHA,1610612766,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1643410,Caleb Wilson,Caleb Wilson,CHI,1610612741,22026,32.0,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,8.0,High Stock + D,manual_override
-1643517,Dailyn Swain,Dailyn Swain,CHI,1610612741,22026,8.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
-1631159,Leonard Miller,Leonard Miller,CHI,1610612741,22026,8.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643517,Dailyn Swain,Dailyn Swain,CHI,1610612741,22026,8.0,,False,False,missing_historical_profile,6.0,Secondary Playmaker,analyst_review,6.0,Long Wing/Secondary POA,analyst_review
+1631159,Leonard Miller,Leonard Miller,CHI,1610612741,22026,8.0,,False,False,missing_historical_profile,4.0,Spot-Up Role Player,analyst_review,5.0,Big Wing Defender,analyst_review
 1643637,Jaylin Sellers,Jaylin Sellers,CHI,1610612741,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1642855,Noa Essengue,Noa Essengue,CHI,1610612741,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1643591,Tobe Awaka,Tobe Awaka,CHI,1610612741,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1626209,Mario Hezonja,Mario Hezonja,CLE,1610612739,22026,11.994291428809532,,False,True,missing_historical_profile,0.0,Catch & Shoot Wing,manual_override,12.0,Non-POA Wing,manual_override
-1643509,Meleek Thomas,Meleek Thomas,CLE,1610612739,22026,7.994291428809532,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643509,Meleek Thomas,Meleek Thomas,CLE,1610612739,22026,7.994291428809532,,False,False,missing_historical_profile,0.0,Catch & Shoot Wing,analyst_review,0.0,Non POA Guard,analyst_review
 1643640,"Ernest Udeh, Jr.","Ernest Udeh, Jr.",CLE,1610612739,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1642434,Riley Minix,Riley Minix,CLE,1610612739,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1642400,Tristan Enaruna,Tristan Enaruna,CLE,1610612739,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
@@ -60,7 +60,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1641771,Jalen Slawson,Jalen Slawson,IND,1610612754,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1641738,Kobe Brown,Kobe Brown,IND,1610612754,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1643413,Keaton Wagler,Keaton Wagler,LAC,1610612746,22026,21.94557802515804,,False,True,missing_historical_profile,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
-1642949,Yanic Konan Niederhäuser,Yanic Konan Niederhäuser,LAC,1610612746,22026,7.945578025158043,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1642949,Yanic Konan Niederhäuser,Yanic Konan Niederhäuser,LAC,1610612746,22026,7.945578025158043,,False,False,missing_historical_profile,1.0,Athletic Roll Man,analyst_review,1.0,Rim Protector,analyst_review
 1642394,Baba Miller,Baba Miller,LAC,1610612746,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1642353,Cam Christie,Cam Christie,LAC,1610612746,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1629622,Max Strus,Max Strus,LAC,1610612746,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
@@ -86,7 +86,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1641780,Johni Broome,Johni Broome,MIL,1610612749,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1643417,Nate Ament,Nate Ament,MIL,1610612749,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1642866,Joan Beringer,Joan Beringer,MIN,1610612750,22026,15.990849618734114,,False,True,missing_historical_profile,1.0,Athletic Roll Man,manual_override,1.0,Rim Protector,manual_override
-1626168,Trey Lyles,Trey Lyles,MIN,1610612750,22026,5.9908496187341145,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1626168,Trey Lyles,Trey Lyles,MIN,1610612750,22026,5.9908496187341145,,False,False,missing_historical_profile,9.0,Stretch Big,analyst_review,7.0,Turtles,analyst_review
 1642402,Enrique Freeman,Enrique Freeman,MIN,1610612750,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1642912,Isaiah Evans,Isaiah Evans,MIN,1610612750,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1642911,Rocco Zikarsky,Rocco Zikarsky,MIN,1610612750,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
@@ -143,7 +143,7 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1643576,Maliq Brown,Maliq Brown,SAS,1610612759,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1643007,Taelon Peter,Taelon Peter,SAS,1610612759,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1643542,Tarris Reed Jr.,Tarris Reed Jr.,SAS,1610612759,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
-1643512,Allen Graves,Allen Graves,TOR,1610612761,22026,9.937600000000002,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1643512,Allen Graves,Allen Graves,TOR,1610612761,22026,9.937600000000002,,False,False,missing_historical_profile,9.0,Stretch Big,analyst_review,8.0,High Stock + D,analyst_review
 1642918,Alijah Martin,Alijah Martin,TOR,1610612761,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1642935,Chucky Hepburn,Chucky Hepburn,TOR,1610612761,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1643558,Jaden Bradley,Jaden Bradley,TOR,1610612761,22026,0.0,,False,False,missing_historical_profile,,,outside_minutes_cutoff,,,outside_minutes_cutoff
