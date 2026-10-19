@@ -425,3 +425,28 @@ baseline is zero/nonfinite or projected data is unavailable.
 Top Sportsbook Edges excludes turnovers (TOV) from both its category checkboxes
 and rankings. Select all selects the seven remaining categories. Player vs
 Opponent retains its existing turnover projection.
+
+
+### Full market team-total matching: points only
+
+Player vs Opponent and Top Sportsbook Edges apply the selected book's posted
+spread and game total to **PTS only**, after opponent adjustments. Home implied
+points = (total − home spread)/2; away = (total + home spread)/2. Each player's
+PTS is multiplied by market team points / the full positive-minute team's model
+PTS. There is no partial blend. No intermediate rounding is used, so each team
+matches the market total before display rounding. Original point shares remain
+intact. REB, AST, 3PM, STL, BLK, TOV, minutes and archetypes are unchanged.
+PRA is recalculated as market-adjusted PTS + existing REB + existing AST.
+Points and PRA edges/ranks use these updated projections. Matchup ratings use
+pre-market PTS/PRA, so market scaling does not change the opponent-only rating.
+
+Fresh same-event, same-book paired spreads/totals are required; posted game
+lines are used directly, not a juice-derived game mean. Quotes older than 15
+minutes, mismatched/ambiguous lines and started games cannot calibrate points.
+Missing markets or incomplete team point/minutes coverage leave that team's
+original estimate intact and show an explanatory caption. The other team's valid
+calibration can still apply. Game markets share the five-minute cache and explicit
+refresh policy. The player slider updates that player's contribution in the full
+team denominator before scaling; other session slider values do not affect this
+preview or the automatic-minute edge rankings. Disabling opponent adjustments
+uses the unadjusted team baseline as the denominator; market matching still applies.

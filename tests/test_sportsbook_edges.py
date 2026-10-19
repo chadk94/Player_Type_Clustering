@@ -40,6 +40,18 @@ class GameEdgeTests(unittest.TestCase):
         ranked,_=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now)
         self.assertEqual(set(ranked['Matchup rating']),{'5 ⬆️⬆️'})
 
+    def test_points_market_adjustment_does_not_change_matchup_rating(self):
+        import copy
+        points=copy.deepcopy(self.payload['bookmakers'][0]['markets'][0])
+        points['key']='player_points'
+        self.payload['bookmakers'][0]['markets'].append(points)
+        self.players['PTS']=20.
+        self.players['Baseline PTS']=10.
+        self.players['Pre-market PTS']=10.
+        ranked,_=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,stats=['PTS'])
+        self.assertTrue(ranked.Projected.eq(20.).all())
+        self.assertEqual(set(ranked['Matchup rating']),{'3 ↔️'})
+
     def test_direction_and_optional_subthreshold_rows(self):
         under,_=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,direction='Under')
         self.assertTrue(under['Edge %'].lt(-5).all())

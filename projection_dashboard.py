@@ -15,6 +15,7 @@ from matchup_data import load_game_logs
 from matchup_projections import assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS, prior_season_profiles
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
+from market_points import market_targets, apply_market_points
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS
 from projection_presentation import over_line_label, matchup_rating
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
@@ -79,6 +80,27 @@ def sportsbook_props(event_id, bookmaker, _api_key):
     return payload
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def sportsbook_game_lines(event_id, bookmaker, _api_key):
+    return read_feed(f'/events/{event_id}/odds',_api_key,
+                     bookmakers=bookmaker,markets='spreads,totals',oddsFormat='american')
+
+
+def market_points_preview(ui, frame, event, book, api_key):
+    try:
+        targets=market_targets(sportsbook_game_lines(event['id'],book,api_key),event,book)
+        adjusted,summary,issues=apply_market_points(frame,targets)
+        if not summary.empty:
+            details=[f"{r.Team}: {r['Original PTS']:.2f} → {r['Market team total']:.2f} points ({(r.Factor-1)*100:+.2f}%)" for _,r in summary.iterrows()]
+            ui.caption('Full market adjustment — points only · '+'; '.join(details)+'. PRA uses the updated points plus unchanged rebounds and assists. All other stats stay unchanged. Matchup ratings remain opponent-only.')
+        if issues:
+            ui.caption('Points kept at model estimates for incomplete coverage: '+'; '.join(issues))
+        return adjusted
+    except (OddsFeedError,ValueError,KeyError,TypeError,AttributeError):
+        ui.caption('Market points adjustment unavailable: no usable current spread/total for this sportsbook and game. Points remain at model estimates.')
+        return frame
+
+
 def mark_manual_minutes(key, slider_key):
     st.session_state[key] = st.session_state[slider_key]
 
@@ -106,6 +128,7 @@ def render_live_dashboard(ui, roster):
         current_matchup_logs.clear()
         sportsbook_events.clear()
         sportsbook_props.clear()
+        sportsbook_game_lines.clear()
     with ui.spinner('Refreshing team records and season averages…'):
         try:
             state = live_state(SEASON)
@@ -244,6 +267,20 @@ def render_live_dashboard(ui, roster):
                 if event is None:
                     ui.caption(f'No upcoming {team} vs {opponent} sportsbook event was found. Choose an opponent with a scheduled game to compare current lines.')
                 else:
+                    team_baselines = team_players.copy()
+                    if flag_key in st.session_state:
+                        for column in baseline.columns:
+                            if column in team_baselines:
+                                team_baselines.loc[team_baselines.PLAYER_ID.eq(player_id),column] = baseline.iloc[0][column]
+                    full_team = apply_matchup(team_baselines,roster,teams,prior_effects,current_effects,opponent) if adjusted_on else team_baselines
+                    market_team = market_points_preview(ui,full_team,event,book_key,api_key)
+                    market_player = market_team[market_team.PLAYER_ID.eq(player_id)].iloc[0]
+                    for stat in ['PTS','PRA']:
+                        preview.loc[preview.Stat.eq(stat),'Projected'] = market_player[stat]
+                        if adjusted_on:
+                            adjusted.loc[adjusted.PLAYER_ID.eq(player_id),stat] = market_player[stat]
+                        else:
+                            baseline.loc[baseline.PLAYER_ID.eq(player_id),stat] = market_player[stat]
                     payload = sportsbook_props(event['id'],book_key,api_key)
                     if payload.get('id') != event['id'] or {payload.get('home_team'),payload.get('away_team')} != {event['home_team'],event['away_team']}:
                         raise OddsFeedError('Sportsbook matchup could not be verified.')
@@ -252,6 +289,7 @@ def render_live_dashboard(ui, roster):
                     ui.caption(f'{book_name} via The Odds API · {team} vs {opponent} · {game_time:%b %d, %Y at %I:%M %p %Z}. Use Refresh live data for updated quotes; quotes older than 15 minutes are excluded when comparisons are loaded.')
             except OddsFeedError as exc:
                 ui.caption(str(exc))
+            preview['Change'] = preview.Projected - preview.Baseline
             comparison = compare_with_book(preview,quotes)
             comparison['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(comparison['Book line'],comparison['Over odds'])]
             display_columns = ['Stat','Baseline','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Play']
@@ -368,6 +406,9 @@ def render_live_dashboard(ui, roster):
                             matchup_rows.append(apply_matchup(team_projection,roster,teams,prior_effects,current_effects,opponent))
                     payload = sportsbook_props(game_id,BOOKS[edge_book_name],edge_key)
                     combined = pd.concat(matchup_rows,ignore_index=True) if matchup_rows else pd.DataFrame()
+                    if not combined.empty:
+                        market_event = {**game,'commence_time':game['GameTimeUTC'].isoformat()}
+                        combined = market_points_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key)
                     ranked,total_edges = game_edges(combined,payload,game,BOOKS[edge_book_name],now=now,plays_only=plays_only,direction=edge_direction,stats=selected_stats)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
                     ui.caption('Snapshot of paired Over/Under prices; quotes older than 15 minutes are excluded when loaded. Use Refresh live data to update. Edge % is a projection gap, not a win probability or expected betting return.')
