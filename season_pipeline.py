@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 ROOT = Path(__file__).resolve().parent
 SEASON = os.environ.get('NBA_SEASON', '2026-27')
 SEASON_ID = 20000 + int(SEASON[:4])
-OPENING_GAMES = int(os.environ.get('NBA_OPENING_GAMES', '10'))
+OPENING_GAMES = int(os.environ.get('NBA_OPENING_GAMES', '3'))
 if OPENING_GAMES < 0:
     raise ValueError('NBA_OPENING_GAMES must be nonnegative')
 

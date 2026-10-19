@@ -1,0 +1,10 @@
+{
+  "source_url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/18/athletes/statistics?season=2026&seasontype=2",
+  "season": "2025-26",
+  "season_type": "Regular Season",
+  "retrieved_date": "2026-10-19",
+  "players": [
+    "Pac\u00f4me Dadiet"
+  ],
+  "reason": "Actual prior-season stats absent from archived clustering snapshot and RotoWire export"
+}

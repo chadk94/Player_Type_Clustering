@@ -1,7 +1,7 @@
 import ast
 import json
 import os
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from pathlib import Path
 import tempfile
 import unittest
@@ -108,11 +108,16 @@ class PreseasonTests(unittest.TestCase):
             previous = os.getcwd()
             try:
                 os.chdir(tmp)
-                environment['main']()
+                renderer = MagicMock()
+                import types
+                fake_module = types.ModuleType('projection_dashboard')
+                fake_module.render_live_dashboard = renderer
+                with patch.dict('sys.modules', {'projection_dashboard': fake_module}):
+                    environment['main']()
             finally:
                 os.chdir(previous)
             live_loader.assert_not_called()
-            displayed = ui.dataframe.call_args.args[0]
+            displayed = renderer.call_args.args[1]
             self.assertEqual(len(displayed), len(minutes))
 
 

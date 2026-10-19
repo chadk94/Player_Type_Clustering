@@ -1,0 +1,13 @@
+{
+  "source_file": "rotowire-nba-projections.csv",
+  "source_url": "https://www.rotowire.com/basketball/projections.php",
+  "source_modified_date": "2026-10-16",
+  "assignment_season": "2026-27",
+  "units": "per_game",
+  "source_sha256": "9edbc829006d06a7261640289be76569d276e6c7ecf9c2bdf79a19d7d8ba54dd",
+  "source_rows": 457,
+  "matched_rows": 446,
+  "missing_profile_fallback_rows": 77,
+  "match_policy": "Exact normalized name; unique suffix-insensitive match only if no exact match",
+  "minutes_policy": "RotoWire MIN is a rate denominator only; workbook first 3 team games then observed season MPG"
+}

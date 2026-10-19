@@ -1551,33 +1551,16 @@ def load_data():
 
 
 def main():
-    # Show provisional roster assignments without inventing current-season game logs.
+    # Keep the approved roster while live regular-season records drive the minutes window.
     from pathlib import Path
     import json
     audit_path = Path('season_refresh.json')
     roster_path = Path('preseason_archetypes.csv')
     if audit_path.exists() and roster_path.exists():
         audit = json.loads(audit_path.read_text())
-        counts = pd.read_csv('team_games.csv')
-        if (audit.get('mode') == 'preseason_historical_prior'
-                and audit.get('season') == SEASON
-                and counts.SEASON_ID.eq(SEASON_ID).all()
-                and not counts.empty and counts.GAMES_PLAYED.eq(0).all()):
-            roster = pd.read_csv(roster_path)
-            st.title(f"🏀 NBA Player Archetypes ({SEASON} Preseason)")
-            st.caption("Provisional assignments use archived 2025–26 profiles and your workbook minutes. No current-season games are included.")
-            st.info(f"{audit['modelled_players']} players reclustered; {audit['rotation_players_missing_profiles']} players above 10 projected minutes lack historical profiles; {audit.get('rotation_players_missing_archetypes', 0)} still need archetype assignments. Manual overrides take precedence.")
-            team = st.selectbox('Team', ['All'] + sorted(roster.TEAM_ABBREVIATION.unique()))
-            if team != 'All':
-                roster = roster[roster.TEAM_ABBREVIATION.eq(team)]
-            if st.checkbox('Only players with projected minutes', value=True):
-                roster = roster[roster.PROJECTED_MIN.gt(0)]
-            columns = ['PLAYER_NAME', 'TEAM_ABBREVIATION', 'PROJECTED_MIN',
-                       'OffArchetype', 'DefArchetype', 'OffAssignmentSource',
-                       'DefAssignmentSource', 'HasHistoricalProfile']
-            st.dataframe(roster[columns], hide_index=True, use_container_width=True)
-            st.download_button('Download archetypes CSV', roster.to_csv(index=False),
-                               'preseason_archetypes.csv', 'text/csv')
+        if audit.get('season') == SEASON:
+            from projection_dashboard import render_live_dashboard
+            render_live_dashboard(st, pd.read_csv(roster_path))
             return
     try:
         merged = load_data()

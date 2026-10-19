@@ -4,6 +4,50 @@ This update uses the user's 2026-10-18 minutes workbook and the repository's sav
 2025–26 feature profiles to produce **provisional 2026–27 assignments**. No observed
 2026–27 statistics are claimed. The source season remains explicit in every profile.
 
+## Live player-stat projections
+
+The deployed app now opens **Player Stat Projections**, with the original roster
+available in a separate **Archetypes** tab. Live regular-season records and player
+summaries refresh every five minutes while the page is open; a manual refresh button
+clears the caches. Public ESPN endpoints provide the data because the official NBA
+Stats/CDN requests tested from this environment were blocked or timed out.
+
+The user selected this minutes policy: **workbook minutes for games 1–3 of each
+team, then current-season average minutes from game 4 onward**. A team’s completed
+regular-season wins plus losses drives the boundary, independently for each team.
+The player’s season MPG divides minutes by appearances, excluding DNPs; the team
+count is not the denominator. There is no post-window fallback to workbook minutes
+for a player without matched season appearances. Unknown values remain blank.
+
+Per-game stat estimates use prior-season archived per-minute rates multiplied by
+the selected minutes. As actual regular-season minutes accumulate, current-season
+per-minute rates receive weight `current minutes / (current minutes + 200)`; the
+200-minute prior weight is an explicit smoothing assumption, separate from the
+user’s three-game minutes rule. Players without a prior profile can receive estimates
+from observed current-season stats once available; a manual archetype alone cannot
+create numeric rates. Counts, minutes sources, statistical baselines and missing-data
+statuses are shown per player. Workbook zeroes are retained during the opening window.
+
+These are baseline estimates: no opponent, pace, injury or starting-lineup adjustments
+are applied. The schedule provides opponent/venue context, not an adjustment factor.
+The app can filter today’s uncompleted regular-season games; with no games it still
+shows clearly labeled per-game previews. Rosters remain the user’s workbook scenario.
+
+Data guards require all 30 current-season regular-season team records. ESPN may
+silently return last year’s player summaries before games exist; the app explicitly
+rejects mismatched `requestedSeason` years and preseason/playoff summaries. Team
+counts of zero do not trigger a request for preseason player stats. Cross-provider
+player matches are exact after punctuation/diacritic normalization, including both
+canonical and workbook spellings; ambiguous names remain unavailable. If traded
+players have overlapping summaries, the largest available sample is selected rather
+than adding records that might double-count games. If team records cannot be loaded,
+projections pause rather than assuming zero games or continuing workbook minutes.
+
+Current endpoints: ESPN `/apis/v2/sports/basketball/nba/standings`,
+`/apis/site/v2/sports/basketball/nba/teams/{id}/athletes/statistics`, and
+`/apis/site/v2/sports/basketball/nba/scoreboard`. ESPN uses the season-ending year
+(2027 for 2026–27); NBA IDs and archetype assignments remain unchanged.
+
 ## Approved manual assignments
 
 The user approved assignments for all 26 rotation players missing profiles, with four
@@ -38,9 +82,9 @@ The original 64 defensive overrides and all archetype names are unchanged.
   overrides apply. The other eight original rules remain stored for future rosters.
 * Initialized **all team games played to zero**, based on the user's statement that
   no games have been played. The workbook itself does not supply game counts.
-* The configurable opening window remains **10 completed team games**, an explicit
-  implementation default, not an inferred user preference. Before game count 10,
-  user minutes control eligibility and projection defaults; at 10 the normal runner
+* The configurable opening window remains **3 completed team games**, an explicit
+  implementation default, not an inferred user preference. Before game count 3,
+  user minutes control eligibility and projection defaults; at 3 the normal runner
   uses current observed minutes. Preseason prior mode rejects nonzero team counts
   and does not automatically become a live-season model.
 
@@ -100,23 +144,22 @@ minutes do not replace that denominator or create fake observations.
 ```sh
 python -m pip install -r requirements.txt
 python import_minutes.py /path/to/Custom_Team_Minutes_2026-10-18.xlsx --output data/preseason
-python preseason_bootstrap.py --minutes data/preseason/projected_minutes.csv --output . --opening-games 10
+python preseason_bootstrap.py --minutes data/preseason/projected_minutes.csv --output . --opening-games 3
 python -m unittest discover -s tests -v
 streamlit run main.py
 ```
 
-The preseason dashboard reads the local roster results without requesting NBA game
-logs or inventing games. It shows team filters, missing-profile flags, minutes and
-assignments. While the prior manifest is active and all counts are zero, it opens
-this view. The normal historical matchup/EV dashboard remains dependent on actual
-game logs. Update team counts when games finish; rerun using real current profiles
-when switching to observed-season data.
+The live projection dashboard reads the approved roster and fetches validated current
+regular-season counts/averages. The zero-game `team_games.csv` remains a reproducible
+preseason bootstrap input; it is **not** used for the live projection minutes policy.
+The historical matchup/EV code is retained as a fallback entry for other seasons,
+but the current requested screen does not use odds or betting APIs.
 
 For an ordinary current-season refresh:
 
 ```sh
 python season_pipeline.py --input player_data.csv --minutes projected_minutes.csv \
-  --team-games team_games.csv --opening-games 10 --output .
+  --team-games team_games.csv --opening-games 3 --output .
 ```
 
 `player_data.csv` must contain one enriched per-game current-season row per player
@@ -134,7 +177,7 @@ including games a player missed. Game counts must reflect the run date, independ
 of dashboard date filters. Input duplicates, missing projections, invalid minutes,
 wrong seasons and nonfinite model features are rejected.
 
-`NBA_SEASON` defaults to `2026-27`; `NBA_OPENING_GAMES` defaults to `10`.
+`NBA_SEASON` defaults to `2026-27`; `NBA_OPENING_GAMES` defaults to `3`.
 The dashboard accepts `NBA_MINUTES_FILE` and `NBA_TEAM_GAMES_FILE` overrides for its
 normal projection view. Set the same opening window for refresh and dashboard.
 
@@ -156,8 +199,53 @@ rejection of unlabelled historical inputs, explicit source-year preservation,
 missing-profile handling and full-roster preseason generation. The original aliases
 for FanDuel spellings remain in `main.py`. Deployments should track the repository main branch and use main.py as the Streamlit entry point.
 
-The 10 automated tests pass. A clean Python 3.12 installation of requirements.txt
+The projection tests cover the three-game boundary, per-team counts versus player
+appearances, unavailable post-window minutes, zeroes, missing statistical profiles,
+rate blending, ambiguous names and rejection of preseason/stale-season data.
+All 24 automated tests pass, including RotoWire fallback scaling, export parsing,
+source precedence and explicit preservation of the remaining Hezonja gap. A clean Python 3.12 installation of requirements.txt
 also passed Streamlit AppTest checks for full app startup, the four adjusted offensive
 roles, workbook minutes, the 318-player positive-minutes view, the full 541-player
 view, and team filtering. First-time graphics initialization required cache warmup.
 Live NBA APIs and hosted deployment status were not tested.
+
+## RotoWire fallback for missing historical profiles
+
+The user requested RotoWire projections for players lacking a usable historical
+statistical profile. `rotowire_fallback.py` normalizes an authorized CSV export,
+matching NBA IDs or unambiguous player names and accepting explicit per-game,
+season-total (requires GP), or per-36 units. Required core fields are Player,
+MIN/MPG, PTS, REB, AST, STL, BLK, 3PM and TO. A RotoWire player ID is not an NBA ID.
+Unknown players are reported; duplicates, missing core columns, invalid values and
+zero rate denominators are rejected. Missing secondary stats are kept unavailable.
+
+The app's RotoWire expander accepts a CSV for the current session; no account cookie,
+password or uploaded subscriber file is stored in GitHub. An optional normalized
+`data/rotowire_fallback.csv` can provide an explicitly supplied persistent baseline.
+Only players without usable historical profiles use the RotoWire baseline. The
+per-minute statistical rates still scale to the user's selected minutes. RotoWire
+minutes never override workbook minutes in games 1–3 or season MPG from game 4.
+Current observations gradually replace the RotoWire prior using the same 200-minute
+weight. All rows identify RotoWire as a forecast source, not actual prior-season stats.
+
+An existing authorized RotoWire export was found in the user's Downloads directory:
+`rotowire-nba-projections.csv`, modified 2026-10-16. It contains 457 projected player
+rows with a two-line header and per-game fields. Normalized rates for **77 players
+missing archived profiles** are stored in `data/rotowire_fallback.csv`; 30 of the 32
+positive-minute players with missing baselines are covered. The original full
+subscriber export and account credentials are not published. Source hash, date,
+units and matching policy are recorded in `data/rotowire_source.json`. Name suffixes
+can be omitted only when the remaining full name uniquely identifies one roster ID.
+
+Pacôme Dadiet is absent from that RotoWire export but has actual 2025–26 regular-season
+stats. A validated ESPN season summary (29 appearances) supplies his baseline through
+`data/prior_stat_supplements.csv`, with separate source metadata. This does not invent
+missing tracking features or change his approved archetypes.
+
+With these sources, **317 of the 318 players with positive workbook minutes have
+numerical core-stat previews** at zero current-season games. Mario Hezonja remains
+unavailable: he lacks a 2025–26 NBA profile and is absent from the RotoWire export.
+No older NBA season or unadjusted European profile has been silently substituted.
+The live RotoWire full-season table stayed on “Loading Stats”, although the signed-in
+Premium account could view individual forecast summaries. A complete usable updated
+projection for Hezonja (including its minutes denominator) is still required.
