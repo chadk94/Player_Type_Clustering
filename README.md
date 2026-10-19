@@ -403,3 +403,20 @@ The Top Sportsbook Edges page includes persistent checkboxes for PTS, REB, AST,
 3PM, STL, BLK, TOV and PRA (all enabled initially). Stat selection applies before
 ranking and the 20-row limit, so the table and CSV contain the strongest edges
 within the checked categories. Unchecking every category shows a selection prompt.
+
+
+### Over-price labels and matchup ratings
+
+Player vs Opponent shows **Book line (Over)** as the original posted line plus
+its signed American Over price, e.g. `1.5 -150` or `2.5 +120`. The top-edges table
+uses the same label. Numeric line and both prices remain available in exports;
+no-vig implied totals and percentage edges use the original numeric inputs.
+
+Between Baseline and Projected, **Matchup rating** measures opponent-adjusted
+production relative to that same minutes-adjusted baseline: 1 ⬇️⬇️ for ≤−10%,
+2 ⬇️ for (−10%,−3%), 3 ↔️ for [−3%,+3%], 4 ⬆️ for (+3%,+10%), and 5 ⬆️⬆️
+for ≥+10%. Turnovers invert the sign so fewer turnovers rate higher. Rebounds
+and PRA use their combined baseline/projected totals. These explicit display
+thresholds are an interpretive scale, not calibrated outcome probabilities or
+sportsbook edges. Ratings remain blank when matchup adjustments are disabled,
+baseline is zero/nonfinite or projected data is unavailable.

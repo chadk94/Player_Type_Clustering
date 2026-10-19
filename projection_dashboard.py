@@ -16,6 +16,7 @@ from matchup_projections import assign_game_archetypes, matchup_effects, apply_m
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
 from sportsbook_edges import scheduled_book_games, game_edges
+from projection_presentation import over_line_label, matchup_rating
 from sportsbook_lines import (BOOKS, MARKETS, STAT_ORDER, OddsFeedError, read_feed, next_matchup,
                               player_quotes, compare_with_book, comparison_style)
 
@@ -230,6 +231,7 @@ def render_live_dashboard(ui, roster):
             preview = pd.DataFrame({'Stat':['3PM' if x=='FG3M' else x for x in stats],
                 'Baseline':[baseline.iloc[0][x] for x in stats],
                 'Projected':[row[x] if adjusted_on else baseline.iloc[0][x] for x in stats]})
+            preview['Matchup rating'] = [matchup_rating(base,projected,stat,adjusted_on) for base,projected,stat in zip(preview.Baseline,preview.Projected,preview.Stat)]
             preview['Change'] = preview.Projected - preview.Baseline
             book_name = ui.selectbox('Sportsbook',list(BOOKS),key='projection_sportsbook')
             book_key = BOOKS[book_name]
@@ -251,11 +253,13 @@ def render_live_dashboard(ui, roster):
             except OddsFeedError as exc:
                 ui.caption(str(exc))
             comparison = compare_with_book(preview,quotes)
-            display_columns = ['Stat','Baseline','Projected','Book line','Book implied total','Edge %','Play','Change']
+            comparison['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(comparison['Book line'],comparison['Over odds'])]
+            display_columns = ['Stat','Baseline','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Play','Change']
             display = comparison[display_columns]
             ui.caption('Edge % = (projection ÷ book-implied total − 1) × 100. Over plays require more than +5%; Under plays require less than −5%. Only qualifying edges are shaded, from light to dark as the edge grows. The 5% buffer is your extra projection margin; the implied total already removes bookmaker margin.')
             ui.dataframe(display.style.apply(comparison_style,axis=1).format(
-                {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %']},'Edge %':'{:+.2f}%'},na_rep='—'),hide_index=True,width='stretch')
+                {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %','Matchup rating','Book line (Over)']},'Edge %':'{:+.2f}%'},na_rep='—'),hide_index=True,width='stretch')
+            ui.caption('Matchup rating: 1 ⬇️⬇️ poor (−10% or worse), 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent (+10% or better). Based on opponent lift versus baseline, not sportsbook edge; fewer turnovers rate higher. Ratings are blank when adjustments are off or data is unavailable. Book line (Over) includes the Over price.')
             unavailable = comparison.loc[comparison['Book implied total'].isna(),'Stat'].tolist()
             if unavailable:
                 ui.caption('No usable current two-sided line for: '+', '.join(unavailable)+'. Unavailable comparisons stay blank.')
@@ -373,10 +377,11 @@ def render_live_dashboard(ui, roster):
                         ui.info('No eligible edges meet these filters. Props may not be posted yet, quotes may be stale, or projections may lack matchup history. Try another game/book or turn off the 5% filter.')
                     else:
                         ui.success(f'Showing {len(ranked)} of {total_edges} eligible player-stat edges')
-                        display_columns = ['Rank','Player','Team','Stat','Play','Projected minutes','Projected','Book line','Book implied total','Edge %','Over odds','Under odds']
+                        ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
+                        display_columns = ['Rank','Player','Team','Stat','Play','Projected minutes','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds']
                         edge_display = ranked[display_columns]
                         ui.dataframe(edge_display.style.apply(comparison_style,axis=1).format(
-                            {'Projected minutes':'{:.1f}','Projected':'{:.2f}','Book line':'{:g}',
+                            {'Projected minutes':'{:.1f}','Projected':'{:.2f}',
                              'Book implied total':'{:.2f}','Edge %':'{:+.2f}%',
                              'Over odds':'{:+.0f}','Under odds':'{:+.0f}'},na_rep='—'),hide_index=True,width='stretch')
                         ui.caption('Only edges strictly above +5% (Over) or below −5% (Under) are marked as plays. Color intensity grows with edge magnitude. Multiple stats for the same player may be correlated.')
