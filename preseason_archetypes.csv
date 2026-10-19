@@ -345,9 +345,9 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1630570,Trendon Watford,Trendon Watford,NOP,1610612740,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
 1628973,Jalen Brunson,Jalen Brunson,NYK,1610612752,22026,34.663636363636364,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,kmeans_aligned,4.0,Pesky Guard,kmeans_aligned
 1628969,Mikal Bridges,Mikal Bridges,NYK,1610612752,22026,32.663636363636364,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
-1628384,OG Anunoby,OG Anunoby,NYK,1610612752,22026,32.663636363636364,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1628384,OG Anunoby,OG Anunoby,NYK,1610612752,22026,32.663636363636364,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,manual_override,5.0,Big Wing Defender,manual_override
 1626157,Karl-Anthony Towns,Karl-Anthony Towns,NYK,1610612752,22026,30.66363636363636,22025.0,True,True,preseason_historical_prior,9.0,Stretch Big,kmeans_aligned,7.0,Turtles,manual_override
-1628404,Josh Hart,Josh Hart,NYK,1610612752,22026,30.16363636363636,22025.0,True,True,preseason_historical_prior,3.0,Uncategorized,kmeans_aligned,3.0,Bad/Slow Big Defender,kmeans_aligned
+1628404,Josh Hart,Josh Hart,NYK,1610612752,22026,30.16363636363636,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,manual_override,5.0,Big Wing Defender,manual_override
 1629013,Landry Shamet,Landry Shamet,NYK,1610612752,22026,16.883636363636363,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,2.0,Cluster 2 (unnamed),kmeans_aligned
 1630540,Miles McBride,Miles McBride,NYK,1610612752,22026,16.883636363636363,22025.0,True,True,preseason_historical_prior,0.0,Catch & Shoot Wing,kmeans_aligned,13.0,Cluster 13 (unnamed),kmeans_aligned
 203083,Andre Drummond,Andre Drummond,NYK,1610612752,22026,14.883636363636365,22025.0,True,True,preseason_historical_prior,1.0,Athletic Roll Man,kmeans_aligned,10.0,Cluster 10 (unnamed),kmeans_aligned

@@ -62,11 +62,33 @@ Cameron Carr → Spot-Up Role Player (4). All other proposed offensive and defen
 assignments were accepted. The exact 26 pairs are in
 `data/preseason/approved_archetypes.csv` and stored as final manual overrides.
 
-There are now **26 offensive and 90 defensive override rules** (the original 64
-plus the approved 26). All 285 players above 10 projected minutes have both archetypes;
+There are now **28 offensive and 92 defensive override rules** (the original 64
+defensive rules, the approved 26 player pairs, and two subsequent player corrections). All 285 players above 10 projected minutes have both archetypes;
 **zero rotation players remain unassigned**. The 26 approved players still lack
 historical feature profiles: manual labels do not create statistical observations.
 The original 64 defensive overrides and all archetype names are unchanged.
+
+### Knicks corrections (2026-10-19)
+
+OG Anunoby and Josh Hart were both automatically reassigned to offensive cluster 3
+(`Uncategorized`) and defensive cluster 3 (`Bad/Slow Big Defender`) by the preseason
+KMeans rerun and historical-centroid alignment. Neither had an override. Their
+archived labels were different (OG offense 4, Hart offense 6, both defense 8), so this
+was a poor automatic assignment, not a stale UI label or a missing-stat fallback.
+
+At the user's request, analyst corrections now override the model: **OG Anunoby →
+Catch & Shoot Wing (0) / Big Wing Defender (5)**; **Josh Hart → Secondary Playmaker
+(6) / Big Wing Defender (5)**. These are role-based judgments within the existing
+archetype vocabulary: OG's off-ball scoring and versatile wing defense, and Hart's
+connector/secondary-creation role and wing defense. Supporting role descriptions:
+[NBA on Anunoby's cutting and wing role](https://www.nba.com/news/the-the-athletic-how-will-knicks-new-coach-mike-brown-deploy-consummate-cutter-og-anunoby),
+[NBA on Hart's impact beyond scoring](https://www.nba.com/news/josh-hart-finals-impact).
+The correction audit is `data/preseason/archetype_corrections.csv`; these are analyst
+choices authorized by the correction request, distinct from the original 26 approved
+pairs. Both overrides apply to roster exports, future clustering refreshes, historical
+matchup sample labels and live projections. Regression tests deliberately feed the
+wrong cluster-3 model assignments and verify override precedence and sample grouping.
+Other players' assignments and all minutes are unchanged.
 
 ## Completed run
 

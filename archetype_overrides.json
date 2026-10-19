@@ -89,7 +89,9 @@
     "Darius Acuff Jr.": 0,
     "Ben Simmons": 5,
     "Darryn Peterson": 6,
-    "AJ Dybantsa": 6
+    "AJ Dybantsa": 6,
+    "OG Anunoby": 5,
+    "Josh Hart": 5
   },
   "OFF_CLUSTER_NAMES": {
     "0": "Catch & Shoot Wing",
@@ -141,6 +143,8 @@
     "Darius Acuff Jr.": 2,
     "Ben Simmons": 6,
     "Darryn Peterson": 6,
-    "AJ Dybantsa": 5
+    "AJ Dybantsa": 5,
+    "OG Anunoby": 0,
+    "Josh Hart": 6
   }
 }

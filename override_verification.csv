@@ -25,6 +25,8 @@ off,Darius Acuff Jr.,2,True,2.0
 off,Ben Simmons,6,True,6.0
 off,Darryn Peterson,6,True,6.0
 off,AJ Dybantsa,5,True,5.0
+off,OG Anunoby,0,True,0.0
+off,Josh Hart,6,True,6.0
 def,Scottie Barnes,8,True,8.0
 def,Anthony Davis,1,True,1.0
 def,Rudy Gobert,1,True,1.0
@@ -115,3 +117,5 @@ def,Darius Acuff Jr.,0,True,0.0
 def,Ben Simmons,5,True,5.0
 def,Darryn Peterson,6,True,6.0
 def,AJ Dybantsa,6,True,6.0
+def,OG Anunoby,5,True,5.0
+def,Josh Hart,5,True,5.0

@@ -63,6 +63,38 @@ class MatchupTests(unittest.TestCase):
         self.assertEqual(assigned.loc['Darryn Peterson','OffCluster'],6)
         self.assertEqual(assigned.loc['Cameron Carr','OffCluster'],4)
 
+    def test_knicks_corrections_override_bad_model_labels_and_relabel_samples(self):
+        from season_pipeline import apply_overrides
+        names = ['OG Anunoby','Josh Hart']
+        bad_model = pd.DataFrame({'PLAYER_NAME':names,'Cluster':[3,3],
+                                  'AssignmentSource':['kmeans_aligned']*2})
+        off = apply_overrides(bad_model,'off')
+        defense = apply_overrides(bad_model,'def')
+        self.assertEqual(off.Cluster.tolist(),[0,6])
+        self.assertEqual(defense.Cluster.tolist(),[5,5])
+        self.assertTrue(off.AssignmentSource.eq('manual_override').all())
+        self.assertTrue(defense.AssignmentSource.eq('manual_override').all())
+        roster = pd.read_csv(ROOT / 'preseason_archetypes.csv')
+        selected = roster.set_index('PLAYER_NAME').loc[names]
+        self.assertEqual(selected.OffCluster.tolist(),[0,6])
+        self.assertEqual(selected.DefCluster.tolist(),[5,5])
+        self.assertEqual(selected.OffArchetype.tolist(),['Catch & Shoot Wing','Secondary Playmaker'])
+        self.assertEqual(selected.DefArchetype.tolist(),['Big Wing Defender']*2)
+        logs = self.logs.copy()
+        logs['PLAYER_NAME'] = names
+        logs = logs.drop(columns=['OffCluster','DefCluster'])
+        assigned = assign_game_archetypes(logs,roster)
+        effects = matchup_effects(assigned)
+        self.assertIn(('Off',0,'BOS'),effects)
+        self.assertIn(('Off',6,'NYK'),effects)
+        self.assertIn(('Def',5,'BOS'),effects)
+        self.assertNotIn(('Off',3,'BOS'),effects)
+        self.assertNotIn(('Def',3,'BOS'),effects)
+        for side, expected in [('player',[0,6]),('def_player',[5,5])]:
+            export = pd.read_csv(ROOT / f'{side}_clusters_detailed.csv').set_index('PLAYER_NAME').loc[names]
+            self.assertEqual(export.Cluster.tolist(),expected)
+            self.assertTrue(export.AssignmentSource.eq('manual_override').all())
+
     def test_full_prior_averages_use_observed_minutes(self):
         profiles = prior_season_profiles(self.logs,self.roster)
         self.assertEqual(profiles.iloc[0].MIN,36.)

@@ -82,6 +82,11 @@ class PreseasonTests(unittest.TestCase):
             self.assertFalse(zero.ModelEligibleMinutes.any())
             self.assertEqual(audit['mode'], 'preseason_historical_prior')
             self.assertEqual(audit['source_season_id'], SEASON_ID - 1)
+            corrections = result.set_index('PLAYER_NAME').loc[['OG Anunoby','Josh Hart']]
+            self.assertEqual(corrections.OffCluster.tolist(),[0,6])
+            self.assertEqual(corrections.DefCluster.tolist(),[5,5])
+            self.assertTrue(corrections.OffAssignmentSource.eq('manual_override').all())
+            self.assertTrue(corrections.DefAssignmentSource.eq('manual_override').all())
             approved = pd.read_csv(ROOT / 'data/preseason/approved_archetypes.csv')
             assigned = result.set_index('PLAYER_NAME')
             self.assertEqual(len(approved), 26)
