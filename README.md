@@ -397,3 +397,9 @@ book or filters still updates that selection; cached data expires after five
 minutes when a subsequent interaction requests it. The visible checked-at time
 identifies the snapshot. It stays fixed during passive browsing, and quote-age
 validation still excludes prices older than 15 minutes at comparison load time.
+
+
+The Top Sportsbook Edges page includes persistent checkboxes for PTS, REB, AST,
+3PM, STL, BLK, TOV and PRA (all enabled initially). Stat selection applies before
+ranking and the 20-row limit, so the table and CSV contain the strongest edges
+within the checked categories. Unchecking every category shows a selection prompt.

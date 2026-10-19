@@ -37,6 +37,22 @@ class GameEdgeTests(unittest.TestCase):
         all_edges,total=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,plays_only=False)
         self.assertEqual(total,25)
 
+    def test_stat_selection_filters_before_top_twenty_and_download_rows(self):
+        import copy
+        points=copy.deepcopy(self.payload['bookmakers'][0]['markets'][0])
+        points['key']='player_points'
+        self.payload['bookmakers'][0]['markets'].append(points)
+        self.players['PTS']=50.
+        ranked,total=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,stats=['3PM'])
+        self.assertEqual(total,24)
+        self.assertEqual(len(ranked),20)
+        self.assertEqual(set(ranked.Stat),{'3PM'})
+        empty,count=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,stats=[])
+        self.assertTrue(empty.empty)
+        self.assertEqual(count,0)
+        with self.assertRaises(ValueError):
+            game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,stats=['INVALID'])
+
     def test_missing_stale_wrong_book_wrong_event_and_ineligible_projections(self):
         empty,count=game_edges(self.players,self.payload,self.event,'draftkings',now=self.now)
         self.assertTrue(empty.empty)

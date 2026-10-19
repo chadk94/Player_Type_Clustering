@@ -326,6 +326,12 @@ def render_live_dashboard(ui, roster):
                 edge_book_name = ui.selectbox('Sportsbook for edges',list(BOOKS),key='edges_book')
             with direction_col:
                 edge_direction = ui.selectbox('Edge direction',['Both','Over','Under'],key='edges_direction')
+            ui.write('Stats to show')
+            selected_stats = []
+            for stat_col,stat in zip(ui.columns(8),['PTS','REB','AST','3PM','STL','BLK','TOV','PRA']):
+                with stat_col:
+                    if ui.checkbox(stat,value=True,key=f'edges_stat_{stat}'):
+                        selected_stats.append(stat)
             plays_only = ui.checkbox('Only show plays above 5% edge',value=True,key='edges_plays_only')
             edge_schedule = today_schedule(SEASON,edge_date)
             games = scheduled_book_games(edge_events,edge_schedule,now=now)
@@ -348,10 +354,12 @@ def render_live_dashboard(ui, roster):
                             matchup_rows.append(apply_matchup(team_projection,roster,teams,prior_effects,current_effects,opponent))
                     payload = sportsbook_props(game_id,BOOKS[edge_book_name],edge_key)
                     combined = pd.concat(matchup_rows,ignore_index=True) if matchup_rows else pd.DataFrame()
-                    ranked,total_edges = game_edges(combined,payload,game,BOOKS[edge_book_name],now=now,plays_only=plays_only,direction=edge_direction)
+                    ranked,total_edges = game_edges(combined,payload,game,BOOKS[edge_book_name],now=now,plays_only=plays_only,direction=edge_direction,stats=selected_stats)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
                     ui.caption('Snapshot of paired Over/Under prices; quotes older than 15 minutes are excluded when loaded. Use Refresh live data to update. Edge % is a projection gap, not a win probability or expected betting return.')
-                    if ranked.empty:
+                    if not selected_stats:
+                        ui.info('Check at least one stat category to show edges.')
+                    elif ranked.empty:
                         ui.info('No eligible edges meet these filters. Props may not be posted yet, quotes may be stale, or projections may lack matchup history. Try another game/book or turn off the 5% filter.')
                     else:
                         ui.success(f'Showing {len(ranked)} of {total_edges} eligible player-stat edges')

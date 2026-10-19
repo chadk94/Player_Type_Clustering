@@ -40,7 +40,7 @@ def scheduled_book_games(events, schedule, now=None):
     return sorted({g['id']:g for g in games}.values(),key=lambda g:(g['GameTimeUTC'],g['Away']))
 
 
-def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, direction='Both'):
+def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, direction='Both', stats=None):
     """Top 20 distinct player-stat edges in one event/book, strongest absolute % first.
 
     Both over and under use the signed projection/implied-mean difference. This
@@ -50,6 +50,9 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
         raise OddsFeedError('Sportsbook matchup could not be verified.')
     if direction not in ['Both','Over','Under']:
         raise ValueError('Invalid edge direction')
+    selected_stats = set(STAT_ORDER if stats is None else stats)
+    if not selected_stats.issubset(STAT_ORDER):
+        raise ValueError('Unknown stat category')
     rows = []
     for _,player in matchups.iterrows():
         expected = event['Away'] if player.Team == event['Home'] else event['Home'] if player.Team == event['Away'] else None
@@ -62,7 +65,7 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
         preview = pd.DataFrame({'Stat':STAT_ORDER,
             'Projected':[player.get('FG3M' if stat=='3PM' else stat,np.nan) for stat in STAT_ORDER]})
         comparison = compare_with_book(preview,player_quotes(payload,player.Player,bookmaker,now=now))
-        comparison = comparison[comparison['Market status'].eq('Current') & comparison['Edge %'].notna()]
+        comparison = comparison[comparison.Stat.isin(selected_stats) & comparison['Market status'].eq('Current') & comparison['Edge %'].notna()]
         if plays_only:
             comparison = comparison[comparison.Play.ne('')]
         if direction == 'Over':
