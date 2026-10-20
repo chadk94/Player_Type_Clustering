@@ -89,6 +89,28 @@ class GameEdgeTests(unittest.TestCase):
         all_edges,total=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,plays_only=False)
         self.assertEqual(total,25)
 
+    def test_rebounds_and_pra_use_new_projections_and_preserve_original_ratings(self):
+        import copy
+        self.players = self.players.iloc[:2].copy()
+        for market in ['player_rebounds', 'player_points_rebounds_assists']:
+            quote = copy.deepcopy(self.payload['bookmakers'][0]['markets'][0])
+            quote['key'] = market
+            self.payload['bookmakers'][0]['markets'].append(quote)
+        self.players['Baseline REB'] = 5.
+        self.players['Pre-team REB'] = 5.
+        self.players['REB'] = 8.
+        self.players['Baseline PTS'] = 10.
+        self.players['Baseline AST'] = 5.
+        self.players['Pre-market PRA'] = 20.
+        self.players['PRA'] = 23.
+        ranked, _ = game_edges(self.players, self.payload, self.event, 'fanduel',
+                               now=self.now, stats=['REB', 'PRA'])
+        self.assertEqual(set(ranked.Stat), {'REB', 'PRA'})
+        self.assertEqual(set(ranked['Matchup rating']), {'3 ↔️'})
+        self.assertTrue(ranked.loc[ranked.Stat.eq('REB'), 'Projected'].eq(8.).all())
+        self.assertTrue(ranked.loc[ranked.Stat.eq('PRA'), 'Projected'].eq(23.).all())
+        self.assertTrue(ranked['Pre-team REB'].eq(5.).all())
+
     def test_stat_selection_filters_before_top_twenty_and_download_rows(self):
         import copy
         points=copy.deepcopy(self.payload['bookmakers'][0]['markets'][0])

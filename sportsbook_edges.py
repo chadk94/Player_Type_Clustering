@@ -6,13 +6,14 @@ import pandas as pd
 
 from import_minutes import TEAM_IDS
 from projection_presentation import matchup_rating
+from team_rebounds import REBOUND_METADATA
 from sportsbook_lines import TEAM_NAMES, STAT_ORDER, OddsFeedError, player_quotes, compare_with_book
 
 EDGE_STATS = [stat for stat in STAT_ORDER if stat != 'TOV']
 
 EDGE_COLUMNS = ['Rank','Player','Team','Opponent','Stat','Play','Projected minutes',
                 'Baseline','Matchup rating','Projected','Book line','Book implied total','Edge %','Over odds',
-                'Under odds','Updated UTC','Off samples','Def samples','Stat baseline','Matchup data','Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share']
+                'Under odds','Updated UTC','Off samples','Def samples','Stat baseline','Matchup data','Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]
 
 
 def scheduled_book_games(events, schedule, now=None):
@@ -68,7 +69,7 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
         preview = pd.DataFrame({'Stat':STAT_ORDER,
             'Projected':[player.get('FG3M' if stat=='3PM' else stat,np.nan) for stat in STAT_ORDER]})
         preview['Baseline'] = [sum(player.get(f'Baseline {part}',np.nan) for part in ['PTS','REB','AST']) if stat=='PRA' else player.get('Baseline '+('FG3M' if stat=='3PM' else stat),np.nan) for stat in STAT_ORDER]
-        preview['Matchup rating'] = [matchup_rating(base,player.get('Pre-market '+stat,projected) if stat in ['PTS','PRA'] else player.get('Pre-team AST',projected) if stat=='AST' else player.get('Pre-team 3PM',projected) if stat=='3PM' else projected,stat) for base,projected,stat in zip(preview.Baseline,preview.Projected,preview.Stat)]
+        preview['Matchup rating'] = [matchup_rating(base,player.get('Pre-market '+stat,projected) if stat in ['PTS','PRA'] else player.get('Pre-team '+stat,projected) if stat in ['AST','REB','3PM'] else projected,stat) for base,projected,stat in zip(preview.Baseline,preview.Projected,preview.Stat)]
         comparison = compare_with_book(preview,player_quotes(payload,player.Player,bookmaker,now=now))
         comparison = comparison[comparison.Stat.isin(selected_stats) & comparison['Market status'].eq('Current') & comparison['Edge %'].notna()]
         if plays_only:
@@ -77,7 +78,7 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
             comparison = comparison[comparison['Edge %'].gt(0)]
         elif direction == 'Under':
             comparison = comparison[comparison['Edge %'].lt(0)]
-        for field in ['Player','Team','Opponent','Projected minutes','Off samples','Def samples','Stat baseline','Matchup data','Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share']:
+        for field in ['Player','Team','Opponent','Projected minutes','Off samples','Def samples','Stat baseline','Matchup data','Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]:
             comparison[field] = player.get(field,np.nan)
         rows.append(comparison)
     if not rows:

@@ -436,8 +436,9 @@ PTS is multiplied by market team points / the full positive-minute team's model
 PTS. There is no partial blend. No intermediate rounding is used, so each team
 matches the market total before display rounding. Original point shares remain
 intact. This points step does not scale other stats. The team assist adjustment
-below then updates AST. Final PRA = market-adjusted PTS + existing REB + updated
-AST. Points, assists, threes and PRA edges/ranks use their final projections.
+below then updates AST, and the rebound step updates REB. Final PRA =
+market-adjusted PTS + updated REB + updated AST. Points, assists, threes, rebounds
+and PRA edges/ranks use their final projections.
 Matchup ratings retain the original opponent-only effects before team adjustments.
 
 Fresh same-event, same-book paired spreads/totals are required; posted game
@@ -541,13 +542,13 @@ minutes; it does not overwrite the saved team allocation used by the edges page.
 
 Select a date, scheduled game and sportsbook to compare both teams' final PTS,
 REB, AST, 3PM, STL, BLK, TOV and PRA, alongside total projected minutes. A second
-table traces PTS/AST/3PM from baseline to archetype-adjusted player sums, then the
+table traces PTS/AST/3PM/REB from baseline to archetype-adjusted player sums, then the
 team target and final total. The adjustment percentage is final divided by the
 archetype-adjusted sum minus one. Targets are displayed once per team, never
 summed across player rows.
 
 This tab uses the same full-roster projections, saved automatic minutes and
-points → assists → threes calculations as Top Sportsbook Edges. It introduces
+points → assists → threes → rebounds calculations as Top Sportsbook Edges. It introduces
 no new projection model and does not use individual player-slider overrides.
 Player contributions and target-method explanations are expandable; team totals
 and the adjustment breakdown can be downloaded as CSVs. Totals use unrounded
@@ -561,3 +562,55 @@ blank the whole team's totals; a missing positive-minute player's stat blanks
 that stat's total rather than displaying a misleading partial sum. Zero-minute
 players are excluded. The existing explicit Refresh live data button updates
 sources; no timed refresh or scroll-triggered rerun is added.
+
+### Team rebounds with normalized offensive/defensive shares
+
+The approved BOS–DET / PHI–NYK preview model now runs in Player vs Opponent,
+Top Sportsbook Edges and Team Projections. Team Projections includes REB in its
+adjustment breakdown, OREB/DREB in player contributions, and a separate expandable
+table of rebound targets and opportunity pools. The historical input is the same
+full 2025–26 regular-season player box-score archive used above; all appearances
+count, with paired opponents and 82 games per team required.
+
+For each shooting team, independently of the current roster:
+
+1. Expected FGM = market team points / mean(team PTS/FGM, opponent allowed
+   PTS/FGM), matching the existing assist/three-point calculation.
+2. Expected FG misses = expected FGM × mean(team (FGA−FGM)/FGM, opponent
+   allowed equivalent). Expected FT misses use (FTA−FTM)/FGM in the same way.
+3. Credited player rebound pool = expected total misses × mean(team credited
+   fraction, opponent allowed credited fraction). The historical fraction is
+   (shooting team's player OREB + opposing player DREB) / (FG misses + FT misses).
+4. Offensive capture share = mean(team OREB / its credited pool, opponent's
+   OREB allowed / its allowed credited pool). The shooting team's OREB target
+   is pool × share; the defending team's DREB target is pool × (1−share).
+   These complementary targets conserve each pool exactly.
+5. Allocate each team's OREB and DREB **separately**, using target × player's
+   existing minute/archetype-adjusted component / team sum of that component.
+   This equals applying individual archetype modifiers divided by the team's
+   baseline-component-weighted modifier. Common effects cancel; relative
+   offensive and defensive archetype differences remain.
+
+Final REB = adjusted OREB + adjusted DREB; final PRA = existing calibrated PTS +
+adjusted REB + existing calibrated AST. Points, assists, shooting, steals,
+blocks, turnovers, minutes and manual archetypes are unchanged by this step.
+Ratings keep the original opponent-only REB/PRA effects; sportsbook projections,
+edges and ranks use the updated totals. Downloads retain original components,
+targets, factors, player shares and the opportunity inputs.
+
+The 50/50 blends and prior-season team styles are explicit assumptions, not
+backtested weights. The credited fraction is a box-score approximation for
+non-reboundable free throws and dead-ball/team rebounds, not tracking or
+play-by-play rebound chances. There are no sportsbook rebound-total inputs.
+Expected misses are internal target inputs, not changes to the player shooting
+projections. Historical team rates stay on 2025–26; the existing game-5 policies
+still update individual allocation weights.
+
+Both fresh, verified market team point totals are required, including in a
+single-team player preview, because defensive rebounds come from the opponent's
+misses. Missing rates, invalid minutes or incomplete positive-minute
+OREB/DREB/REB/PTS/AST coverage retain that team's existing rebounds and PRA
+atomically with an explanation. Another team's valid allocation can still run.
+Zero-minute players receive no allocation. Minutes changes recalculate the
+normalized shares without changing a target for fixed game lines. The existing
+explicit refresh policy and workbook import/publish requirements still apply.

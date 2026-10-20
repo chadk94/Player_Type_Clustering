@@ -9,7 +9,7 @@ from import_minutes import TEAM_IDS
 TEAM_STATS = {'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', '3PM': 'FG3M',
               'STL': 'STL', 'BLK': 'BLK', 'TOV': 'TOV', 'PRA': 'PRA'}
 TARGET_COLUMNS = {'PTS': 'Market team total', 'AST': 'Team AST target',
-                  '3PM': 'Team 3PM target'}
+                  '3PM': 'Team 3PM target', 'REB': 'Team REB target'}
 
 
 def upcoming_team_games(schedule, now=None):

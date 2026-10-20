@@ -78,6 +78,19 @@ class TeamProjectionViewTests(unittest.TestCase):
         self.assertTrue(breakdown['Team adjustment %'].eq(0).all())
         self.assertTrue(totals.PTS.eq(120.).all())
 
+    def test_rebounds_are_in_adjustment_breakdown_and_pra_reconciles(self):
+        self.final['Pre-team REB'] = self.final.REB
+        self.final.REB *= .8
+        self.final.PRA = self.final.PTS + self.final.REB + self.final.AST
+        self.final['Team REB target'] = self.final.groupby('Team').REB.transform('sum')
+        totals, breakdown, issues = team_projection_tables(self.base, self.before, self.final, ['BOS', 'DET'])
+        self.assertEqual(issues, [])
+        rebounds = breakdown[breakdown.Stat.eq('REB')]
+        self.assertEqual(len(rebounds), 2)
+        np.testing.assert_allclose(rebounds['Team adjustment %'], -20.)
+        np.testing.assert_allclose(rebounds['Final projection'], rebounds['Team target'])
+        np.testing.assert_allclose(totals.PRA, totals.PTS + totals.REB + totals.AST)
+
     def test_dropped_or_duplicate_players_cannot_silently_change_team_totals(self):
         for invalid in [self.final.iloc[1:], pd.concat([self.final, self.final.iloc[:1]])]:
             with self.assertRaises(ValueError):
