@@ -34,12 +34,16 @@ def read_feed(path, api_key, **params):
         raise OddsFeedError('Sportsbook feed could not be reached.') from None
 
 
-def next_matchup(events, team, opponent, now=None):
+def next_matchup(events, team, opponent, now=None, scheduled_start=None,
+                 time_tolerance=pd.Timedelta(minutes=15)):
     now = now or datetime.now(timezone.utc)
+    scheduled_start = pd.Timestamp(scheduled_start) if scheduled_start is not None else None
     matches=[]
     for event in events:
         try:
             start = datetime.fromisoformat(event['commence_time'].replace('Z','+00:00'))
+            if scheduled_start is not None and abs(pd.Timestamp(start)-scheduled_start) > time_tolerance:
+                continue
             pair={TEAM_NAMES.get(event['home_team']),TEAM_NAMES.get(event['away_team'])}
             if pair=={team,opponent} and start>now:
                 matches.append(event)

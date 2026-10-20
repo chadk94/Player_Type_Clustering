@@ -439,9 +439,11 @@ def render_live_dashboard(ui, roster):
                 api_key = get_odds_api_key()
                 if not api_key:
                     raise OddsFeedError('Sportsbook feed access is not configured.')
-                event = next_matchup(sportsbook_events(api_key),team,opponent)
+                scheduled_start = upcoming['GameTimeUTC'] if upcoming and upcoming['Opponent'] == opponent else None
+                event = next_matchup(sportsbook_events(api_key),team,opponent,
+                                     scheduled_start=scheduled_start,time_tolerance=EVENT_TIME_TOLERANCE)
                 if event is None:
-                    ui.caption(f'No upcoming {team} vs {opponent} sportsbook event was found. Choose an opponent with a scheduled game to compare current lines.')
+                    ui.caption(f'No matching pregame sportsbook event is available for {team} vs {opponent}. Lines stay blank after tip-off; prices from a later rematch are not substituted.')
                 else:
                     team_baselines = team_players.copy()
                     if flag_key in st.session_state:

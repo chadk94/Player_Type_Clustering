@@ -70,6 +70,19 @@ class SportsbookTests(unittest.TestCase):
         self.assertEqual(next_matchup(events,'NYK','PHI',self.now)['id'],'next')
         self.assertIsNone(next_matchup(events,'NYK','ATL',self.now))
 
+    def test_scheduled_opponent_never_uses_prices_from_later_rematch(self):
+        tip = datetime(2026,10,20,23,tzinfo=timezone.utc)
+        event = {'id':'today','home_team':'New York Knicks','away_team':'Philadelphia 76ers',
+                 'commence_time':(tip+timedelta(minutes=9)).isoformat()}
+        later = {**event,'id':'rematch','commence_time':'2026-10-30T23:40:00Z'}
+        events = [later,event]
+        self.assertEqual(next_matchup(events,'PHI','NYK',tip-timedelta(minutes=1),scheduled_start=tip)['id'],'today')
+        self.assertIsNone(next_matchup(events,'PHI','NYK',tip+timedelta(minutes=20),scheduled_start=tip))
+        self.assertIsNone(next_matchup([later],'PHI','NYK',tip-timedelta(minutes=1),scheduled_start=tip))
+        # A manually chosen opponent without a schedule anchor can still preview
+        # its next upcoming fixture, with that game's date shown in the app.
+        self.assertEqual(next_matchup([later],'PHI','NYK',tip)['id'],'rematch')
+
     def test_colors_compare_projection_to_implied_not_posted_line(self):
         quotes=player_quotes(self.payload,'Jalen Brunson','fanduel',now=self.now)
         preview=pd.DataFrame({'Stat':['3PM','TOV'],'Projected':[2.7,1.]})
