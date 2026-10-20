@@ -18,6 +18,7 @@ from FanduelScrape import get_odds_api_key
 from market_points import market_targets, apply_market_points
 from team_assists import historical_assist_rates, apply_team_assists
 from team_threes import historical_three_rates, apply_team_threes
+from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS
 from projection_presentation import over_line_label, matchup_rating
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
@@ -150,6 +151,98 @@ def set_edge_stats(selected):
         st.session_state[f'edges_stat_{stat}'] = selected
 
 
+def render_team_projections(ui, projections, roster, teams, prior_effects, current_effects):
+    ui.subheader('🏀 Team Projections')
+    ui.caption('Both teams’ projected stat totals, using the same saved minutes and adjustments as Top Sportsbook Edges. Player sliders affect individual previews only.')
+    date_col, book_col = ui.columns(2)
+    with date_col:
+        date = ui.date_input('Team projection date', value=datetime.now(ZoneInfo('America/Denver')).date(), key='team_projection_date')
+    with book_col:
+        book_name = ui.selectbox('Sportsbook for team projections', list(BOOKS), key='team_projection_book')
+    try:
+        schedule = today_schedule(SEASON, date)
+        games = upcoming_team_games(schedule)
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        ui.warning('The game schedule could not be loaded. Use Refresh live data to retry.')
+        return
+    if not games:
+        ui.info('No upcoming regular-season games were found for this date. Choose another date.')
+        return
+    by_key = {game['key']: game for game in games}
+    if st.session_state.get('team_projection_game') not in by_key:
+        st.session_state['team_projection_game'] = games[0]['key']
+    selected = ui.pills('Team matchup', list(by_key), selection_mode='single', key='team_projection_game',
+                        format_func=lambda key: f"{by_key[key]['Away']} @ {by_key[key]['Home']} · {by_key[key]['GameTimeUTC'].tz_convert('America/Denver'):%I:%M %p %Z}")
+    if selected is None:
+        ui.info('Select a game to view its team projections.')
+        return
+    game = by_key[selected]
+    order = [game['Away'], game['Home']]
+    base = projections[projections.Team.isin(order)].copy()
+    rows = [apply_matchup(base[base.Team.eq(side)], roster, teams, prior_effects, current_effects, opponent)
+            for side, opponent in [(game['Away'], game['Home']), (game['Home'], game['Away'])]
+            if not base[base.Team.eq(side)].empty]
+    if len(rows) != 2:
+        ui.warning('Both teams need roster projections before a game total can be shown.')
+        return
+    before = pd.concat(rows, ignore_index=True)
+    final = before.copy()
+    ui.subheader(f"{game['Away']} @ {game['Home']} — {book_name}")
+    with ui.expander('Adjustment details'):
+        try:
+            api_key = get_odds_api_key()
+            if not api_key:
+                raise OddsFeedError('Sportsbook feed access is not configured.')
+            verified = scheduled_book_games(sportsbook_events(api_key), schedule)
+            matches = [event for event in verified if event['Home'] == game['Home'] and event['Away'] == game['Away']
+                       and abs(event['GameTimeUTC'] - game['GameTimeUTC']) <= pd.Timedelta(minutes=5)]
+            if len(matches) != 1:
+                raise OddsFeedError('No unique sportsbook event matches this scheduled game.')
+            event = {**matches[0], 'commence_time': matches[0]['GameTimeUTC'].isoformat()}
+            final = team_projection_preview(ui, before, event, BOOKS[book_name], api_key)
+        except (OddsFeedError, requests.RequestException, ValueError, KeyError, TypeError):
+            ui.caption('Current game lines are unavailable. Showing existing model projections without team-target adjustments.')
+    totals, breakdown, issues = team_projection_tables(base, before, final, order)
+    for issue in issues:
+        ui.warning(issue)
+    calibrated = breakdown['Team target'].notna()
+    if not calibrated.all():
+        ui.info('Some team targets are unavailable. Those rows retain the existing model projection; missing player data stays blank. See Adjustment details.')
+    ui.dataframe(totals.style.format({'Minutes': '{:.1f}', **{stat: '{:.2f}' for stat in TEAM_STATS}}, na_rep='—'),
+                 hide_index=True, width='stretch')
+    if totals.PTS.notna().all():
+        ui.caption(f"Combined projected points: {totals.PTS.sum():.2f}. Team totals sum the unrounded player projections.")
+    ui.subheader('How the team adjustments change projections')
+    ui.caption('Baseline uses player stat rates and saved minutes. After archetypes adds opponent effects. Team adjustment % compares the final projection with After archetypes.')
+    ui.dataframe(breakdown.style.format({'Baseline': '{:.2f}', 'After archetypes': '{:.2f}',
+                                        'Team target': '{:.2f}', 'Final projection': '{:.2f}',
+                                        'Team adjustment %': '{:+.2f}%'}, na_rep='—'),
+                 hide_index=True, width='stretch')
+    ui.caption('PTS targets come from the selected sportsbook’s spread and total. AST and 3PM targets are model estimates using last season’s team and opponent rates. Rebounds, steals, blocks and turnovers retain their player matchup projections. PRA = final PTS + REB + AST.')
+    with ui.expander('Player contributions and minutes'):
+        active = final['Projected minutes'].gt(0) | final['Projected minutes'].isna()
+        columns = ['Player', 'Team', 'Projected minutes', *TEAM_STATS.values(), 'Minutes source', 'Stat baseline', 'Status', 'Matchup status']
+        display = final.loc[active, columns].sort_values(['Team', 'Projected minutes'], ascending=[True, False]).rename(columns={'FG3M': '3PM'})
+        ui.dataframe(display.round(2), hide_index=True, width='stretch')
+        ui.caption('Zero-minute players are excluded from totals. Minutes are rounded individually to 0.5, so roster totals can differ slightly from 240. Uploaded and published minutes changes recalculate these projections; the local workbook does not sync automatically.')
+    with ui.expander('Where the assist and three-point targets come from'):
+        inputs = ['Market team total', 'Expected team FGM', 'Team assist rate', 'Team three rate']
+        if set(inputs).issubset(final):
+            drivers = final.loc[final['Projected minutes'].gt(0), ['Team', *inputs]].drop_duplicates()
+            drivers = drivers.rename(columns={'Market team total': 'Market points', 'Expected team FGM': 'Expected FGM',
+                                              'Team assist rate': 'Blended assist rate', 'Team three rate': 'Blended three rate'})
+            ui.dataframe(drivers.style.format({'Market points': '{:.2f}', 'Expected FGM': '{:.2f}',
+                                               'Blended assist rate': '{:.1%}', 'Blended three rate': '{:.1%}'}, na_rep='—'),
+                         hide_index=True, width='stretch')
+        ui.write('Expected made field goals = sportsbook team points ÷ the average of last season’s team points per made field goal and the opponent’s points allowed per made field goal. Points include free throws.')
+        ui.write('Assist target = expected field goals × the average of team AST/FGM and opponent AST allowed/FGM allowed. Three-point target uses the same method with 3PM/FGM. The three-point rate is the share of made baskets that are threes, not shooting percentage.')
+        ui.write('Each target is distributed using the roster’s minutes and normalized archetype effects. The final player totals add up to the team target. Threes change the scoring mix within the points projection; they do not add points again.')
+    ui.download_button('Download team projections', totals.to_csv(index=False),
+                       f"{game['Away']}_{game['Home']}_team_projections.csv", 'text/csv', key='team_projection_download')
+    ui.download_button('Download team adjustment breakdown', breakdown.to_csv(index=False),
+                       f"{game['Away']}_{game['Home']}_team_adjustments.csv", 'text/csv', key='team_adjustment_download')
+
+
 @st.fragment
 def render_live_dashboard(ui, roster):
     roster = apply_roster_rules(roster)
@@ -221,7 +314,7 @@ def render_live_dashboard(ui, roster):
                     ui.warning('Some current-season matchup games could not be loaded. Sample counts may be incomplete.')
             except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
                 ui.warning(f'Current-season matchup data unavailable: {exc}')
-    projection_tab, best_tab, edges_tab, archetype_tab = ui.tabs(['Player vs Opponent', "🔥 Today's Best Matchups", '💰 Top Sportsbook Edges', 'Archetypes'])
+    projection_tab, best_tab, edges_tab, team_tab, archetype_tab = ui.tabs(['Player vs Opponent', "🔥 Today's Best Matchups", '💰 Top Sportsbook Edges', '🏀 Team Projections', 'Archetypes'])
     ui.caption('Last season’s stat rates for team games 1–4; current-season rates blend in from game 5. Opponent tendencies switch to this season after that opponent completes four games. Matchup samples are player-games with at least 5 minutes.')
     with projection_tab:
         team_col, player_col, opponent_col = ui.columns(3)
@@ -482,6 +575,8 @@ def render_live_dashboard(ui, roster):
             ui.info(str(exc))
         except (requests.RequestException,ValueError,KeyError,TypeError):
             ui.warning('Game edge rankings are temporarily unavailable. Refresh live data to retry.')
+    with team_tab:
+        render_team_projections(ui, projections, roster, teams, prior_effects, current_effects)
     with archetype_tab:
         with ui.expander('Review the 100 corrected players'):
             audit = pd.read_csv(ROOT / 'data/audit/reviewed_100_players.csv')

@@ -536,3 +536,28 @@ team target remains tied to market points and historical matchup rates. A local
 spreadsheet edit alone does not synchronize with Streamlit. The individual slider
 recalculates that player's preview against the rest of the team's automatic
 minutes; it does not overwrite the saved team allocation used by the edges page.
+
+### Team Projections tab
+
+Select a date, scheduled game and sportsbook to compare both teams' final PTS,
+REB, AST, 3PM, STL, BLK, TOV and PRA, alongside total projected minutes. A second
+table traces PTS/AST/3PM from baseline to archetype-adjusted player sums, then the
+team target and final total. The adjustment percentage is final divided by the
+archetype-adjusted sum minus one. Targets are displayed once per team, never
+summed across player rows.
+
+This tab uses the same full-roster projections, saved automatic minutes and
+points → assists → threes calculations as Top Sportsbook Edges. It introduces
+no new projection model and does not use individual player-slider overrides.
+Player contributions and target-method explanations are expandable; team totals
+and the adjustment breakdown can be downloaded as CSVs. Totals use unrounded
+player values and may differ slightly from adding rounded display values.
+
+Upcoming games come from the ESPN regular-season schedule, even if no sportsbook
+event is available. Team calibration requires the same verified event, selected
+book and fresh spread/total as the other pages. If unavailable, existing model
+estimates remain visible with blank targets and an explanation. Missing minutes
+blank the whole team's totals; a missing positive-minute player's stat blanks
+that stat's total rather than displaying a misleading partial sum. Zero-minute
+players are excluded. The existing explicit Refresh live data button updates
+sources; no timed refresh or scroll-triggered rerun is added.
