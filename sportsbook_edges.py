@@ -13,7 +13,7 @@ from sportsbook_lines import TEAM_NAMES, STAT_ORDER, OddsFeedError, player_quote
 EDGE_STATS = [stat for stat in STAT_ORDER if stat != 'TOV']
 
 EDGE_COLUMNS = ['Rank','Player','Team','Opponent','Stat','Play','Projected minutes',
-                'Baseline','Matchup rating','Projected','Book line','Book implied total','Edge %','Over odds',
+                'Baseline','Matchup rating','Projected','Book line','Book implied total','Edge %','Signed edge %','Over odds',
                 'Under odds','Updated UTC','Off samples','Def samples','Stat baseline','Matchup data','Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]
 
 
@@ -48,7 +48,8 @@ def scheduled_book_games(events, schedule, now=None):
 def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, direction='Both', stats=None, player_search=''):
     """Top 20 distinct player-stat edges in one event/book, strongest absolute % first.
 
-    Both over and under use the signed projection/implied-mean difference. This
+    Both over and under display the magnitude of the projection/implied-mean gap.
+    The signed gap determines direction and is retained in exports. This
     metric is not win-probability edge or expected return on a wager.
     """
     if payload.get('id') != event['id'] or (payload.get('home_team'),payload.get('away_team')) != (event['home_team'],event['away_team']):
@@ -80,9 +81,9 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
         if plays_only:
             comparison = comparison[comparison.Play.ne('')]
         if direction == 'Over':
-            comparison = comparison[comparison['Edge %'].gt(0)]
+            comparison = comparison[comparison['Signed edge %'].gt(0)]
         elif direction == 'Under':
-            comparison = comparison[comparison['Edge %'].lt(0)]
+            comparison = comparison[comparison['Signed edge %'].lt(0)]
         for field in ['Player','Team','Opponent','Projected minutes','Off samples','Def samples','Stat baseline','Matchup data','Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]:
             comparison[field] = player.get(field,np.nan)
         rows.append(comparison)

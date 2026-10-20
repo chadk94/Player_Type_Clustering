@@ -456,7 +456,7 @@ def render_live_dashboard(ui, roster):
             comparison['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(comparison['Book line'],comparison['Over odds'])]
             display_columns = ['Stat','Baseline','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Play']
             display = comparison[display_columns]
-            ui.caption('Edge % = (projection ÷ book-implied total − 1) × 100. Over plays require more than +5%; Under plays require less than −5%. Only qualifying edges are shaded, from light to dark as the edge grows. The 5% buffer is your extra projection margin; the implied total already removes bookmaker margin.')
+            ui.caption('Edge % shows the size of the gap from the book-implied total, positive for both Overs and Unders. Play identifies the direction: Over when the projection is higher, Under when lower. Only gaps greater than 5% qualify as plays and receive shading, from light to dark as the edge grows. The 5% buffer is your extra projection margin; the implied total already removes bookmaker margin.')
             ui.dataframe(display.style.apply(comparison_style,axis=1).format(
                 {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %','Matchup rating','Book line (Over)']},'Edge %':'{:+.2f}%'},na_rep='—'),hide_index=True,width='stretch')
             ui.caption('Matchup rating: 1 ⬇️⬇️ poor (−10% or worse), 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent (+10% or better). Based on opponent lift versus baseline, not sportsbook edge; fewer turnovers rate higher. Ratings are blank when adjustments are off or data is unavailable. Book line (Over) includes the Over price.')
@@ -599,7 +599,7 @@ def render_live_dashboard(ui, roster):
                              'Book implied total':'{:.2f}','Edge %':'{:+.2f}%',
                              'Over odds':'{:+.0f}','Under odds':'{:+.0f}'},na_rep='—'),hide_index=True,width='stretch')
                         ui.caption('Matchup rating: 1 ⬇️⬇️ poor, 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent. Ratings measure opponent lift versus baseline, independent of the sportsbook edge or Over/Under play.')
-                        ui.caption('Only edges strictly above +5% (Over) or below −5% (Under) are marked as plays. Color intensity grows with edge magnitude. Multiple stats for the same player may be correlated.')
+                        ui.caption('Edge % is positive for both Overs and Unders; Play identifies the direction. Only edges greater than 5% are marked as plays. Color intensity grows with edge magnitude. Multiple stats for the same player may be correlated.')
                         ui.download_button('Download this game’s top edges',ranked.to_csv(index=False),f"{game['Away']}_{game['Home']}_top_edges.csv",'text/csv',key='edges_download')
                     with ui.expander('Game projection coverage'):
                         if not combined.empty:

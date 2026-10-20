@@ -85,7 +85,9 @@ class GameEdgeTests(unittest.TestCase):
 
     def test_direction_and_optional_subthreshold_rows(self):
         under,_=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,direction='Under')
-        self.assertTrue(under['Edge %'].lt(-5).all())
+        self.assertTrue(under['Edge %'].gt(5).all())
+        self.assertTrue(under['Signed edge %'].lt(-5).all())
+        self.assertTrue(under.Play.eq('Under').all())
         all_edges,total=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,plays_only=False)
         self.assertEqual(total,25)
 

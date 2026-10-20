@@ -42,7 +42,7 @@ Rebuild the historical snapshot with `python matchup_data.py --year 2026 --cache
 
 ### Sportsbook comparison and juice-adjusted totals
 
-The player projection table now includes **Book line**, **Book implied total**, and **Edge %** and **Play** for PTS/REB/AST/3PM/STL/BLK/TOV/PRA. Select FanDuel (default), DraftKings, or BetMGM. Percentage edge equals `(Projected / Book implied total - 1) × 100`, rounded to two decimals. Only edges strictly above +5% receive an Over label and green shading; edges strictly below −5% receive an Under label and red shading. Exactly ±5%, smaller edges, zero/missing implied totals and missing projections remain unmarked. Color intensity increases continuously from pale at 5% to saturated at 25% (clipped thereafter). Only the Edge % and Play cells are highlighted; projected totals are plain. The 5% rule is an extra projection buffer on top of the already no-vig model estimate, not a calculated wagering ROI. This is a numerical projection comparison, not an EV calculation or bet recommendation.
+The player projection table now includes **Book line**, **Book implied total**, and **Edge %** and **Play** for PTS/REB/AST/3PM/STL/BLK/TOV/PRA. Select FanDuel (default), DraftKings, or BetMGM. Percentage edge equals the absolute value of `(Projected / Book implied total - 1) × 100`, rounded to two decimals: both Over and Under edges display as positive. A gap strictly greater than 5% receives an Over label and green shading when the projection is higher, or an Under label and red shading when lower. Exactly 5%, smaller edges, zero/missing implied totals and missing projections remain unmarked. Color intensity increases continuously from pale at 5% to saturated at 25% (clipped thereafter). Only the Edge % and Play cells are highlighted; projected totals are plain. The 5% rule is an extra projection buffer on top of the already no-vig model estimate, not a calculated wagering ROI. This is a numerical projection comparison, not an EV calculation or bet recommendation. Both projection and top-edge comparison downloads retain **Signed edge %** alongside the positive **Edge %** for direction, including rows below the play threshold.
 
 The existing The Odds API access is reused. Prefer `ODDS_API_KEY` in environment variables or Streamlit secrets; the existing legacy feed configuration remains compatible. Credentials are not displayed or included in request-error messages. Upcoming NBA events are cached for five minutes; only the next future event matching the selected team/opponent is queried for the chosen bookmaker's eight standard prop markets. A real scheduled opponent is required; arbitrary matchup previews may have no book lines. Per-event props are also cached for five minutes, limiting requests to the selected event/book, rather than loading every NBA game on every rerun. “Refresh live data” clears both caches.
 
@@ -363,7 +363,7 @@ The earlier 209-player counts above describe the initial pre-approval screen.
 The **💰 Top Sportsbook Edges** tab provides one-click game buttons plus date,
 sportsbook (FanDuel/DraftKings/BetMGM), and Over/Under filters. It defaults to the
 next date offered by the sportsbook feed and shows both teams' top 20 distinct
-player/stat comparisons, ranked by absolute signed percent gap between the
+player/stat comparisons, ranked by the magnitude of the percent gap between the
 opponent-adjusted projection and the no-vig, Poisson-implied book total. This is
 not a probability edge or expected return. Both sides' American prices and the
 posted line remain visible. Multiple props for one player can be correlated.
@@ -375,7 +375,8 @@ unfiltered top 20. Stat, direction and 5% filters still apply, and the CSV match
 the filtered results. Team adjustments always use the full roster before search;
 filtering does not change anyone's projections.
 
-The >5% play filter is on by default; exactly ±5% does not qualify. Disable it to
+Edge % is positive for both Overs and Unders; the Play label gives the direction.
+The >5% play filter is on by default; exactly 5% does not qualify. Disable it to
 view the strongest remaining comparisons without marking them as plays. Existing
 continuous edge colors apply. If fewer than 20 props qualify, only real eligible
 rows appear. CSV downloads include quote timestamps and matchup sample coverage.

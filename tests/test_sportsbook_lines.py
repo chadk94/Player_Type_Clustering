@@ -75,7 +75,8 @@ class SportsbookTests(unittest.TestCase):
         preview=pd.DataFrame({'Stat':['3PM','TOV'],'Projected':[2.7,1.]})
         result=compare_with_book(preview,quotes)
         # 2.7 exceeds posted 2.5, but is below the juice-adjusted implied mean.
-        self.assertLess(result.iloc[0]['Edge %'],0)
+        self.assertGreater(result.iloc[0]['Edge %'],0)
+        self.assertLess(result.iloc[0]['Signed edge %'],0)
         self.assertEqual(result.iloc[0]['Play'],'Under')
         self.assertTrue(any('background-color' in style for style in comparison_style(result.iloc[0])))
         self.assertEqual(comparison_style(result.iloc[0])[1],'')
@@ -86,7 +87,8 @@ class SportsbookTests(unittest.TestCase):
                               'Projected':[105.,105.01,95.,94.99,100.,125.,75.,np.nan]})
         quotes=pd.DataFrame({'Stat':preview.Stat,'Book implied total':[100.]*8})
         result=compare_with_book(preview,quotes)
-        self.assertEqual(result['Edge %'].iloc[:7].tolist(),[5.,5.01,-5.,-5.01,0.,25.,-25.])
+        self.assertEqual(result['Edge %'].iloc[:7].tolist(),[5.,5.01,5.,5.01,0.,25.,25.])
+        self.assertEqual(result['Signed edge %'].iloc[:7].tolist(),[5.,5.01,-5.,-5.01,0.,25.,-25.])
         self.assertEqual(result.Play.tolist(),['','Over','','Under','','Over','Under',''])
         for index in [0,2,4,7]:
             self.assertTrue(all(style=='' for style in comparison_style(result.iloc[index])))

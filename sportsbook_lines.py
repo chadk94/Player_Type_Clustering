@@ -141,11 +141,12 @@ def compare_with_book(preview, quotes):
     comparison=preview.merge(quotes,on='Stat',how='left',validate='one_to_one')
     implied=comparison['Book implied total']
     valid=implied.gt(0) & np.isfinite(implied) & np.isfinite(comparison.Projected)
-    comparison['Edge %']=np.nan
-    comparison.loc[valid,'Edge %']=(comparison.loc[valid,'Projected']/implied[valid]-1)*100
+    comparison['Signed edge %']=np.nan
+    comparison.loc[valid,'Signed edge %']=(comparison.loc[valid,'Projected']/implied[valid]-1)*100
     # Round for consistent display and threshold decisions: exactly 5% is not >5%.
-    comparison['Edge %']=comparison['Edge %'].round(2)
-    comparison['Play']=comparison['Edge %'].map(
+    comparison['Signed edge %']=comparison['Signed edge %'].round(2)
+    comparison['Edge %']=comparison['Signed edge %'].abs()
+    comparison['Play']=comparison['Signed edge %'].map(
         lambda edge: 'Over' if edge>5 else 'Under' if edge < -5 else '')
     return comparison
 
@@ -156,10 +157,11 @@ def comparison_style(row):
         return ['' for _ in row.index]
     # Continuous scale: pale at the 5% cutoff, saturated at 25% and beyond.
     strength=float(np.clip((abs(edge)-5)/20,0,1))
-    pale=np.array([224,244,230] if edge>0 else [253,230,231])
-    deep=np.array([25,135,65] if edge>0 else [194,40,56])
+    is_over=row['Play']=='Over'
+    pale=np.array([224,244,230] if is_over else [253,230,231])
+    deep=np.array([25,135,65] if is_over else [194,40,56])
     rgb=np.rint(pale+(deep-pale)*strength).astype(int)
     background='#'+''.join(f'{value:02x}' for value in rgb)
-    foreground='#ffffff' if strength>=0.65 else '#143c24' if edge>0 else '#701823'
+    foreground='#ffffff' if strength>=0.65 else '#143c24' if is_over else '#701823'
     style=f'background-color: {background}; color: {foreground}'
     return [style if column in ['Edge %','Play'] else '' for column in row.index]
