@@ -89,6 +89,28 @@ class GameEdgeTests(unittest.TestCase):
         all_edges,total=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,plays_only=False)
         self.assertEqual(total,25)
 
+    def test_player_search_finds_edges_outside_top_twenty_without_changing_projections(self):
+        original = self.players.copy(deep=True)
+        top,_ = game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,plays_only=False)
+        player = self.players[~self.players.Player.isin(top.Player)].iloc[0]
+        found,count = game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,
+                                 plays_only=False,player_search=f'  {player.Player.upper()}  ')
+        self.assertEqual(count,1)
+        self.assertEqual(found.Player.tolist(),[player.Player])
+        self.assertEqual(found.iloc[0].Projected,player.FG3M)
+        pd.testing.assert_frame_equal(self.players,original)
+        partial,count = game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,
+                                   plays_only=False,player_search='pláyer')
+        self.assertEqual(count,25)
+        pd.testing.assert_frame_equal(partial,top)
+        empty,count = game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,
+                                 player_search='Nobody matches')
+        self.assertTrue(empty.empty)
+        self.assertEqual(count,0)
+        cleared,_ = game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,
+                               plays_only=False,player_search='  ')
+        pd.testing.assert_frame_equal(cleared,top)
+
     def test_rebounds_and_pra_use_new_projections_and_preserve_original_ratings(self):
         import copy
         self.players = self.players.iloc[:2].copy()

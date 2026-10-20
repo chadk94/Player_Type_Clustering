@@ -368,6 +368,13 @@ opponent-adjusted projection and the no-vig, Poisson-implied book total. This is
 not a probability edge or expected return. Both sides' American prices and the
 posted line remain visible. Multiple props for one player can be correlated.
 
+**Filter by player** accepts a full or partial name (case and accents are ignored).
+Press Enter to apply it; clear it to restore all players in the selected game.
+Search applies before the top-20 limit, so it can find players outside the
+unfiltered top 20. Stat, direction and 5% filters still apply, and the CSV matches
+the filtered results. Team adjustments always use the full roster before search;
+filtering does not change anyone's projections.
+
 The >5% play filter is on by default; exactly ±5% does not qualify. Disable it to
 view the strongest remaining comparisons without marking them as plays. Existing
 continuous edge colors apply. If fewer than 20 props qualify, only real eligible

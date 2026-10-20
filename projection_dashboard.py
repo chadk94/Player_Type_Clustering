@@ -538,6 +538,9 @@ def render_live_dashboard(ui, roster):
                 edge_book_name = ui.selectbox('Sportsbook for edges',list(BOOKS),key='edges_book')
             with direction_col:
                 edge_direction = ui.selectbox('Edge direction',['Both','Over','Under'],key='edges_direction')
+            player_search = ui.text_input(
+                'Filter by player',key='edges_player_search',placeholder='Type a player’s name…',
+                help='Search any part of a name in the selected game, then press Enter. Clear the field to show all players. Your stat and edge filters still apply.')
             ui.write('Stats to show')
             select_col,clear_col,_ = ui.columns([1,1,6])
             with select_col:
@@ -576,13 +579,16 @@ def render_live_dashboard(ui, roster):
                     if not combined.empty:
                         market_event = {**game,'commence_time':game['GameTimeUTC'].isoformat()}
                         combined = team_projection_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key)
-                    ranked,total_edges = game_edges(combined,payload,game,BOOKS[edge_book_name],now=now,plays_only=plays_only,direction=edge_direction,stats=selected_stats)
+                    ranked,total_edges = game_edges(combined,payload,game,BOOKS[edge_book_name],now=now,plays_only=plays_only,direction=edge_direction,stats=selected_stats,player_search=player_search)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
                     ui.caption('Snapshot of paired Over/Under prices; quotes older than 15 minutes are excluded when loaded. Use Refresh live data to update. Edge % is a projection gap, not a win probability or expected betting return.')
                     if not selected_stats:
                         ui.info('Check at least one stat category to show edges.')
                     elif ranked.empty:
-                        ui.info('No eligible edges meet these filters. Props may not be posted yet, quotes may be stale, or projections may lack matchup history. Try another game/book or turn off the 5% filter.')
+                        if player_search.strip():
+                            ui.info('No eligible edges match this player search in the selected game. Check the name, clear the search, or turn off the 5% filter.')
+                        else:
+                            ui.info('No eligible edges meet these filters. Props may not be posted yet, quotes may be stale, or projections may lack matchup history. Try another game/book or turn off the 5% filter.')
                     else:
                         ui.success(f'Showing {len(ranked)} of {total_edges} eligible player-stat edges')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
