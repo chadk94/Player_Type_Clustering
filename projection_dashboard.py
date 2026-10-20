@@ -20,7 +20,7 @@ from team_assists import historical_assist_rates, apply_team_assists
 from team_threes import historical_three_rates, apply_team_threes
 from team_rebounds import historical_rebound_rates, apply_team_rebounds, REBOUND_METADATA
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS
-from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS
+from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from projection_presentation import over_line_label, matchup_rating
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
                               player_quotes, compare_with_book, comparison_style, TEAM_NAMES)
@@ -213,7 +213,7 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
                 raise OddsFeedError('Sportsbook feed access is not configured.')
             verified = scheduled_book_games(sportsbook_events(api_key), schedule)
             matches = [event for event in verified if event['Home'] == game['Home'] and event['Away'] == game['Away']
-                       and abs(event['GameTimeUTC'] - game['GameTimeUTC']) <= pd.Timedelta(minutes=5)]
+                       and abs(event['GameTimeUTC'] - game['GameTimeUTC']) <= EVENT_TIME_TOLERANCE]
             if len(matches) != 1:
                 raise OddsFeedError('No unique sportsbook event matches this scheduled game.')
             event = {**matches[0], 'commence_time': matches[0]['GameTimeUTC'].isoformat()}

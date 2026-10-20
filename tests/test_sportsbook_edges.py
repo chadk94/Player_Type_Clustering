@@ -172,6 +172,26 @@ class GameEdgeTests(unittest.TestCase):
         bad,_=game_edges(invalid,self.payload,self.event,'fanduel',now=self.now)
         self.assertTrue(bad.empty)
 
+    def test_game_selector_allows_small_tip_changes_but_rejects_wrong_or_started_games(self):
+        scheduled = pd.Timestamp(self.event['commence_time'])
+        schedule = pd.DataFrame([{'TEAM_ID':TEAM_IDS['NYK'],'Opponent':'PHI','Venue':'home',
+            'GameTimeUTC':scheduled,'GameStatus':'Scheduled'}])
+        for minutes in [-15, 9, 10, 15]:
+            event = {**self.event,'commence_time':(scheduled+pd.Timedelta(minutes=minutes)).isoformat()}
+            games = scheduled_book_games([event],schedule,self.now)
+            self.assertEqual(len(games),1)
+            self.assertEqual(games[0]['GameTimeUTC'],pd.Timestamp(event['commence_time']))
+        for minutes in [-16, 16, 1440]:
+            event = {**self.event,'commence_time':(scheduled+pd.Timedelta(minutes=minutes)).isoformat()}
+            self.assertEqual(scheduled_book_games([event],schedule,self.now),[])
+        event = {**self.event,'commence_time':(scheduled+pd.Timedelta(minutes=9)).isoformat()}
+        for status in ['In Progress','Final','Postponed','Delayed','Canceled','Suspended']:
+            self.assertEqual(scheduled_book_games([event],schedule.assign(GameStatus=status),scheduled),[])
+        wrong = {**event,'away_team':'Boston Celtics'}
+        self.assertEqual(scheduled_book_games([wrong],schedule,self.now),[])
+        reversed_venue = {**event,'home_team':event['away_team'],'away_team':event['home_team']}
+        self.assertEqual(scheduled_book_games([reversed_venue],schedule,self.now),[])
+
     def test_game_selector_requires_exact_future_scheduled_regular_season_event(self):
         schedule=pd.DataFrame([{'TEAM_ID':TEAM_IDS['NYK'],'Opponent':'PHI','Venue':'home',
             'GameTimeUTC':self.event['commence_time'],'GameStatus':'Scheduled'}])

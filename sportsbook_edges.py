@@ -11,6 +11,8 @@ from team_rebounds import REBOUND_METADATA
 from sportsbook_lines import TEAM_NAMES, STAT_ORDER, OddsFeedError, player_quotes, compare_with_book
 
 EDGE_STATS = [stat for stat in STAT_ORDER if stat != 'TOV']
+# Books can move from the advertised start to the expected actual tip near game time.
+EVENT_TIME_TOLERANCE = pd.Timedelta(minutes=15)
 
 EDGE_COLUMNS = ['Rank','Player','Team','Opponent','Stat','Play','Projected minutes',
                 'Baseline','Matchup rating','Projected','Book line','Book implied total','Edge %','Signed edge %','Over odds',
@@ -33,8 +35,9 @@ def scheduled_book_games(events, schedule, now=None):
                                schedule.Opponent.eq(away) & schedule.Venue.eq('home')]
             if matched.empty:
                 continue
-            matched = matched[matched.GameTimeUTC.map(lambda value: abs(pd.Timestamp(value)-start) <= pd.Timedelta(minutes=5))]
-            matched = matched[~matched.GameStatus.str.lower().str.contains('postpon|cancel|suspend|delay',na=False)]
+            matched = matched[matched.GameTimeUTC.map(lambda value: abs(pd.Timestamp(value)-start) <= EVENT_TIME_TOLERANCE)]
+            # A later book tip must never keep an already-started game eligible.
+            matched = matched[matched.GameStatus.str.strip().str.lower().eq('scheduled')]
             if matched.empty:
                 continue
             games.append({'id':event['id'],'Home':home,'Away':away,'GameTimeUTC':start,

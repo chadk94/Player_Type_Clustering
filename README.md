@@ -381,8 +381,12 @@ view the strongest remaining comparisons without marking them as plays. Existing
 continuous edge colors apply. If fewer than 20 props qualify, only real eligible
 rows appear. CSV downloads include quote timestamps and matchup sample coverage.
 Game buttons include future sportsbook events that match the selected date's
-ESPN regular-season schedule on home/away teams and tip time (within five
-minutes). Past, postponed, canceled, suspended or delayed events are excluded.
+ESPN regular-season schedule on home/away teams and tip time (within 15
+minutes). The tolerance handles the difference between an advertised start and
+the book's updated expected tip, such as PHI–NYK's 5:00 PM versus 5:09 PM MDT on
+October 20. Team Projections uses the same tolerance when attaching market lines.
+Only ESPN games still marked Scheduled qualify; in-progress, final, postponed,
+canceled, suspended or delayed events and past sportsbook tips are excluded.
 There is no fallback to a different game, book, one-sided line, stale quote, or
 invented projection. Both paired prices must be current within 15 minutes.
 
