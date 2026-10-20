@@ -96,7 +96,7 @@ class TeamProjectionViewTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 team_projection_tables(self.base, self.before, invalid, ['BOS', 'DET'])
 
-    def test_game_selection_works_without_books_and_excludes_started_or_postponed_games(self):
+    def test_game_selection_works_without_books_and_excludes_expired_or_postponed_games(self):
         now = datetime(2026, 10, 20, 12, tzinfo=timezone.utc)
         game = {'TEAM_ID': TEAM_IDS['BOS'], 'Opponent': 'DET', 'Venue': 'home',
                 'GameTimeUTC': '2026-10-20T20:00:00Z', 'GameStatus': 'Scheduled'}
@@ -108,6 +108,18 @@ class TeamProjectionViewTests(unittest.TestCase):
         self.assertEqual(len(games), 1)
         self.assertEqual((games[0]['Home'], games[0]['Away']), ('BOS', 'DET'))
         self.assertEqual(upcoming_team_games(pd.DataFrame(), now), [])
+
+    def test_team_games_remain_for_one_hour_after_tip_including_in_progress(self):
+        start = pd.Timestamp('2026-10-20T23:00:00Z')
+        schedule = pd.DataFrame([{'TEAM_ID':TEAM_IDS['NYK'],'Opponent':'PHI','Venue':'home',
+                                  'GameTimeUTC':start,'GameStatus':'In Progress'}])
+        for now in [start-pd.Timedelta(minutes=1),start,start+pd.Timedelta(minutes=59,seconds=59),
+                    pd.Timestamp('2026-10-20T17:59:59-06:00')]:
+            self.assertEqual(len(upcoming_team_games(schedule,now)),1)
+        for now in [start+pd.Timedelta(hours=1),start+pd.Timedelta(hours=2)]:
+            self.assertEqual(upcoming_team_games(schedule,now),[])
+        for status in ['Postponed','Canceled','Suspended','Delayed','Final']:
+            self.assertEqual(upcoming_team_games(schedule.assign(GameStatus=status),start),[])
 
 
 if __name__ == '__main__':

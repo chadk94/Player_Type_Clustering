@@ -19,7 +19,7 @@ from market_points import market_targets, apply_market_points
 from team_assists import historical_assist_rates, apply_team_assists
 from team_threes import historical_three_rates, apply_team_threes
 from team_rebounds import historical_rebound_rates, apply_team_rebounds, REBOUND_METADATA
-from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS
+from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from projection_presentation import over_line_label, matchup_rating
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
@@ -172,6 +172,12 @@ def set_edge_stats(selected):
 def render_team_projections(ui, projections, roster, teams, prior_effects, current_effects):
     ui.subheader('🏀 Team Projections')
     ui.caption('Both teams’ projected stat totals, using the same saved minutes and adjustments as Top Sportsbook Edges. Player sliders affect individual previews only.')
+    ui.caption('Games stay available until one hour after their scheduled tip-off. The list updates when you use a control or refresh.')
+    now = pd.Timestamp(datetime.now(timezone.utc))
+    snapshots = st.session_state.setdefault('team_projection_snapshots', {})
+    for key in list(snapshots):
+        if snapshots[key]['expires'] <= now:
+            del snapshots[key]
     date_col, book_col = ui.columns(2)
     with date_col:
         date = ui.date_input('Team projection date', value=datetime.now(ZoneInfo('America/Denver')).date(), key='team_projection_date')
@@ -179,12 +185,12 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
         book_name = ui.selectbox('Sportsbook for team projections', list(BOOKS), key='team_projection_book')
     try:
         schedule = today_schedule(SEASON, date)
-        games = upcoming_team_games(schedule)
+        games = upcoming_team_games(schedule, now=now)
     except (requests.RequestException, ValueError, KeyError, TypeError):
         ui.warning('The game schedule could not be loaded. Use Refresh live data to retry.')
         return
     if not games:
-        ui.info('No upcoming regular-season games were found for this date. Choose another date.')
+        ui.info('No upcoming games or games within one hour of scheduled tip-off were found for this date. Choose another date.')
         return
     by_key = {game['key']: game for game in games}
     if st.session_state.get('team_projection_game') not in by_key:
@@ -195,6 +201,7 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
         ui.info('Select a game to view its team projections.')
         return
     game = by_key[selected]
+    snapshot_key = (selected, BOOKS[book_name])
     order = [game['Away'], game['Home']]
     base = projections[projections.Team.isin(order)].copy()
     rows = [apply_matchup(base[base.Team.eq(side)], roster, teams, prior_effects, current_effects, opponent)
@@ -218,8 +225,19 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
                 raise OddsFeedError('No unique sportsbook event matches this scheduled game.')
             event = {**matches[0], 'commence_time': matches[0]['GameTimeUTC'].isoformat()}
             final = team_projection_preview(ui, before, event, BOOKS[book_name], api_key)
+            if 'Market team total' not in final or not final['Market team total'].notna().any():
+                raise OddsFeedError('Pregame team targets are unavailable.')
+            snapshots[snapshot_key] = {'base': base.copy(deep=True), 'before': before.copy(deep=True),
+                                       'final': final.copy(deep=True), 'saved_at': now,
+                                       'expires': game['GameTimeUTC'] + TEAM_GAME_RETENTION}
         except (OddsFeedError, requests.RequestException, ValueError, KeyError, TypeError):
-            ui.caption('Current game lines are unavailable. Showing existing model projections without team-target adjustments.')
+            saved = snapshots.get(snapshot_key) if game['GameTimeUTC'] <= now else None
+            if saved is not None:
+                base, before, final = (saved[name].copy(deep=True) for name in ['base', 'before', 'final'])
+                ui.caption(f"Showing the pregame projection saved at {saved['saved_at'].tz_convert('America/Denver'):%I:%M %p %Z}. In-game odds are not used.")
+            else:
+                final = before.copy()
+                ui.caption('Pregame lines are unavailable and no pregame projection is saved in this session. Showing model projections without team-target adjustments.')
     totals, breakdown, issues = team_projection_tables(base, before, final, order)
     for issue in issues:
         ui.warning(issue)

@@ -10,10 +10,11 @@ TEAM_STATS = {'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', '3PM': 'FG3M',
               'STL': 'STL', 'BLK': 'BLK', 'TOV': 'TOV', 'PRA': 'PRA'}
 TARGET_COLUMNS = {'PTS': 'Market team total', 'AST': 'Team AST target',
                   '3PM': 'Team 3PM target', 'REB': 'Team REB target'}
+TEAM_GAME_RETENTION = pd.Timedelta(hours=1)
 
 
 def upcoming_team_games(schedule, now=None):
-    """Show scheduled games even when no sportsbook event/lines are available."""
+    """Show games until one hour after the scheduled tip, independent of books."""
     now = pd.Timestamp(now or datetime.now(timezone.utc))
     abbreviations = {value: key for key, value in TEAM_IDS.items()}
     games = {}
@@ -22,7 +23,7 @@ def upcoming_team_games(schedule, now=None):
             start = pd.Timestamp(row.GameTimeUTC)
             home, away = abbreviations[row.TEAM_ID], row.Opponent
             if (row.Venue != 'home' or away not in TEAM_IDS or home == away
-                    or start.tzinfo is None or start <= now
+                    or start.tzinfo is None or start + TEAM_GAME_RETENTION <= now
                     or any(word in str(row.GameStatus).lower()
                            for word in ['postpon', 'cancel', 'suspend', 'delay', 'final'])):
                 continue

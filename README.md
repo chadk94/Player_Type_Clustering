@@ -585,8 +585,21 @@ Player contributions and target-method explanations are expandable; team totals
 and the adjustment breakdown can be downloaded as CSVs. Totals use unrounded
 player values and may differ slightly from adding rounded display values.
 
-Upcoming games come from the ESPN regular-season schedule, even if no sportsbook
-event is available. Team calibration requires the same verified event, selected
+Games come from the ESPN regular-season schedule, even if no sportsbook
+event is available. Team Projections retains games, including in-progress games,
+until one hour after the ESPN scheduled tip (exclusive cutoff); canceled,
+postponed, delayed, suspended or final games remain excluded. The list updates
+on user interaction/refresh without adding an automatic rerun. Top Sportsbook
+Edges retains its existing pregame-only eligibility.
+
+When a pregame market-adjusted team projection is loaded, this session retains
+the baseline, matchup and final player tables separately for that game and book.
+After tip, if pregame lines are unavailable, Team Projections shows that saved
+projection with its timestamp rather than using in-game odds. Snapshots expire
+at the same one-hour cutoff and do not persist across sessions; without one,
+the existing model-only fallback is clearly labeled.
+
+Team calibration requires the same verified event, selected
 book and fresh spread/total as the other pages. If unavailable, existing model
 estimates remain visible with blank targets and an explanation. Missing minutes
 blank the whole team's totals; a missing positive-minute player's stat blanks
