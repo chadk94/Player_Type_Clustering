@@ -1,6 +1,6 @@
 """Player projections from validated regular-season summaries, independent of odds feeds."""
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import re
 import unicodedata
 
@@ -232,8 +232,9 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
     return pd.DataFrame(output)
 
 
-def next_regular_season_game(payload, season_year, team_abbreviation, now=None):
-    """Earliest verified future regular-season game, independent of response order."""
+def next_regular_season_game(payload, season_year, team_abbreviation, now=None,
+                             post_tip_window=timedelta(0)):
+    """Earliest verified regular-season game still inside the selection window."""
     now = now or datetime.now(timezone.utc)
     games=[]
     for event in payload.get('events',[]):
@@ -245,7 +246,7 @@ def next_regular_season_game(payload, season_year, team_abbreviation, now=None):
             if status.get('completed') or status.get('name') in ['STATUS_POSTPONED','STATUS_CANCELED','STATUS_CANCELLED','STATUS_SUSPENDED']:
                 continue
             start=datetime.fromisoformat(event['date'].replace('Z','+00:00'))
-            if start.tzinfo is None or start<=now:
+            if start.tzinfo is None or start + post_tip_window <= now:
                 continue
             participants=competition['competitors']
             abbreviations=[ALIASES.get(p['team']['abbreviation'],p['team']['abbreviation']) for p in participants]

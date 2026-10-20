@@ -48,10 +48,11 @@ def team_schedule(season, espn_team_id):
 
 
 def next_team_game(season, espn_team_id, abbreviation):
-    # Cache the schedule, not the time-sensitive choice: a cached game may have
-    # tipped off since the previous render even when the schedule is unchanged.
+    # Recheck the selection window on every render, even for cached schedules.
+    # Keep the current matchup for the same first hour as Team Projections.
     return next_regular_season_game(team_schedule(season, espn_team_id),
-                                    int(season[:4])+1, abbreviation)
+                                    int(season[:4])+1, abbreviation,
+                                    post_tip_window=TEAM_GAME_RETENTION.to_pytimedelta())
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -389,7 +390,8 @@ def render_live_dashboard(ui, roster):
             opponent = render_opponent_selector(ui, team, opponents, upcoming)
         if upcoming:
             next_time = pd.Timestamp(upcoming['GameTimeUTC']).tz_convert('America/Denver')
-            ui.caption(f'Next scheduled game: {team} vs {upcoming["Opponent"]} · {next_time:%b %d at %I:%M %p %Z}. You can change the opponent for any matchup preview.')
+            game_label = 'Current matchup' if next_time <= pd.Timestamp.now(tz='UTC') else 'Next scheduled game'
+            ui.caption(f'{game_label}: {team} vs {upcoming["Opponent"]} · {next_time:%b %d at %I:%M %p %Z}. The default keeps this matchup until one hour after scheduled tip-off. You can change the opponent for any preview.')
         else:
             ui.caption('The next regular-season opponent could not be verified. Choose an opponent manually.')
         if opponent is None:

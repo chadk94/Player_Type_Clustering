@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime,timezone
+from datetime import datetime,timedelta,timezone
 
 import numpy as np
 import pandas as pd
@@ -159,6 +159,23 @@ class LiveProjectionTests(unittest.TestCase):
         self.assertEqual(next_regular_season_game(payload,2027,'ATL',now)['Opponent'],'MIA')
         self.assertIsNone(next_regular_season_game(payload,2027,'LAL',now))
         self.assertIsNone(next_regular_season_game({'events':[]},2027,'ATL',now))
+
+    def test_opponent_retains_current_game_until_one_hour_after_tip(self):
+        tip = datetime(2026,10,20,23,tzinfo=timezone.utc)
+        def event(day, opponent):
+            return {'id':str(day), 'date':f'2026-10-{day}T17:00:00-06:00',
+                    'season':{'year':2027}, 'seasonType':{'type':2},
+                    'competitions':[{'status':{'type':{'name':'STATUS_IN_PROGRESS' if day == 20 else 'STATUS_SCHEDULED', 'completed':False}},
+                                     'competitors':[{'team':{'abbreviation':'PHI'}}, {'team':{'abbreviation':opponent}}]}]}
+        payload = {'events':[event(22,'CLE'),event(20,'NY') ]}
+        for minutes in [0,15,59.99]:
+            actual = next_regular_season_game(payload,2027,'PHI',tip+timedelta(minutes=minutes),timedelta(hours=1))
+            self.assertEqual(actual['Opponent'],'NYK')
+        for minutes in [60,61]:
+            actual = next_regular_season_game(payload,2027,'PHI',tip+timedelta(minutes=minutes),timedelta(hours=1))
+            self.assertEqual(actual['Opponent'],'CLE')
+        payload['events'][1]['competitions'][0]['status']['type']['completed'] = True
+        self.assertEqual(next_regular_season_game(payload,2027,'PHI',tip,timedelta(hours=1))['Opponent'],'CLE')
 
 
 if __name__ == '__main__':
