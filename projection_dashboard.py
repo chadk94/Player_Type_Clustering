@@ -22,6 +22,7 @@ from team_rebounds import historical_rebound_rates, apply_team_rebounds, REBOUND
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from projection_presentation import over_line_label, matchup_rating
+from opponent_selection import render_opponent_selector
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
                               player_quotes, compare_with_book, comparison_style, TEAM_NAMES)
 
@@ -38,12 +39,19 @@ def today_schedule(season, date):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def next_team_game(season, espn_team_id, abbreviation):
+def team_schedule(season, espn_team_id):
     year = int(season[:4])+1
     payload = fetch_json(f'{ESPN}/site/v2/sports/basketball/nba/teams/{espn_team_id}/schedule?season={year}&seasontype=2')
     if str(payload.get('team',{}).get('id')) != str(espn_team_id):
         raise ValueError('Schedule returned the wrong team')
-    return next_regular_season_game(payload,year,abbreviation)
+    return payload
+
+
+def next_team_game(season, espn_team_id, abbreviation):
+    # Cache the schedule, not the time-sensitive choice: a cached game may have
+    # tipped off since the previous render even when the schedule is unchanged.
+    return next_regular_season_game(team_schedule(season, espn_team_id),
+                                    int(season[:4])+1, abbreviation)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -297,7 +305,7 @@ def render_live_dashboard(ui, roster):
     if ui.button('Refresh live data'):
         live_state.clear()
         today_schedule.clear()
-        next_team_game.clear()
+        team_schedule.clear()
         current_matchup_logs.clear()
         sportsbook_events.clear()
         sportsbook_props.clear()
@@ -377,15 +385,8 @@ def render_live_dashboard(ui, roster):
         except (requests.RequestException,ValueError,KeyError,TypeError):
             pass
         opponents = [t for t in sorted(roster.TEAM_ABBREVIATION.unique()) if t != team]
-        # Initialize only when the team changes. Player/minutes/book reruns must
-        # preserve an opponent the user deliberately selected.
-        if st.session_state.get('projection_opponent_team') != team:
-            st.session_state['projection_opponent'] = upcoming['Opponent'] if upcoming else None
-            st.session_state['projection_opponent_team'] = team
-        elif st.session_state.get('projection_opponent') not in opponents:
-            st.session_state['projection_opponent'] = upcoming['Opponent'] if upcoming else None
         with opponent_col:
-            opponent = ui.selectbox('Opponent',opponents,index=None,key='projection_opponent',placeholder='Choose opponent')
+            opponent = render_opponent_selector(ui, team, opponents, upcoming)
         if upcoming:
             next_time = pd.Timestamp(upcoming['GameTimeUTC']).tz_convert('America/Denver')
             ui.caption(f'Next scheduled game: {team} vs {upcoming["Opponent"]} · {next_time:%b %d at %I:%M %p %Z}. You can change the opponent for any matchup preview.')
