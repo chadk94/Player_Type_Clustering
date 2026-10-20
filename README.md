@@ -42,6 +42,25 @@ Rebuild the historical snapshot with `python matchup_data.py --year 2026 --cache
 
 ### Sportsbook comparison and juice-adjusted totals
 
+Player vs Opponent also includes **PF (personal fouls committed)** with a baseline,
+matchup rating and projection. Foul rates use the same projected minutes (including
+the manual slider) and game-5 season blend as the other stats. The defensive
+archetype's per-36 foul tendency against the opponent supplies the matchup effect,
+with a 10-sample half-life and the existing three-sample neutral shrinkage.
+Fewer projected fouls produce a better matchup rating. Turning matchup adjustments
+off shows the minutes-scaled baseline. PF does not change PRA or receive team-market
+calibration, and is not added to Top Sportsbook Edges or its stat filters.
+
+The 2025–26 box-score archive now includes PF for all 26,547 player appearances,
+backfilled from the same cached ESPN source responses without changing any other
+column. Current summaries read ESPN's `avgFouls`; current box scores read `PF`.
+Optional RotoWire `PF`/`FOULS`/`PERSONAL FOULS` columns are supported. The stored
+RotoWire fallback does not contain PF, so players relying solely on it have blank
+foul projections until a valid foul rate is supplied or current-season rates become
+eligible. PF is optional and cannot block other projections; when only one eligible
+prior/current foul rate exists, that rate is used. Missing matchup foul samples also
+stay blank. No sportsbook foul market is connected, so PF book/edge cells stay blank.
+
 The player projection table now includes **Book line**, **Book implied total**, and **Edge %** and **Play** for PTS/REB/AST/3PM/STL/BLK/TOV/PRA. Select FanDuel (default), DraftKings, or BetMGM. Percentage edge equals the absolute value of `(Projected / Book implied total - 1) × 100`, rounded to two decimals: both Over and Under edges display as positive. A gap strictly greater than 5% receives an Over label and green shading when the projection is higher, or an Under label and red shading when lower. Exactly 5%, smaller edges, zero/missing implied totals and missing projections remain unmarked. Color intensity increases continuously from pale at 5% to saturated at 25% (clipped thereafter). Only the Edge % and Play cells are highlighted; projected totals are plain. The 5% rule is an extra projection buffer on top of the already no-vig model estimate, not a calculated wagering ROI. This is a numerical projection comparison, not an EV calculation or bet recommendation. Both projection and top-edge comparison downloads retain **Signed edge %** alongside the positive **Edge %** for direction, including rows below the play threshold.
 
 The existing The Odds API access is reused. Prefer `ODDS_API_KEY` in environment variables or Streamlit secrets; the existing legacy feed configuration remains compatible. Credentials are not displayed or included in request-error messages. Upcoming NBA events are cached for five minutes; only the next future event matching the selected team/opponent is queried for the chosen bookmaker's eight standard prop markets. A real scheduled opponent is required; arbitrary matchup previews may have no book lines. Per-event props are also cached for five minutes, limiting requests to the selected event/book, rather than loading every NBA game on every rerun. “Refresh live data” clears both caches.

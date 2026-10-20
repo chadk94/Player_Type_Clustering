@@ -7,7 +7,7 @@ from season_pipeline import ROOT, apply_overrides, load_rules
 from archetype_model import assign_named_roles, validate_named_roles
 
 OFF_STATS = ['PTS','AST','OREB','FGM','FGA','FG3M','FG3A','FTM','FTA','TOV']
-DEF_STATS = ['DREB','STL','BLK']
+DEF_STATS = ['DREB','STL','BLK','PF']
 HEAT_STATS = ['PTS','AST','DREB','OREB','FG3M','FG3A','STL','BLK']
 START_GAME = 5
 
@@ -61,7 +61,7 @@ def matchup_effects(logs):
     valid = logs[logs.MIN.ge(5)].sort_values(['GAME_DATE','GAME_ID','ESPN_PLAYER_ID'])
     for kind,stats in [('Off',OFF_STATS),('Def',DEF_STATS)]:
         for cluster, group in valid.dropna(subset=[f'{kind}Cluster']).groupby(f'{kind}Cluster'):
-            rates = group[stats].div(group.MIN,axis=0)*36
+            rates = group.reindex(columns=stats).div(group.MIN,axis=0)*36
             means = rates.mean()
             for opponent, opponent_rows in group.groupby('Opponent'):
                 result = {'samples':len(opponent_rows)}
@@ -71,7 +71,10 @@ def matchup_effects(logs):
                         result[stat] = np.nan
                         continue
                     differences = ((values / means[stat] - 1)*100).dropna().to_numpy()
-                    half_life = 15 if stat == 'AST' else 10 if stat in ['OREB','DREB','STL','BLK'] else 999
+                    if not len(differences):
+                        result[stat] = np.nan
+                        continue
+                    half_life = 15 if stat == 'AST' else 10 if stat in ['OREB','DREB','STL','BLK','PF'] else 999
                     weights = 0.5 ** (np.arange(len(differences)-1,-1,-1)/half_life)
                     result[stat] = float(np.dot(differences,weights)/(3+weights.sum()))
                 if kind == 'Off':
@@ -101,7 +104,8 @@ def apply_matchup(baselines, roster, teams, prior_effects, current_effects, oppo
                 pct = effect.get(stat,np.nan)
                 row[f'{stat} %'] = pct
                 row[f'Baseline {stat}'] = base.get(stat,np.nan)
-                row[stat] = max(0,base.get(stat,np.nan)*(1+pct/100)) if np.isfinite(pct) else np.nan
+                base_value = base.get(stat,np.nan)
+                row[stat] = max(0,base_value*(1+pct/100)) if np.isfinite(pct) and np.isfinite(base_value) else np.nan
         row['Baseline REB'] = base.get('REB',np.nan)
         row['REB'] = row['OREB'] + row['DREB']
         row['PRA'] = row['PTS'] + row['REB'] + row['AST']

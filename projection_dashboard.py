@@ -329,7 +329,7 @@ def render_live_dashboard(ui, roster):
         elif fallback is None:
             ui.caption('No RotoWire export has been loaded yet. Missing-profile projections stay unavailable until an authorized export is supplied.')
     projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback)
-    role_policy_version = hashlib.sha256(b''.join((ROOT / p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv','archetype_overrides.json','archetype_model.py'])).hexdigest()
+    role_policy_version = hashlib.sha256(b''.join((ROOT / p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv','archetype_overrides.json','archetype_model.py','matchup_projections.py','matchup_data.py'])).hexdigest()
     prior_effects = prior_matchup_effects(roster, role_policy_version)
     current_effects = {}
     if not teams.empty and teams.GAMES_PLAYED.ge(4).any():
@@ -405,7 +405,7 @@ def render_live_dashboard(ui, roster):
                 ui.warning(row['Status'])
             if row['Matchup status'] != 'Available':
                 ui.warning(row['Matchup status'] + '. Unavailable adjustments stay blank; turn off matchup adjustments to view the baseline.')
-            stats = ['PTS','REB','AST','FG3M','STL','BLK','TOV','PRA']
+            stats = ['PTS','REB','AST','FG3M','STL','BLK','TOV','PF','PRA']
             preview = pd.DataFrame({'Stat':['3PM' if x=='FG3M' else x for x in stats],
                 'Baseline':[baseline.iloc[0][x] for x in stats],
                 'Projected':[row[x] if adjusted_on else baseline.iloc[0][x] for x in stats]})
@@ -459,7 +459,8 @@ def render_live_dashboard(ui, roster):
             ui.caption('Edge % shows the size of the gap from the book-implied total, positive for both Overs and Unders. Play identifies the direction: Over when the projection is higher, Under when lower. Only gaps greater than 5% qualify as plays and receive shading, from light to dark as the edge grows. The 5% buffer is your extra projection margin; the implied total already removes bookmaker margin.')
             ui.dataframe(display.style.apply(comparison_style,axis=1).format(
                 {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %','Matchup rating','Book line (Over)']},'Edge %':'{:+.2f}%'},na_rep='—'),hide_index=True,width='stretch')
-            ui.caption('Matchup rating: 1 ⬇️⬇️ poor (−10% or worse), 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent (+10% or better). Based on opponent lift versus baseline, not sportsbook edge; fewer turnovers rate higher. Ratings are blank when adjustments are off or data is unavailable. Book line (Over) includes the Over price.')
+            ui.caption('Matchup rating: 1 ⬇️⬇️ poor (−10% or worse), 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent (+10% or better). Based on opponent lift versus baseline, not sportsbook edge; fewer turnovers or fouls rate higher. Ratings are blank when adjustments are off or data is unavailable. Book line (Over) includes the Over price.')
+            ui.caption('PF = personal fouls committed. Uses your projected minutes and the defensive-archetype matchup effect. Missing foul rates stay blank; no sportsbook foul line is connected.')
             unavailable = comparison.loc[comparison['Book implied total'].isna(),'Stat'].tolist()
             if unavailable:
                 ui.caption('No usable current two-sided line for: '+', '.join(unavailable)+'. Unavailable comparisons stay blank.')

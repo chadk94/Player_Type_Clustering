@@ -45,6 +45,20 @@ class MatchupTests(unittest.TestCase):
         current = {key:{**value,'PTS':20.} for key,value in effects.items()}
         self.assertEqual(apply_matchup(self.base,self.roster,self.teams,effects,current).iloc[0].PTS,12.)
 
+    def test_fouls_use_defensive_matchup_and_missing_rates_remain_unavailable(self):
+        self.logs['PF'] = [1.,3.]
+        self.base['PF'] = 2.
+        effects = matchup_effects(self.logs)
+        self.assertNotIn('PF',effects['Off',6,'BOS'])
+        self.assertEqual(effects['Def',11,'BOS']['PF'],-12.5)
+        result = apply_matchup(self.base,self.roster,self.teams,effects,{})
+        self.assertEqual(result.iloc[0].PF,1.75)
+        self.assertEqual(result.iloc[0]['Baseline PF'],2.)
+        missing = apply_matchup(self.base.assign(PF=np.nan),self.roster,self.teams,effects,{})
+        self.assertTrue(pd.isna(missing.iloc[0].PF))
+        self.logs.loc[0,'PF'] = np.nan
+        self.assertTrue(pd.isna(matchup_effects(self.logs)['Def',11,'BOS']['PF']))
+
     def test_minute_cutoff_and_zero_baseline_are_not_fabricated(self):
         self.logs.loc[0,'MIN']=4
         self.logs['STL']=0
@@ -107,12 +121,30 @@ class MatchupTests(unittest.TestCase):
             parse_boxscore({'header':{'season':{'year':2026,'type':1}}},2026)
         self.assertEqual(parse_boxscore({'header':{'season':{'year':2026,'type':2},'gameNote':'NBA Cup Championship'}},2026),[])
 
+    def test_boxscore_reads_fouls_without_dropping_rows_when_pf_is_missing(self):
+        values = {'MIN':'20','PTS':'10','AST':'2','REB':'4','OREB':'1','DREB':'3',
+                  'STL':'1','BLK':'0','TO':'2','FG':'4-8','3PT':'1-3','FT':'1-2','PF':'3'}
+        category = {'labels':list(values),'athletes':[{'athlete':{'id':'100','displayName':'Example'},'stats':list(values.values())}]}
+        payload = {'header':{'id':'1','season':{'year':2026,'type':2},'competitions':[{
+            'date':'2025-11-01T00:00Z','status':{'type':{'completed':True}},
+            'competitors':[{'team':{'id':'1','abbreviation':'ATL'}},{'team':{'id':'2','abbreviation':'BOS'}}]}]},
+            'boxscore':{'players':[{'team':{'id':'1'},'statistics':[category]}]}}
+        self.assertEqual(parse_boxscore(payload,2026)[0]['PF'],3.)
+        category['labels'].pop()
+        category['athletes'][0]['stats'].pop()
+        rows = parse_boxscore(payload,2026)
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0]['PTS'],10.)
+        self.assertTrue(pd.isna(rows[0]['PF']))
+
     def test_historical_snapshot_is_full_regular_season(self):
         logs = pd.read_csv(ROOT / 'data/game_logs_2026.csv.gz')
         self.assertEqual(logs.GAME_ID.nunique(),1230)
         self.assertTrue(logs.groupby('Team').GAME_ID.nunique().eq(82).all())
         self.assertTrue((logs.REB == logs.OREB+logs.DREB).all())
         self.assertFalse(logs.duplicated(['GAME_ID','ESPN_PLAYER_ID']).any())
+        self.assertTrue(logs.PF.notna().all())
+        self.assertTrue(logs.PF.ge(0).all())
 
 
 if __name__ == '__main__':

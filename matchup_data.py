@@ -9,7 +9,7 @@ from live_projections import ESPN, ALIASES, fetch_json
 from season_pipeline import ROOT
 
 COLUMNS = ['ESPN_PLAYER_ID','PLAYER_NAME','GAME_ID','GAME_DATE','Team','Opponent','MIN',
-           'PTS','AST','REB','OREB','DREB','STL','BLK','TOV','FGM','FGA','FG3M','FG3A','FTM','FTA']
+           'PTS','AST','REB','OREB','DREB','STL','BLK','TOV','FGM','FGA','FG3M','FG3A','FTM','FTA','PF']
 
 
 def parse_boxscore(payload, year):
@@ -46,6 +46,12 @@ def parse_boxscore(payload, year):
                            'Team':teams[team_id], 'Opponent':opponent, 'MIN':minutes}
                     for stat in ['PTS','AST','REB','OREB','DREB','STL','BLK','TOV']:
                         row[stat] = float(values['TO' if stat == 'TOV' else stat])
+                    # Optional fouls must not discard otherwise usable box-score rows.
+                    try:
+                        fouls = float(values.get('PF', 'nan'))
+                        row['PF'] = fouls if fouls >= 0 and fouls.is_integer() else float('nan')
+                    except (ValueError, TypeError):
+                        row['PF'] = float('nan')
                     for source, made, attempted in [('FG','FGM','FGA'),('3PT','FG3M','FG3A'),('FT','FTM','FTA')]:
                         row[made], row[attempted] = map(float,values[source].split('-'))
                     rows.append(row)

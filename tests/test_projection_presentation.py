@@ -17,6 +17,7 @@ class ProjectionPresentationTests(unittest.TestCase):
         self.assertEqual(matchup_rating(10,float('nan'),'PTS'),'—')
 
     def test_turnovers_invert_and_minutes_scaling_does_not_change_rating(self):
-        self.assertEqual(matchup_rating(2,1.8,'TOV'),'5 ⬆️⬆️')
-        self.assertEqual(matchup_rating(2,2.2,'TOV'),'1 ⬇️⬇️')
+        for stat in ['TOV','PF']:
+            self.assertEqual(matchup_rating(2,1.8,stat),'5 ⬆️⬆️')
+            self.assertEqual(matchup_rating(2,2.2,stat),'1 ⬇️⬇️')
         self.assertEqual(matchup_rating(10,10.5,'PTS'),matchup_rating(20,21,'PTS'))

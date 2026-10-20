@@ -10,6 +10,14 @@
   "excluded_non_statistical_games": [
     "401809839: NBA Cup Championship"
   ],
-  "sha256": "6ab1009d50eadb32f13e96b035bbea49f6880b61069e1b172dbe00dbeb6089b5",
-  "coverage": "All 30 NBA teams: 82 regular-season games each. Only unambiguously matched, classified players contribute to archetype effects."
+  "sha256": "6654f44692a316a9875584c997f23bae553e8727a66cf31dafbfac3d4d2e5c28",
+  "coverage": "All 30 NBA teams: 82 regular-season games each. Only unambiguously matched, classified players contribute to archetype effects.",
+  "fouls_enrichment": {
+    "added_at": "2026-10-20T22:52:56.490744+00:00",
+    "field": "PF",
+    "source": "Personal fouls from the same cached ESPN completed regular-season summary box scores",
+    "player_games_with_pf": 26547,
+    "games": 1230,
+    "other_columns_unchanged": true
+  }
 }

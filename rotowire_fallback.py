@@ -10,7 +10,7 @@ from live_projections import CORE_STATS, STAT_NAMES, name_key
 
 COLUMN_NAMES = {'PLAYER':'PLAYER_NAME','NAME':'PLAYER_NAME','MPG':'MIN','MINUTES':'MIN',
                 'G':'GP','3PM':'FG3M','3PTM':'FG3M','3PT':'FG3M','3PA':'FG3A','TO':'TOV',
-                'OREBS':'OREB','DREBS':'DREB'}
+                'OREBS':'OREB','DREBS':'DREB','FOULS':'PF','PERSONAL FOULS':'PF'}
 
 
 def read_rotowire_csv(source):

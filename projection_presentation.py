@@ -9,11 +9,11 @@ def over_line_label(line, price):
 
 
 def matchup_rating(baseline, projected, stat, enabled=True):
-    """Five-point opponent lift scale; invert turnovers so higher means favorable."""
+    """Five-point opponent lift scale; fewer turnovers/fouls mean favorable."""
     if not enabled or not all(math.isfinite(value) for value in (baseline,projected)) or baseline <= 0:
         return '—'
     lift = round((projected/baseline-1)*100,8)
-    if stat == 'TOV':
+    if stat in ['TOV','PF']:
         lift = -lift
     if lift >= 10:
         return '5 ⬆️⬆️'

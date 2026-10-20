@@ -29,6 +29,22 @@ class RotoWireFallbackTests(unittest.TestCase):
         self.assertEqual(row['Stat baseline'],'RotoWire 2026–27 projection')
         self.assertEqual(row.Status,'Available')
         self.assertTrue(pd.isna(row.FGA))
+        self.assertTrue(pd.isna(row.PF))
+
+    def test_optional_fouls_scale_with_minutes_and_can_use_current_rates(self):
+        fallback,_ = normalize_rotowire(self.export.assign(FOULS=2.),self.roster)
+        teams = pd.DataFrame([{'TEAM_ID':TEAM_IDS['ATL'],'GAMES_PLAYED':0}])
+        row = build_projections(self.roster,self.history,teams,pd.DataFrame(),fallback=fallback,
+                                minutes_overrides={1:30.}).iloc[0]
+        self.assertEqual(row.PF,3.)
+        no_fouls,_ = normalize_rotowire(self.export,self.roster)
+        current = pd.DataFrame([{'ESPN_PLAYER_ID':'100','PLAYER_NAME':'Example Rookie',
+            'GP':4.,'MIN':24.,**{s:2. for s in CORE_STATS},'PF':3.}])
+        teams.GAMES_PLAYED = 4
+        row = build_projections(self.roster,self.history,teams,current,fallback=no_fouls).iloc[0]
+        self.assertEqual(row.PF,3.)
+        row = build_projections(self.roster,self.history,teams,current.assign(PF=float('nan')),fallback=fallback).iloc[0]
+        self.assertAlmostEqual(row.PF,2.4)
 
     def test_roto_minutes_do_not_override_season_minutes_after_game_three(self):
         fallback,_ = normalize_rotowire(self.export,self.roster)

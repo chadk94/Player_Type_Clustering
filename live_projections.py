@@ -17,7 +17,8 @@ STAT_NAMES = {'PTS': 'avgPoints', 'REB': 'avgRebounds', 'AST': 'avgAssists',
               'STL': 'avgSteals', 'BLK': 'avgBlocks', 'FG3M': 'avgThreePointFieldGoalsMade',
               'TOV': 'avgTurnovers', 'FGM': 'avgFieldGoalsMade', 'FGA': 'avgFieldGoalsAttempted',
               'FG3A': 'avgThreePointFieldGoalsAttempted', 'FTM': 'avgFreeThrowsMade',
-              'FTA': 'avgFreeThrowsAttempted', 'OREB': 'avgOffensiveRebounds', 'DREB': 'avgDefensiveRebounds'}
+              'FTA': 'avgFreeThrowsAttempted', 'OREB': 'avgOffensiveRebounds', 'DREB': 'avgDefensiveRebounds',
+              'PF': 'avgFouls'}
 
 
 def round_projected_minutes(value):
@@ -204,7 +205,12 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
             prior_rate = profile.get(stat, np.nan) / profile.MIN if prior_ok else np.nan
             new_rate = observed.get(stat, np.nan) / observed.MIN if current_ok else np.nan
             if prior_ok and current_ok:
-                rate = (1-weight)*prior_rate + weight*new_rate
+                if stat == 'PF' and not np.isfinite(prior_rate):
+                    rate = new_rate
+                elif stat == 'PF' and not np.isfinite(new_rate):
+                    rate = prior_rate
+                else:
+                    rate = (1-weight)*prior_rate + weight*new_rate
             else:
                 rate = new_rate if current_ok else prior_rate
             row[stat] = rate * minutes if np.isfinite(rate) and np.isfinite(minutes) else np.nan
