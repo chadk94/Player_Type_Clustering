@@ -23,7 +23,7 @@ from team_projection_view import upcoming_team_games, team_projection_tables, TE
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from projection_presentation import over_line_label, matchup_rating
 from opponent_selection import render_opponent_selector
-from approved_minutes import render_import, for_matchup, projection_gaps
+from approved_minutes import render_import, for_matchup, projection_gaps, game_minutes_caption
 from import_minutes import TEAM_IDS
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
                               player_quotes, compare_with_book, comparison_style, TEAM_NAMES)
@@ -217,6 +217,7 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
     snapshot_key = (selected, BOOKS[book_name])
     order = [game['Away'], game['Home']]
     base = projections[projections.Team.isin(order)].copy()
+    ui.caption(game_minutes_caption(base, order))
     rows = [apply_matchup(base[base.Team.eq(side)], roster, teams, prior_effects, current_effects, opponent)
             for side, opponent in [(game['Away'], game['Home']), (game['Home'], game['Away'])]
             if not base[base.Team.eq(side)].empty]
@@ -624,6 +625,7 @@ def render_live_dashboard(ui, roster):
                 else:
                     game = by_id[game_id]
                     game_projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
+                    ui.caption(game_minutes_caption(game_projections, [game['Away'], game['Home']]))
                     matchup_rows = []
                     for side,opponent in [(game['Home'],game['Away']),(game['Away'],game['Home'])]:
                         # Keep the whole roster so unavailable minutes cannot silently

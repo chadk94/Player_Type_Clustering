@@ -1,4 +1,4 @@
-"""Private-session import of explicitly approved, game-specific NBA minutes."""
+"""Private import of explicitly approved, game-specific NBA minutes."""
 from datetime import date
 from hashlib import sha256
 import json
@@ -110,21 +110,52 @@ def projection_gaps(bundle, projections):
     return pd.DataFrame(rows, columns=columns).sort_values(['Team', 'Player']).reset_index(drop=True)
 
 
+def game_minutes_caption(projections, teams):
+    summaries = []
+    for team in teams:
+        rows = projections[projections.Team.eq(team)]
+        sources = ', '.join(sorted(rows['Minutes source'].dropna().unique())) or 'Unavailable'
+        total = rows['Projected minutes'].sum(min_count=1)
+        allocation = f'{total:.1f} total' if pd.notna(total) else 'total unavailable'
+        summaries.append(f'{team}: {sources} ({allocation})')
+    return 'Minutes for this game — ' + ' · '.join(summaries)
+
+
 def render_import(ui, roster, season):
     import streamlit as st
-    bundle = None
+    from approved_minutes_storage import new_state, update_upload, accept_reply, storage_component
+    state = st.session_state.setdefault('minutes_import_state', new_state(season))
+    def clear_saved():
+        st.session_state['minutes_clear_requested'] = True
+        st.session_state['minutes_upload_version'] = st.session_state.get('minutes_upload_version', 0) + 1
     with ui.expander('Import Approved Minutes'):
         ui.write('Upload the JSON downloaded after approving every team in the NBA model. Matching games use these minutes across player, matchup, sportsbook and team projections.')
-        upload = ui.file_uploader('Approved minutes from NBA model', type=['json'], key='approved_game_minutes')
-        if upload is not None:
-            try:
-                bundle = validate_bundle(upload.getvalue(), roster, season)
-                day = bundle['games'][0]['game_date']
-                ui.success(f"Loaded {len(bundle['approvals'])} approved teams for {day}. Projections update automatically for matching games.")
-                warnings = [f"{a['team']}: {'; '.join(a['warnings'])}" for a in bundle['approvals'] if a['warnings']]
-                if warnings: ui.warning('Approved with injury-report limitations: '+' · '.join(warnings))
-                ui.caption('Private to this browser session. Nothing is published or written to the baseline workbook. Import a new file after changing approvals; this file cannot detect later NBA-model edits.')
-            except ValueError as exc: ui.error(str(exc))
+        upload = ui.file_uploader('Approved minutes from NBA model', type=['json'],
+                                  key=f"approved_game_minutes_{st.session_state.get('minutes_upload_version', 0)}")
+        ui.button('Clear saved minutes', on_click=clear_saved, key='clear_saved_minutes')
+        ui.caption('Saved privately in this browser and restored after refresh or reopening the app. A different browser needs its own import. Nothing is published or written to the baseline workbook. Import a new file after changing approvals.')
+    update_upload(state, None if upload is None else upload.getvalue(), roster, season,
+                  clear=st.session_state.pop('minutes_clear_requested', False))
+    reply = storage_component()(data=state['request'], key='approved_minutes_browser_storage',
+                                default={'reply': None}, height=1, on_reply_change=lambda: None).reply
+    accept_reply(state, reply, roster, season)
+    if state['pending']:
+        ui.info('Restoring saved minutes…' if state['request']['action'] == 'restore' else 'Saving your minutes selection…')
+        st.stop()  # Never briefly rank props using workbook minutes during restore.
+    if state['storage_error']:
+        ui.warning('Browser storage is unavailable. Minutes can only stay in this session; allow site storage to retain them after refresh.')
+    if state['error']:
+        ui.error(state['error'])
+        st.stop()  # An invalid replacement must not silently use the old workbook.
+    bundle = state['bundle']
+    if bundle:
+        day = bundle['games'][0]['game_date']
+        suffix = 'Active for this session only.' if state['storage_error'] else 'Saved in this browser.'
+        ui.success(f"Minutes source: approved file · {day} · {len(bundle['approvals'])} teams. {suffix}")
+        warnings = [f"{a['team']}: {'; '.join(a['warnings'])}" for a in bundle['approvals'] if a['warnings']]
+        if warnings: ui.warning('Approved with injury-report limitations: '+' · '.join(warnings))
+    else:
+        ui.warning('No approved minutes file is loaded. Projections use workbook/season-average minutes. Open Import Approved Minutes to use your game rotations.')
     identifier = (bundle or {}).get('bundle_id')
     if st.session_state.get('approved_minutes_bundle') != identifier:
         st.session_state['approved_minutes_bundle'] = identifier

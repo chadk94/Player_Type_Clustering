@@ -668,9 +668,13 @@ explicit refresh policy and workbook import/publish requirements still apply.
 
 Use **Import Approved Minutes** near the top of the live dashboard. Upload the
 JSON produced by the NBA model’s **Download Approved Minutes** button after
-explicitly approving both teams in every game on that day. The file stays in
-this browser session and is never committed, publicly shared, or written over
-the baseline workbook. No new credentials or data store are required.
+explicitly approving both teams in every game on that day. The validated file is
+saved in this browser's local storage and restored after refresh, reopening the
+app, or an app reboot. Another browser/profile needs its own import; already-open
+tabs pick up the saved file on their next full refresh. The file is never committed,
+publicly shared, or written over the baseline workbook. No new credentials or
+shared data store are required. A visible banner names the active date and source;
+the team and sportsbook pages also show each game's minute sources and totals.
 
 The importer checks the bundle checksum, season/date, pairings, two approvals
 per game, unique player IDs, 240 minutes and five starters per team, and roster
@@ -699,8 +703,14 @@ Approved minutes apply only to the exact Eastern-calendar-date matchup and
 supersede workbook/season-average minutes, preserving exact decimals. Stat rates,
 injury policy, archetypes and market formulas are unchanged. All four projection
 views use the imported allocation; manual player-preview sliders still work. A
-new import clears previous slider edits and cached team snapshots. Removing the
-file restores the automatic baseline. A file cannot detect subsequent changes
+new import clears previous slider edits and cached team snapshots. Removing an
+uploaded file or clicking **Clear saved minutes** clears the browser copy and
+restores the automatic baseline. Restored data goes through the same complete
+validation as uploads. Projections wait for restoration before rendering; invalid
+saved/replacement data pauses projections rather than silently ranking props with
+old minutes. If browser storage is blocked, a visible warning explains that an
+upload will only last for that session. A file cannot detect subsequent changes
 in the NBA model: download and import a fresh file after reapproving.
 
 Validation: `../app-check-env/bin/python -m unittest discover -s tests -q`.
+Browser-storage behavior: `node --test tests/test_approved_minutes_storage.mjs`.

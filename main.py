@@ -1559,7 +1559,7 @@ def main():
     if audit_path.exists() and roster_path.exists():
         audit = json.loads(audit_path.read_text())
         if audit.get('season') == SEASON:
-            # Approved game minutes and unclassified-player baseline fallbacks.
+            # Restore browser-saved approved minutes before rendering projections.
             from projection_dashboard import render_live_dashboard
             render_live_dashboard(st, pd.read_csv(roster_path))
             return
