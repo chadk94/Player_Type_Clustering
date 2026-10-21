@@ -45,6 +45,36 @@ class MatchupTests(unittest.TestCase):
         current = {key:{**value,'PTS':20.} for key,value in effects.items()}
         self.assertEqual(apply_matchup(self.base,self.roster,self.teams,effects,current).iloc[0].PTS,12.)
 
+    def test_unclassified_side_keeps_baseline_and_known_side_keeps_effect(self):
+        effects = matchup_effects(self.logs)
+        roster = self.roster.assign(OffCluster=np.nan)
+        before = roster.copy(deep=True)
+        row = apply_matchup(self.base,roster,self.teams,effects,{}).iloc[0]
+        self.assertEqual(row.PTS,10.)
+        self.assertEqual(row.AST,10.)
+        self.assertEqual(row.DREB,8.75)
+        self.assertEqual(row.REB,18.75)
+        self.assertEqual(row.PRA,38.75)
+        self.assertEqual(row['Off samples'],0)
+        self.assertTrue(pd.isna(row['PTS %']))
+        self.assertEqual(row['Matchup status'],'Baseline fallback — missing archetype')
+        pd.testing.assert_frame_equal(roster,before)
+        missing = apply_matchup(self.base.assign(PTS=np.nan),roster,self.teams,effects,{}).iloc[0]
+        self.assertTrue(pd.isna(missing.PTS))
+
+    def test_baseline_fallback_contributes_to_team_point_allocation(self):
+        from market_points import match_points
+        roster = self.roster.assign(OffCluster=np.nan,DefCluster=np.nan)
+        base = self.base.assign(Team='ATL',**{'Projected minutes':10.})
+        fallback = apply_matchup(base,roster,self.teams,{}, {})
+        classified = fallback.copy().assign(PLAYER_ID=2,PTS=90.,AST=20.,REB=30.,PRA=140.)
+        combined = pd.concat([fallback,classified],ignore_index=True)
+        result,_ = match_points(combined,{'ATL':110.})
+        self.assertAlmostEqual(result.PTS.sum(),110.)
+        self.assertAlmostEqual(result.iloc[0].PTS,11.)
+        self.assertAlmostEqual(result.iloc[1].PTS,99.)
+        self.assertAlmostEqual(result.iloc[0].PRA,41.)
+
     def test_fouls_use_defensive_matchup_and_missing_rates_remain_unavailable(self):
         self.logs['PF'] = [1.,3.]
         self.base['PF'] = 2.

@@ -345,25 +345,25 @@ def render_live_dashboard(ui, roster):
     if stored_fallback.exists():
         fallback = pd.read_csv(stored_fallback)
     with ui.expander('RotoWire baseline for players without historical stats'):
-        ui.write('RotoWire supplies statistical rates only for missing historical profiles. Your workbook minutes still apply for games 1–3, then season-average minutes from game 4. An uploaded CSV applies to this session and is not saved publicly.')
+        ui.write('RotoWire supplies statistical rates for missing historical profiles and players without archetypes. Your approved minutes take priority for matching games; otherwise workbook/season-average minutes apply. Unassigned archetype sides use the baseline without an opponent multiplier. An uploaded CSV applies to this session and is not saved publicly.')
         upload = ui.file_uploader('RotoWire 2026–27 season projections CSV',type=['csv'],key='rotowire_csv')
         if upload is not None:
             units = ui.selectbox('Export stat units',['Per game','Season totals','Per 36 minutes'],key='rotowire_units')
             try:
                 fallback, unmatched = normalize_rotowire(read_rotowire_csv(upload),roster,
                     {'Per game':'per_game','Season totals':'season_totals','Per 36 minutes':'per_36'}[units])
-                ui.caption(f'{len(fallback)} player rows matched; {len(unmatched)} unmatched rows ignored. Only missing historical profiles use this fallback.')
+                ui.caption(f'{len(fallback)} player rows matched; {len(unmatched)} unmatched rows ignored. Missing historical profiles and unclassified players use this fallback.')
             except (ValueError, KeyError) as exc:
                 ui.error(str(exc))
                 fallback = None
         elif fallback is not None:
-            ui.caption(f'{len(fallback)} RotoWire baseline rows loaded from the October 16, 2026 export; only missing historical profiles use them.')
+            ui.caption(f'{len(fallback)} RotoWire baseline rows loaded from the October 16, 2026 export; missing historical profiles and unclassified players use them.')
         elif fallback is None:
             ui.caption('No RotoWire export has been loaded yet. Missing-profile projections stay unavailable until an authorized export is supplied.')
     projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback)
     gaps = projection_gaps(approved_bundle, projections)
     if not gaps.empty:
-        ui.warning(f'Approved minutes loaded, but {len(gaps)} active players need projection data. Missing archetypes leave matchup projections unavailable; incomplete team coverage can prevent team adjustments.')
+        ui.info(f'{len(gaps)} active players have incomplete profiles or archetypes. Players without archetypes use available baseline rates in team totals, with no adjustment for the unassigned archetype. Missing statistical baselines still prevent complete team totals.')
         with ui.expander('Players needing projection data'):
             ui.dataframe(gaps, hide_index=True, width='stretch')
     game_projection_cache = {}
@@ -448,13 +448,15 @@ def render_live_dashboard(ui, roster):
             ui.caption(f"Stat baseline: {row['Stat baseline']} · Opponent history: {row['Matchup data']} · Offensive samples: {row['Off samples']} · Defensive samples: {row['Def samples']}")
             if row['Status'] != 'Available':
                 ui.warning(row['Status'])
-            if row['Matchup status'] != 'Available':
+            if row['Matchup status'] == 'Baseline fallback — missing archetype':
+                ui.info('Using baseline rates for the unassigned archetype, then the normal team adjustments. No archetype has been assigned. Matchup ratings stay blank, and this player is excluded from the top-edge rankings until classified.')
+            elif row['Matchup status'] != 'Available':
                 ui.warning(row['Matchup status'] + '. Unavailable adjustments stay blank; turn off matchup adjustments to view the baseline.')
             stats = ['PTS','REB','AST','FG3M','STL','BLK','TOV','PF','PRA']
             preview = pd.DataFrame({'Stat':['3PM' if x=='FG3M' else x for x in stats],
                 'Baseline':[baseline.iloc[0][x] for x in stats],
                 'Projected':[row[x] if adjusted_on else baseline.iloc[0][x] for x in stats]})
-            preview['Matchup rating'] = [matchup_rating(base,projected,stat,adjusted_on) for base,projected,stat in zip(preview.Baseline,preview.Projected,preview.Stat)]
+            preview['Matchup rating'] = [matchup_rating(base,projected,stat,adjusted_on and row['Matchup status'] == 'Available') for base,projected,stat in zip(preview.Baseline,preview.Projected,preview.Stat)]
             preview['Change'] = preview.Projected - preview.Baseline
             book_name = ui.selectbox('Sportsbook',list(BOOKS),key='projection_sportsbook')
             book_key = BOOKS[book_name]

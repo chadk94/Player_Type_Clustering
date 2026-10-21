@@ -70,6 +70,22 @@ class RotoWireFallbackTests(unittest.TestCase):
         self.assertEqual(row.PTS,3.2)
         self.assertEqual(row['Stat baseline'],'2025–26 archived snapshot')
 
+    def test_unclassified_players_use_rotowire_at_approved_minutes(self):
+        fallback,_ = normalize_rotowire(self.export,self.roster)
+        history = pd.DataFrame([{'PLAYER_ID':1,'MIN':20.,**{s:2. for s in CORE_STATS}}])
+        teams = pd.DataFrame([{'TEAM_ID':TEAM_IDS['ATL'],'GAMES_PLAYED':0}])
+        roster = self.roster.assign(OffArchetype=None)
+        before = roster.copy(deep=True)
+        row = build_projections(roster,history,teams,pd.DataFrame(),fallback=fallback,
+            approved_minutes={1:12.25}).iloc[0]
+        self.assertEqual(row.PTS,6.125)
+        self.assertEqual(row['Projected minutes'],12.25)
+        self.assertEqual(row['Minutes source'],'Approved game minutes')
+        self.assertEqual(row['Stat baseline'],'RotoWire 2026–27 projection')
+        self.assertTrue(pd.isna(row['Offensive archetype']))
+        self.assertEqual(row['Defensive archetype'],'POA Defender')
+        pd.testing.assert_frame_equal(roster,before)
+
     def test_totals_and_per36_have_consistent_denominators(self):
         totals=self.export.copy()
         for col in totals.columns[1:]:

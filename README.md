@@ -679,9 +679,21 @@ are allowed; prop-only players on an approved team receive zero. Unknown active
 players block the import with a specific name/ID. A checksum detects accidental
 edits; it is not a cryptographic identity/signature or a live approval check.
 After import, active players missing stat baselines or archetypes are listed
-under **Players needing projection data**. Their minutes remain approved, but
-missing matchup projections can prevent team calibration until the gaps are
-resolved. Importing minutes never creates or overwrites archetype assignments.
+under **Players needing projection data**. Unclassified players prefer available
+RotoWire rates scaled to approved minutes; if no RotoWire row exists, a valid
+historical baseline is retained. An unassigned archetype side retains baseline
+production without an opponent multiplier. Known archetype sides still receive
+their usual effects. These contributions remain in team calibration and normalized
+shares; no player is silently dropped. Missing *statistical* baselines still block
+complete team totals. Unclassified players have no matchup rating and do not enter
+the top-edge rankings. Importing minutes never creates or overwrites archetypes.
+
+The October 20 fallback update adds seven rows from the already authorized
+October 16 RotoWire export. Source hashes and covered player IDs are recorded in
+`data/rotowire_source.json`. A zero-minute or missing RotoWire projection cannot
+supply per-minute rates; it is never treated as a prediction of zero production
+at positive approved minutes. Private user-amended rotations retain the source
+bundle and explicit adjustment provenance and remain outside the repository.
 
 Approved minutes apply only to the exact Eastern-calendar-date matchup and
 supersede workbook/season-average minutes, preserving exact decimals. Stat rates,

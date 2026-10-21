@@ -96,8 +96,11 @@ def apply_matchup(baselines, roster, teams, prior_effects, current_effects, oppo
         effects = current_effects if current else prior_effects
         row['Matchup data'] = '2026–27' if current else '2025–26'
         player = clusters.loc[row['PLAYER_ID']]
+        missing_role = False
         for kind,stats in [('Off',OFF_STATS),('Def',DEF_STATS)]:
             cluster = player[f'{kind}Cluster']
+            unclassified = pd.isna(cluster)
+            missing_role = missing_role or unclassified
             effect = effects.get((kind,int(cluster),target),{}) if pd.notna(cluster) else {}
             row[f'{kind} samples'] = effect.get('samples',0)
             for stat in stats:
@@ -105,11 +108,17 @@ def apply_matchup(baselines, roster, teams, prior_effects, current_effects, oppo
                 row[f'{stat} %'] = pct
                 row[f'Baseline {stat}'] = base.get(stat,np.nan)
                 base_value = base.get(stat,np.nan)
-                row[stat] = max(0,base_value*(1+pct/100)) if np.isfinite(pct) and np.isfinite(base_value) else np.nan
+                if unclassified:
+                    # Keep real baseline production in team shares without
+                    # inventing an archetype, matchup effect or sample count.
+                    row[stat] = max(0,base_value) if np.isfinite(base_value) else np.nan
+                else:
+                    row[stat] = max(0,base_value*(1+pct/100)) if np.isfinite(pct) and np.isfinite(base_value) else np.nan
         row['Baseline REB'] = base.get('REB',np.nan)
         row['REB'] = row['OREB'] + row['DREB']
         row['PRA'] = row['PTS'] + row['REB'] + row['AST']
-        row['Matchup status'] = 'Available' if row['Off samples'] and row['Def samples'] else 'Insufficient archetype matchup history'
+        row['Matchup status'] = ('Baseline fallback — missing archetype' if missing_role else
+            'Available' if row['Off samples'] and row['Def samples'] else 'Insufficient archetype matchup history')
         output.append(row)
     return pd.DataFrame(output)
 

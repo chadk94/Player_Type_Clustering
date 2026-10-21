@@ -9,5 +9,22 @@
   "matched_rows": 446,
   "missing_profile_fallback_rows": 77,
   "match_policy": "Exact normalized name; unique suffix-insensitive match only if no exact match",
-  "minutes_policy": "RotoWire MIN is a rate denominator only; workbook first 3 team games then observed season MPG"
+  "minutes_policy": "RotoWire MIN is a rate denominator only; approved game minutes take priority, otherwise workbook first 3 team games then observed season MPG",
+  "unclassified_fallback_player_ids": [
+    1627777,
+    1629020,
+    1629618,
+    1629637,
+    1630172,
+    1631172,
+    1631288,
+    1631321,
+    1641724,
+    1641738,
+    1641771,
+    1642284,
+    1643515
+  ],
+  "unclassified_fallback_rows": 13,
+  "stored_fallback_rows": 84
 }
