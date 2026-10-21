@@ -23,6 +23,8 @@ from team_projection_view import upcoming_team_games, team_projection_tables, TE
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from projection_presentation import over_line_label, matchup_rating
 from opponent_selection import render_opponent_selector
+from approved_minutes import render_import, for_matchup, projection_gaps
+from import_minutes import TEAM_IDS
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
                               player_quotes, compare_with_book, comparison_style, TEAM_NAMES)
 
@@ -178,7 +180,7 @@ def set_edge_stats(selected):
         st.session_state[f'edges_stat_{stat}'] = selected
 
 
-def render_team_projections(ui, projections, roster, teams, prior_effects, current_effects):
+def render_team_projections(ui, projections, roster, teams, prior_effects, current_effects, project_for_game=None):
     ui.subheader('🏀 Team Projections')
     ui.caption('Both teams’ projected stat totals, using the same saved minutes and adjustments as Top Sportsbook Edges. Player sliders affect individual previews only.')
     ui.caption('Games stay available until one hour after their scheduled tip-off. The list updates when you use a control or refresh.')
@@ -210,6 +212,8 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
         ui.info('Select a game to view its team projections.')
         return
     game = by_key[selected]
+    if project_for_game is not None:
+        projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
     snapshot_key = (selected, BOOKS[book_name])
     order = [game['Away'], game['Home']]
     base = projections[projections.Team.isin(order)].copy()
@@ -269,7 +273,7 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
         columns = ['Player', 'Team', 'Projected minutes', *TEAM_STATS.values(), 'OREB', 'DREB', 'Minutes source', 'Stat baseline', 'Status', 'Matchup status']
         display = final.loc[active, columns].sort_values(['Team', 'Projected minutes'], ascending=[True, False]).rename(columns={'FG3M': '3PM'})
         ui.dataframe(display.round(2), hide_index=True, width='stretch')
-        ui.caption('Zero-minute players are excluded from totals. Minutes are rounded individually to 0.5, so roster totals can differ slightly from 240. Uploaded and published minutes changes recalculate these projections; the local workbook does not sync automatically.')
+        ui.caption('Zero-minute players are excluded from totals. Approved game minutes retain their exact 240-minute allocation. Other minute sources round individually to 0.5. Importing a new approved file recalculates matching games; the local NBA model does not sync automatically.')
     with ui.expander('Where the assist and three-point targets come from'):
         inputs = ['Market team total', 'Expected team FGM', 'Team assist rate', 'Team three rate']
         if set(inputs).issubset(final):
@@ -302,7 +306,8 @@ def render_live_dashboard(ui, roster):
     roster = apply_roster_rules(roster)
     roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)
     ui.title(f'🏀 Player Stat Projections ({SEASON})')
-    ui.caption(f'Your workbook minutes for each team’s first {OPENING_GAMES} games; season-average minutes from game {OPENING_GAMES + 1}. Counts include completed regular-season team games, not player appearances.')
+    ui.caption(f'Your workbook minutes for each team’s first {OPENING_GAMES} games; season-average minutes from game {OPENING_GAMES + 1}. Counts include completed regular-season team games, not player appearances. Imported approved minutes take priority for matching games.')
+    approved_bundle = render_import(ui, roster, SEASON)
     if ui.button('Refresh live data'):
         live_state.clear()
         today_schedule.clear()
@@ -356,6 +361,22 @@ def render_live_dashboard(ui, roster):
         elif fallback is None:
             ui.caption('No RotoWire export has been loaded yet. Missing-profile projections stay unavailable until an authorized export is supplied.')
     projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback)
+    gaps = projection_gaps(approved_bundle, projections)
+    if not gaps.empty:
+        ui.warning(f'Approved minutes loaded, but {len(gaps)} active players need projection data. Missing archetypes leave matchup projections unavailable; incomplete team coverage can prevent team adjustments.')
+        with ui.expander('Players needing projection data'):
+            ui.dataframe(gaps, hide_index=True, width='stretch')
+    game_projection_cache = {}
+    def project_for_game(team, opponent, start):
+        minutes = for_matchup(approved_bundle, roster, team, opponent, start)
+        if not minutes: return projections
+        key = tuple(sorted(minutes.items()))
+        if key not in game_projection_cache:
+            changed = build_projections(roster[roster.PLAYER_ID.isin(minutes)], history, teams, players,
+                opening_games=OPENING_GAMES, fallback=fallback, approved_minutes=minutes)
+            game_projection_cache[key] = pd.concat(
+                [projections[~projections.PLAYER_ID.isin(minutes)], changed], ignore_index=True)
+        return game_projection_cache[key]
     role_policy_version = hashlib.sha256(b''.join((ROOT / p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv','archetype_overrides.json','archetype_model.py','matchup_projections.py','matchup_data.py'])).hexdigest()
     prior_effects = prior_matchup_effects(roster, role_policy_version)
     current_effects = {}
@@ -397,6 +418,9 @@ def render_live_dashboard(ui, roster):
         if opponent is None:
             ui.info('Choose an opponent to view this player’s projection.')
         else:
+            if upcoming and upcoming['Opponent'] == opponent:
+                matched_projections = project_for_game(team, opponent, upcoming['GameTimeUTC'])
+                team_players = matched_projections[matched_projections.Team.eq(team)]
             adjusted_on = ui.toggle('Apply opponent matchup adjustments',value=True,key='opponent_adjustments')
             baseline = team_players[team_players.Player.eq(player_name)]
             player_id = int(baseline.iloc[0].PLAYER_ID)
@@ -412,7 +436,7 @@ def render_live_dashboard(ui, roster):
             if flag_key in st.session_state:
                 baseline = build_projections(roster[roster.PLAYER_ID.eq(player_id)],history,teams,players,
                     opening_games=OPENING_GAMES,fallback=fallback,minutes_overrides={player_id:custom_minutes})
-                ui.caption('Custom minutes apply to this player’s projection in your current session. Use automatic minutes to return to the workbook/season-average setting.')
+                ui.caption('Custom minutes apply to this player’s projection in your current session. Use automatic minutes to return to approved game minutes when imported, otherwise the workbook/season-average setting.')
             if pd.isna(automatic_minutes):
                 ui.caption('Automatic minutes are unavailable. Adjust the slider to set your own minutes.')
             else:
@@ -515,7 +539,13 @@ def render_live_dashboard(ui, roster):
         if schedule.empty:
             ui.info(f'No upcoming regular-season games were found for {date:%b %d, %Y}. Choose another date to preview its matchups.')
         else:
-            slate = projections.merge(schedule,on='TEAM_ID',how='inner',validate='many_to_one')
+            scheduled_frames = []
+            for fixture in schedule.itertuples():
+                side = next((name for name,tid in TEAM_IDS.items() if tid == fixture.TEAM_ID), None)
+                frame = project_for_game(side, fixture.Opponent, fixture.GameTimeUTC)
+                scheduled_frames.append(frame[frame.TEAM_ID.eq(fixture.TEAM_ID)])
+            slate_projections = pd.concat(scheduled_frames,ignore_index=True)
+            slate = slate_projections.merge(schedule,on='TEAM_ID',how='inner',validate='many_to_one')
             slate = slate[slate['Projected minutes'].gt(0)]
             matchups = apply_matchup(slate,roster,teams,prior_effects,current_effects)
             with rank_col:
@@ -539,7 +569,7 @@ def render_live_dashboard(ui, roster):
             ui.download_button('Download matchup opportunities CSV',eligible.to_csv(index=False),'matchup_opportunities.csv','text/csv')
     with edges_tab:
         ui.subheader('💰 Top 20 Sportsbook Edges per Game')
-        ui.caption('Ranked by absolute percent edge versus the juice-adjusted book total, including Overs and Unders. Each row is one player/stat. Uses automatic workbook/season-average minutes and opponent adjustments.')
+        ui.caption('Ranked by absolute percent edge versus the juice-adjusted book total, including Overs and Unders. Each row is one player/stat. Uses approved game minutes when imported, otherwise workbook/season-average minutes, plus opponent adjustments.')
         # Tabs execute together; only fetch props for the selected game, never the full slate.
         try:
             edge_key = get_odds_api_key()
@@ -591,11 +621,12 @@ def render_live_dashboard(ui, roster):
                     ui.info('Select a game to see its top edges.')
                 else:
                     game = by_id[game_id]
+                    game_projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
                     matchup_rows = []
                     for side,opponent in [(game['Home'],game['Away']),(game['Away'],game['Home'])]:
                         # Keep the whole roster so unavailable minutes cannot silently
                         # disappear before team-coverage checks. Rankings exclude inactive rows.
-                        team_projection = projections[projections.Team.eq(side)]
+                        team_projection = game_projections[game_projections.Team.eq(side)]
                         if not team_projection.empty:
                             matchup_rows.append(apply_matchup(team_projection,roster,teams,prior_effects,current_effects,opponent))
                     payload = sportsbook_props(game_id,BOOKS[edge_book_name],edge_key)
@@ -634,7 +665,7 @@ def render_live_dashboard(ui, roster):
         except (requests.RequestException,ValueError,KeyError,TypeError):
             ui.warning('Game edge rankings are temporarily unavailable. Refresh live data to retry.')
     with team_tab:
-        render_team_projections(ui, projections, roster, teams, prior_effects, current_effects)
+        render_team_projections(ui, projections, roster, teams, prior_effects, current_effects, project_for_game)
     with archetype_tab:
         with ui.expander('Review the 100 corrected players'):
             audit = pd.read_csv(ROOT / 'data/audit/reviewed_100_players.csv')

@@ -662,3 +662,33 @@ atomically with an explanation. Another team's valid allocation can still run.
 Zero-minute players receive no allocation. Minutes changes recalculate the
 normalized shares without changing a target for fixed game lines. The existing
 explicit refresh policy and workbook import/publish requirements still apply.
+
+
+### Game-specific approved minutes (October 20, 2026)
+
+Use **Import Approved Minutes** near the top of the live dashboard. Upload the
+JSON produced by the NBA model’s **Download Approved Minutes** button after
+explicitly approving both teams in every game on that day. The file stays in
+this browser session and is never committed, publicly shared, or written over
+the baseline workbook. No new credentials or data store are required.
+
+The importer checks the bundle checksum, season/date, pairings, two approvals
+per game, unique player IDs, 240 minutes and five starters per team, and roster
+coverage for all players receiving minutes. Extra zero-minute NBA roster rows
+are allowed; prop-only players on an approved team receive zero. Unknown active
+players block the import with a specific name/ID. A checksum detects accidental
+edits; it is not a cryptographic identity/signature or a live approval check.
+After import, active players missing stat baselines or archetypes are listed
+under **Players needing projection data**. Their minutes remain approved, but
+missing matchup projections can prevent team calibration until the gaps are
+resolved. Importing minutes never creates or overwrites archetype assignments.
+
+Approved minutes apply only to the exact Eastern-calendar-date matchup and
+supersede workbook/season-average minutes, preserving exact decimals. Stat rates,
+injury policy, archetypes and market formulas are unchanged. All four projection
+views use the imported allocation; manual player-preview sliders still work. A
+new import clears previous slider edits and cached team snapshots. Removing the
+file restores the automatic baseline. A file cannot detect subsequent changes
+in the NBA model: download and import a fresh file after reapproving.
+
+Validation: `../app-check-env/bin/python -m unittest discover -s tests -q`.
