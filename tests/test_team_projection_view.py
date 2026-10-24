@@ -12,6 +12,20 @@ from team_projection_view import upcoming_team_games, team_projection_tables
 
 
 class TeamProjectionViewTests(unittest.TestCase):
+    def test_missing_player_is_named_and_zero_minute_estimates_do_not_warn(self):
+        frame = self.final.copy()
+        frame['Player'] = frame.PLAYER_ID.map(lambda p:f'Player {p}')
+        frame.loc[0, 'FG3M'] = np.nan
+        _, _, issues = team_projection_tables(self.base,self.before,frame,['BOS'])
+        self.assertIn('Player 0 (3PM)', issues[0])
+        frame = self.final.copy()
+        frame['Estimated stat profile'] = False
+        frame.loc[0, 'Estimated stat profile'] = True
+        frame.loc[0, 'Projected minutes'] = 0.
+        totals, _, issues = team_projection_tables(self.base,self.before,frame,['BOS'])
+        self.assertEqual(issues, [])
+        self.assertEqual(totals.iloc[0]['Stat coverage'], 'Complete')
+
     def setUp(self):
         self.base = pd.DataFrame([{
             'PLAYER_ID': i, 'Team': team, 'Opponent': opponent,
@@ -67,7 +81,8 @@ class TeamProjectionViewTests(unittest.TestCase):
         self.assertAlmostEqual(totals.iloc[0].PTS, 110.)
         self.final.loc[12, 'Projected minutes'] = np.nan
         totals, _, issues = team_projection_tables(self.base, self.before, self.final, ['BOS', 'DET'])
-        self.assertTrue(totals.iloc[0].drop('Team').isna().all())
+        self.assertTrue(totals.iloc[0][['Minutes', 'PTS', 'REB', 'AST', '3PM', 'STL', 'BLK', 'TOV', 'PRA']].isna().all())
+        self.assertEqual(totals.iloc[0]['Stat coverage'], 'Incomplete')
         self.assertEqual(len(issues), 1)
         self.assertAlmostEqual(totals.iloc[1].PTS, 115.)
 

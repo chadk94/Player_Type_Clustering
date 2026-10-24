@@ -324,8 +324,9 @@ stats. A validated ESPN season summary (29 appearances) supplies his baseline th
 missing tracking features or change his approved archetypes.
 
 With these sources, **317 of the 318 players with positive workbook minutes have
-numerical core-stat previews** at zero current-season games. Mario Hezonja remains
-unavailable: he lacks a 2025–26 NBA profile and is absent from the RotoWire export.
+numerical core-stat previews** at zero current-season games. Mario Hezonja lacks
+a 2025–26 NBA profile and is absent from the RotoWire export. The October 24
+archetype-average fallback below now supplies an explicitly provisional estimate.
 No older NBA season or unadjusted European profile has been silently substituted.
 The live RotoWire full-season table stayed on “Loading Stats”, although the signed-in
 Premium account could view individual forecast summaries. A complete usable updated
@@ -688,8 +689,8 @@ RotoWire rates scaled to approved minutes; if no RotoWire row exists, a valid
 historical baseline is retained. An unassigned archetype side retains baseline
 production without an opponent multiplier. Known archetype sides still receive
 their usual effects. These contributions remain in team calibration and normalized
-shares; no player is silently dropped. Missing *statistical* baselines still block
-complete team totals. Unclassified players have no matchup rating and do not enter
+shares; no player is silently dropped. Missing *statistical* baselines without
+a supported, flagged archetype estimate still block complete team totals. Unclassified players have no matchup rating and do not enter
 the top-edge rankings. Importing minutes never creates or overwrites archetypes.
 
 The October 20 fallback update adds seven rows from the already authorized
@@ -714,3 +715,41 @@ in the NBA model: download and import a fresh file after reapproving.
 
 Validation: `../app-check-env/bin/python -m unittest discover -s tests -q`.
 Browser-storage behavior: `node --test tests/test_approved_minutes_storage.mjs`.
+
+
+## Temporary archetype-average statistical profiles (October 24, 2026)
+
+When a player has no usable historical or RotoWire profile and current-season
+stats are not yet eligible, `archetype_fallback.py` supplies an explicitly labelled
+estimate from players with the same assigned archetypes. Offensive roles supply
+PTS, AST, OREB, shooting and TOV; defensive roles supply DREB, STL, BLK and PF.
+Each donor contributes equally to the mean of historical per-minute rates. A side
+requires at least three distinct historical players with a complete, finite,
+nonnegative stat vector. Forecasts and synthetic profiles are excluded as donors.
+Both sides must qualify; no roles or observations are invented. REB = OREB + DREB
+and PRA = PTS + REB + AST. The approved minutes stay unchanged.
+
+Priors are built once from the league roster and reused in all game and individual
+previews, so filtering the displayed team or player cannot change the estimate.
+Individual historical/RotoWire profiles take precedence. Once current-season
+stats become eligible under the existing team-game-five rule, a player without
+an individual prior uses those observations directly; the synthetic estimate is
+never blended into or saved as historical evidence. Other players' profiles and
+the existing team adjustment formulas are unchanged.
+
+The player row and detailed preview identify the temporary baseline and donor
+counts. Team totals and their CSV carry `Stat coverage` and `Estimated players`;
+a visible warning names every active estimated player and their combined minutes.
+Approved-import coverage also flags the missing individual profile. Remaining
+unresolved gaps name the affected players and fields and still leave totals blank.
+Zero-minute players do not make a team provisional. Estimated players remain
+excluded from top sportsbook-edge rankings until individual stats are available.
+
+Cleveland's Mario Hezonja lacks an individual statistical profile, which previously
+left all eight team totals blank when he received minutes. His assigned Catch &
+Shoot Wing and Non-POA Wing roles now provide a temporary estimate; other players
+retain their original individual baseline profiles. Regression coverage uses a
+synthetic 240-minute rotation with Hezonja at 20 minutes against Brooklyn.
+The existing points, assist, three-point and rebound team adjustments can then
+calibrate the complete rotation. No saved minutes, archetypes or source stats are
+changed. This release publishes the previously local fallback to the hosted app.

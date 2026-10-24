@@ -69,10 +69,25 @@ def team_projection_tables(baselines, matchups, adjusted, team_order):
         row = {'Team': team, 'Minutes': _total(final, 'Projected minutes')}
         row.update({stat: _total(final, column) for stat, column in TEAM_STATS.items()})
         missing = [stat for stat in TEAM_STATS if pd.isna(row[stat])]
+        active = final[final['Projected minutes'].gt(0)]
+        estimated = active.loc[active.get('Estimated stat profile', pd.Series(False, index=active.index)).fillna(False).astype(bool)]
+        names = ', '.join(estimated.get('Player', estimated.PLAYER_ID.astype(str)).astype(str))
+        row['Stat coverage'] = 'Incomplete' if missing else ('Provisional — archetype estimates' if not estimated.empty else 'Complete')
+        row['Estimated players'] = names
         if pd.isna(row['Minutes']):
             issues.append(f'{team}: projected minutes are missing or invalid; team totals stay blank.')
         elif missing:
-            issues.append(f'{team}: incomplete player coverage for {", ".join(missing)}; those totals stay blank.')
+            affected = []
+            for _, player in active.iterrows():
+                gaps = [stat for stat in missing if not np.isfinite(player.get(TEAM_STATS[stat], np.nan))
+                        or player[TEAM_STATS[stat]] < 0]
+                if gaps:
+                    affected.append(f'{player.get("Player", player.PLAYER_ID)} ({", ".join(gaps)})')
+            detail = '; '.join(affected) or 'no active players with usable projections'
+            issues.append(f'{team}: incomplete player coverage for {", ".join(missing)} — {detail}; those totals stay blank.')
+        if not estimated.empty:
+            issues.append(f'{team}: provisional totals include temporary archetype-average stats for {names} '
+                          f'({estimated["Projected minutes"].sum():g} minutes). Individual statistical profiles are still needed.')
         totals.append(row)
         for stat, target_column in TARGET_COLUMNS.items():
             column = TEAM_STATS[stat]

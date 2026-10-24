@@ -99,6 +99,8 @@ def projection_gaps(bundle, projections):
             missing = []
             if str(profile['Stat baseline']).startswith('Unavailable'):
                 missing.append('Needs statistical profile')
+            elif profile.get('Estimated stat profile', False):
+                missing.append('Individual statistical profile missing; temporary archetype average in use')
             elif profile['Status'] == 'Some stat rates unavailable':
                 missing.append(profile['Status'])
             for side in ('Offensive', 'Defensive'):

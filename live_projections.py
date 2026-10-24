@@ -9,6 +9,7 @@ import pandas as pd
 import requests
 
 from import_minutes import TEAM_IDS
+from archetype_fallback import ARCHETYPE_BASELINE
 
 ESPN = 'https://site.api.espn.com/apis'
 ALIASES = {'NY': 'NYK', 'GS': 'GSW', 'SA': 'SAS', 'NO': 'NOP', 'UTAH': 'UTA', 'WSH': 'WAS', 'PHO': 'PHX'}
@@ -151,12 +152,13 @@ def match_player_stats(roster, current):
     return matches
 
 
-def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None):
-    """Workbook MPG for games 1–3, season MPG for game 4 onward; no fabricated fallbacks."""
+def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None, archetype_priors=None):
+    """Scale individual rates, or explicitly supplied temporary priors, to minutes."""
     if opening_games < 0 or prior_minutes < 0:
         raise ValueError('Projection settings must be nonnegative')
     minutes_overrides = minutes_overrides or {}
     approved_minutes = approved_minutes or {}
+    archetype_priors = archetype_priors or {}
     if any(not np.isfinite(value) or not 0 <= value <= 48 for value in approved_minutes.values()):
         raise ValueError('Approved minutes must be between 0 and 48')
     if any(not np.isfinite(value) or not 0 <= value <= 48 for value in minutes_overrides.values()):
@@ -193,6 +195,13 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
         total_current_minutes = 0 if observed is None else observed.MIN * observed.GP
         prior_ok = profile is not None and pd.notna(profile.MIN) and profile.MIN > 0
         current_ok = observed is not None and total_current_minutes > 0 and played is not None and played >= stats_start_game - 1
+        archetype_used = False
+        if not prior_ok and not current_ok and player.PLAYER_ID in archetype_priors:
+            profile = pd.Series(archetype_priors[player.PLAYER_ID])
+            prior_ok, archetype_used = True, True
+            fallback_used = False
+        row['Estimated stat profile'] = archetype_used
+        row['Fallback details'] = profile.get('Fallback details', '') if archetype_used else ''
         prior_label = profile.get('BaselineLabel') if prior_ok else None
         if not isinstance(prior_label,str) or not prior_label:
             prior_label = '2025–26 archived snapshot'
@@ -228,6 +237,8 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
             row['Status'] = 'Needs statistical profile'
         elif missing:
             row['Status'] = 'Some stat rates unavailable'
+        elif archetype_used:
+            row['Status'] = ARCHETYPE_BASELINE
         else:
             row['Status'] = 'Available'
         if np.isfinite(row['PTS']) and np.isfinite(row['REB']) and np.isfinite(row['AST']):

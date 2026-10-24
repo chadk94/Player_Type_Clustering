@@ -10,6 +10,7 @@ import requests
 import streamlit as st
 
 from live_projections import (ESPN, build_projections, fetch_json, load_live_state, parse_schedule, next_regular_season_game, round_projected_minutes)
+from archetype_fallback import build_archetype_priors
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import load_game_logs
 from matchup_projections import assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS, prior_season_profiles
@@ -271,8 +272,8 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
     ui.caption('PTS targets come from the selected sportsbook’s spread and total. AST, 3PM and REB targets are model estimates using last season’s team and opponent rates. Steals, blocks and turnovers retain their player matchup projections. PRA = final PTS + REB + AST.')
     with ui.expander('Player contributions and minutes'):
         active = final['Projected minutes'].gt(0) | final['Projected minutes'].isna()
-        columns = ['Player', 'Team', 'Projected minutes', *TEAM_STATS.values(), 'OREB', 'DREB', 'Minutes source', 'Stat baseline', 'Status', 'Matchup status']
-        display = final.loc[active, columns].sort_values(['Team', 'Projected minutes'], ascending=[True, False]).rename(columns={'FG3M': '3PM'})
+        columns = ['Player', 'Team', 'Projected minutes', *TEAM_STATS.values(), 'OREB', 'DREB', 'Minutes source', 'Stat baseline', 'Fallback details', 'Status', 'Matchup status']
+        display = final.loc[active, [c for c in columns if c in final]].sort_values(['Team', 'Projected minutes'], ascending=[True, False]).rename(columns={'FG3M': '3PM'})
         ui.dataframe(display.round(2), hide_index=True, width='stretch')
         ui.caption('Zero-minute players are excluded from totals. Approved game minutes retain their exact 240-minute allocation. Other minute sources round individually to 0.5. Importing a new approved file recalculates matching games; the local NBA model does not sync automatically.')
     with ui.expander('Where the assist and three-point targets come from'):
@@ -360,11 +361,13 @@ def render_live_dashboard(ui, roster):
         elif fallback is not None:
             ui.caption(f'{len(fallback)} RotoWire baseline rows loaded from the October 16, 2026 export; missing historical profiles and unclassified players use them.')
         elif fallback is None:
-            ui.caption('No RotoWire export has been loaded yet. Missing-profile projections stay unavailable until an authorized export is supplied.')
-    projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback)
+            ui.caption('No RotoWire export has been loaded yet. Players without individual profiles can use a flagged archetype-average estimate when both assigned roles have enough historical coverage.')
+    archetype_priors = build_archetype_priors(roster, history)
+    projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback,
+                                    archetype_priors=archetype_priors)
     gaps = projection_gaps(approved_bundle, projections)
     if not gaps.empty:
-        ui.info(f'{len(gaps)} active players have incomplete profiles or archetypes. Players without archetypes use available baseline rates in team totals, with no adjustment for the unassigned archetype. Missing statistical baselines still prevent complete team totals.')
+        ui.info(f'{len(gaps)} active player entries need projection data. Where flagged below, temporary archetype averages keep team totals available until individual stats arrive. Players without archetypes retain available individual baseline rates without an adjustment for the unassigned role. Unresolved statistical gaps still leave affected totals blank.')
         with ui.expander('Players needing projection data'):
             ui.dataframe(gaps, hide_index=True, width='stretch')
     game_projection_cache = {}
@@ -374,7 +377,7 @@ def render_live_dashboard(ui, roster):
         key = tuple(sorted(minutes.items()))
         if key not in game_projection_cache:
             changed = build_projections(roster[roster.PLAYER_ID.isin(minutes)], history, teams, players,
-                opening_games=OPENING_GAMES, fallback=fallback, approved_minutes=minutes)
+                opening_games=OPENING_GAMES, fallback=fallback, approved_minutes=minutes, archetype_priors=archetype_priors)
             game_projection_cache[key] = pd.concat(
                 [projections[~projections.PLAYER_ID.isin(minutes)], changed], ignore_index=True)
         return game_projection_cache[key]
@@ -436,7 +439,7 @@ def render_live_dashboard(ui, roster):
                       args=(flag_key,slider_key))
             if flag_key in st.session_state:
                 baseline = build_projections(roster[roster.PLAYER_ID.eq(player_id)],history,teams,players,
-                    opening_games=OPENING_GAMES,fallback=fallback,minutes_overrides={player_id:custom_minutes})
+                    opening_games=OPENING_GAMES,fallback=fallback,minutes_overrides={player_id:custom_minutes},archetype_priors=archetype_priors)
                 ui.caption('Custom minutes apply to this player’s projection in your current session. Use automatic minutes to return to approved game minutes when imported, otherwise the workbook/season-average setting.')
             if pd.isna(automatic_minutes):
                 ui.caption('Automatic minutes are unavailable. Adjust the slider to set your own minutes.')
@@ -449,6 +452,8 @@ def render_live_dashboard(ui, roster):
             ui.caption(f"Stat baseline: {row['Stat baseline']} · Opponent history: {row['Matchup data']} · Offensive samples: {row['Off samples']} · Defensive samples: {row['Def samples']}")
             if row['Status'] != 'Available':
                 ui.warning(row['Status'])
+            if row.get('Estimated stat profile', False):
+                ui.caption(row['Fallback details'] + ' This temporary estimate is excluded from the top-edge rankings.')
             if row['Matchup status'] == 'Baseline fallback — missing archetype':
                 ui.info('Using baseline rates for the unassigned archetype, then the normal team adjustments. No archetype has been assigned. Matchup ratings stay blank, and this player is excluded from the top-edge rankings until classified.')
             elif row['Matchup status'] != 'Available':

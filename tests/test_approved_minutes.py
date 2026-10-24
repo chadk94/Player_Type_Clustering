@@ -48,6 +48,9 @@ class ApprovalTests(unittest.TestCase):
         self.assertEqual(gaps['Missing data'].tolist(), ['offensive archetype', 'Needs statistical profile'])
         self.assertTrue(projection_gaps(None, profiles).empty)
         pd.testing.assert_frame_equal(profiles, before)
+        profiles['Estimated stat profile'] = profiles.PLAYER_ID.eq(3)
+        gaps = projection_gaps(bundle, profiles)
+        self.assertIn('temporary archetype average', gaps[gaps.Player.eq('Player 3')].iloc[0]['Missing data'])
 
     def test_round_trip_and_exact_pairing_eastern_date(self):
         original,roster=example();bundle=validate_bundle(json.dumps(original),roster,'2026-27')

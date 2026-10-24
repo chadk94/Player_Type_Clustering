@@ -7,6 +7,12 @@ from import_minutes import TEAM_IDS
 
 
 class GameEdgeTests(unittest.TestCase):
+    def test_estimated_stat_profiles_stay_out_of_top_edges(self):
+        self.players['Status'] = 'Temporary archetype-average profile'
+        ranked, total = game_edges(self.players, self.payload, self.event, 'fanduel', now=self.now)
+        self.assertTrue(ranked.empty)
+        self.assertEqual(total, 0)
+
     def setUp(self):
         self.now=datetime(2026,10,19,19,tzinfo=timezone.utc)
         self.event={'id':'game1','Home':'NYK','Away':'PHI','home_team':'New York Knicks',
