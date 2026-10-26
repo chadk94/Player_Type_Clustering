@@ -1559,7 +1559,7 @@ def main():
     if audit_path.exists() and roster_path.exists():
         audit = json.loads(audit_path.read_text())
         if audit.get('season') == SEASON:
-            # Approved minutes with labelled archetype estimates for missing stats.
+            # Isolated tab updates reuse the live snapshot and approved minutes.
             from projection_dashboard import render_live_dashboard
             render_live_dashboard(st, pd.read_csv(roster_path))
             return

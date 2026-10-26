@@ -753,3 +753,26 @@ synthetic 240-minute rotation with Hezonja at 20 minutes against Brooklyn.
 The existing points, assist, three-point and rebound team adjustments can then
 calibrate the complete rotation. No saved minutes, archetypes or source stats are
 changed. This release publishes the previously local fallback to the hosted app.
+
+## Responsive projection tabs (October 26, 2026)
+
+Each tab now runs in its own Streamlit fragment. Changing a player, opponent,
+sportsbook or minutes slider recalculates only Player vs Opponent. It reuses the
+loaded league records, statistical baselines and matchup history rather than
+starting another league-wide download when the five-minute data cache expires.
+Filters in the other tabs likewise rerun only their own view. The tab layout,
+projection formulas, manual archetypes and approved-minutes precedence are unchanged.
+
+**Refresh live data** still clears the live feed caches and rebuilds all views.
+Importing or clearing minutes, or changing a RotoWire upload, rebuilds the shared
+snapshot and game projections. Selected-game schedule and sportsbook calls retain
+their five-minute cache and normal event/quote-age checks; a new game or expired
+feed cache can still require a short network wait. Initial loading and an explicit
+refresh still load the full dashboard.
+
+`tests/test_dashboard_fragments.py` exercises actual fragment-scoped reruns with
+external feeds stubbed: player changes do not refetch league data or execute hidden
+tabs, manual minutes still recalculate and reset, Refresh rebuilds all tabs, and a
+replacement approved import changes the game projections instead of reusing old
+minutes. The test runner supplies fragment IDs because Streamlit 1.53 AppTest
+normally sends full-script reruns.

@@ -393,9 +393,13 @@ def render_live_dashboard(ui, roster):
                     ui.warning('Some current-season matchup games could not be loaded. Sample counts may be incomplete.')
             except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
                 ui.warning(f'Current-season matchup data unavailable: {exc}')
+    # Each tab owns its reruns. Player/slider changes reuse this shared snapshot
+    # and cannot trigger league-wide ESPN refreshes or hidden-tab calculations.
+    # Imports and Refresh live data rerun the parent and rebuild every tab.
     projection_tab, best_tab, edges_tab, team_tab, archetype_tab = ui.tabs(['Player vs Opponent', "🔥 Today's Best Matchups", '💰 Top Sportsbook Edges', '🏀 Team Projections', 'Archetypes'])
     ui.caption('Last season’s stat rates for team games 1–4; current-season rates blend in from game 5. Opponent tendencies switch to this season after that opponent completes four games. Matchup samples are player-games with at least 5 minutes.')
-    with projection_tab:
+    @st.fragment
+    def render_player_page():
         team_col, player_col, opponent_col = ui.columns(3)
         with team_col:
             team = ui.selectbox('Player team', sorted(roster.TEAM_ABBREVIATION.unique()), key='projection_team')
@@ -534,7 +538,11 @@ def render_live_dashboard(ui, roster):
                 ui.write('Team threes use expected team field goals times a 50/50 blend of last season’s team 3PM/FGM and opponent 3PM/FGM allowed. That target is divided among players using their current minutes and normalized archetype-adjusted shooting shares. Supporting three-point attempts scale with makes to preserve shooting percentage. Points and PRA already include the threes; no extra points are added. The player slider recalculates this preview, while game edges use the saved automatic team minutes. Changes to an external workbook must be imported and published before the app can use them.')
                 ui.write('Team rebounds use both teams’ expected misses, derived from market team points and last season’s own/opponent rates. Historical credited-player-rebound fractions account approximately for dead-ball/team rebounds and non-reboundable free throws. Each pool splits into offensive rebounds and opposing defensive rebounds. The two components are allocated separately using normalized archetype shares, then added for REB. PRA includes the updated rebounds. Player matchup ratings retain the original archetype effect.')
                 ui.write('These are matchup estimates, not confirmed lineups or availability. The model does not adjust for pace, injuries, starters or home court. Last season’s box scores are assigned the approved current archetypes, preserving manual overrides. Only players with matched archetype labels contribute to the matchup samples; sample counts show that coverage.')
-    with best_tab:
+    with projection_tab:
+        render_player_page()
+
+    @st.fragment
+    def render_best_matchups_page():
         ui.subheader("🔥 Today's Best Matchup Opportunities")
         date_col, rank_col, sample_col = ui.columns(3)
         with date_col:
@@ -575,10 +583,14 @@ def render_live_dashboard(ui, roster):
             with ui.expander('Projected stat lines for these matchups',expanded=True):
                 ui.dataframe(eligible[['Player','Team','Opponent','Projected minutes','PTS','REB','AST','FG3M','STL','BLK','TOV','PRA','Stat baseline','Status']].rename(columns={'FG3M':'3PM'}).round(2),hide_index=True,width='stretch')
             ui.download_button('Download matchup opportunities CSV',eligible.to_csv(index=False),'matchup_opportunities.csv','text/csv')
-    with edges_tab:
+    with best_tab:
+        render_best_matchups_page()
+
+    @st.fragment
+    def render_edges_page():
         ui.subheader('💰 Top 20 Sportsbook Edges per Game')
         ui.caption('Ranked by absolute percent edge versus the juice-adjusted book total, including Overs and Unders. Each row is one player/stat. Uses approved game minutes when imported, otherwise workbook/season-average minutes, plus opponent adjustments.')
-        # Tabs execute together; only fetch props for the selected game, never the full slate.
+        # Only fetch props for the selected game, never the full slate.
         try:
             edge_key = get_odds_api_key()
             if not edge_key:
@@ -673,9 +685,17 @@ def render_live_dashboard(ui, roster):
             ui.info(str(exc))
         except (requests.RequestException,ValueError,KeyError,TypeError):
             ui.warning('Game edge rankings are temporarily unavailable. Refresh live data to retry.')
-    with team_tab:
+    with edges_tab:
+        render_edges_page()
+
+    @st.fragment
+    def render_team_page():
         render_team_projections(ui, projections, roster, teams, prior_effects, current_effects, project_for_game)
-    with archetype_tab:
+    with team_tab:
+        render_team_page()
+
+    @st.fragment
+    def render_archetypes_page():
         with ui.expander('Review the 100 corrected players'):
             audit = pd.read_csv(ROOT / 'data/audit/reviewed_100_players.csv')
             ui.write('All 100 previously uncategorized or unnamed assignments have been reviewed. Your manual overrides take precedence. Developing roles remain provisional.')
@@ -695,3 +715,5 @@ def render_live_dashboard(ui, roster):
                    'OffAssignmentSource','DefAssignmentSource','HasHistoricalProfile']
         ui.dataframe(selected[columns], hide_index=True, width='stretch')
         ui.download_button('Download archetypes CSV', selected.to_csv(index=False), 'preseason_archetypes.csv', 'text/csv')
+    with archetype_tab:
+        render_archetypes_page()
