@@ -44,7 +44,8 @@ class ApprovedRookieRolesTests(unittest.TestCase):
             self.assertEqual(roster.loc[row.PLAYER_NAME,'DefCluster'],{'G':0,'F':12,'C':7}[row.Position])
 
     def test_stale_exports_and_later_bootstrap_cannot_remove_approved_roles(self):
-        approved = pd.read_csv(ROOT/'data/audit/rookie_roles_approved_2026-10-27.csv')
+        approved = pd.concat([pd.read_csv(ROOT/'data/audit'/filename) for filename in
+            ['rookie_roles_approved_2026-10-27.csv','reserve_roles_approved_2026-10-27.csv']])
         stale = pd.read_csv(ROOT/'preseason_archetypes.csv')
         for side in ['Off','Def']:
             stale.loc[stale.PLAYER_ID.isin(approved.PLAYER_ID),side+'Cluster'] = 3
@@ -56,6 +57,25 @@ class ApprovedRookieRolesTests(unittest.TestCase):
             for side in ['Off','Def']:
                 for result in [repaired,rebuilt]:
                     self.assertEqual(result.loc[row.PLAYER_ID,side+'Cluster'],getattr(row,side+'Cluster'))
+
+    def test_requested_reserves_keep_roles_with_zero_minutes(self):
+        expected = {'Cam Whitmore':(5,12),'DaRon Holmes II':(9,7),'KJ Simpson':(6,11),
+                    'Ryan Nembhard':(2,0),'Zeke Nnaji':(1,7)}
+        roster = pd.read_csv(ROOT/'preseason_archetypes.csv').set_index('PLAYER_NAME')
+        rules = load_rules()
+        for side,filename in [('Off','player_clusters_detailed.csv'),('Def','def_player_clusters_detailed.csv')]:
+            export = pd.read_csv(ROOT/filename).set_index('PLAYER_NAME')
+            for name,roles in expected.items():
+                role = roles[0 if side == 'Off' else 1]
+                self.assertEqual(roster.loc[name,side+'Cluster'],role)
+                self.assertEqual(export.loc[name,'Cluster'],role)
+                self.assertEqual(rules[side.upper()+'_CLUSTER_OVERRIDES'][name],role)
+        zero_minutes = roster.loc[list(expected)].reset_index().assign(PROJECTED_MIN=0.)
+        rebuilt = apply_roster_rules(zero_minutes)
+        self.assertTrue(rebuilt.PROJECTED_MIN.eq(0.).all())
+        for side in ['Off','Def']:
+            self.assertTrue(rebuilt[side+'Archetype'].notna().all())
+            self.assertTrue(rebuilt[side+'AssignmentSource'].eq('manual_override').all())
 
     def test_role_assignment_cannot_revert_an_approved_actual_stat_baseline(self):
         # Niang has an individual historical profile, but the user already

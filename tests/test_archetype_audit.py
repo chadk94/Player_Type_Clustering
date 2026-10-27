@@ -32,7 +32,8 @@ class ArchetypeAuditTests(unittest.TestCase):
         rules = load_rules()
         # Later approvals may add overrides; the original rules must still match
         # the historical digest after removing only those newly added entries.
-        later = pd.read_csv(ROOT/'data/audit/rookie_roles_approved_2026-10-27.csv')
+        later = pd.concat([pd.read_csv(ROOT/'data/audit'/filename) for filename in
+            ['rookie_roles_approved_2026-10-27.csv','reserve_roles_approved_2026-10-27.csv']])
         for row in later.itertuples():
             for side in ['Off','Def']:
                 if not getattr(row,side+'WasManual'):

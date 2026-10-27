@@ -916,3 +916,28 @@ appearances are still required, and missing categories retain labeled fallback.
 Other historical players retain their existing transition rules. Tests check
 the explicit assignments, existing-override preservation, stale-export repair,
 future bootstrap regeneration and actual-rate priority after role assignment.
+
+### Five additional Denver reserves
+
+Cam Whitmore, DaRon Holmes II, KJ Simpson, Ryan Nembhard and Zeke Nnaji were outside
+the 63-player actual-baseline review. They had historical profiles but zero saved
+workbook minutes, so the original bootstrap's positive-minute role fallback left
+them unassigned. At the user's request they now have explicit overrides:
+
+| Player | Offense | Defense |
+| --- | --- | --- |
+| Cam Whitmore | High Usage Wing | Non-POA Wing |
+| DaRon Holmes II | Stretch Big | Turtles |
+| KJ Simpson | Secondary Playmaker | POA Defender |
+| Ryan Nembhard | Primary Ball Handler | Non POA Guard |
+| Zeke Nnaji | Athletic Roll Man | Turtles |
+
+These assignments use the archived historical feature profiles, not confident
+inferences from a handful of current-season minutes. Holmes's perimeter-heavy
+big profile supports Stretch Big; his defense uses the user's conservative
+center default, Turtles. Nembhard's Non POA Guard agrees with the named centroid.
+The other roles retain the named historical assignments. Exact supporting rates
+and reasons are in `data/audit/reserve_roles_approved_2026-10-27.csv`.
+The previous 214 player-side overrides remain unchanged. These ten new overrides
+survive zero minutes, stale exports and future bootstrap runs; no saved minutes
+or statistical baselines were changed.

@@ -135,12 +135,12 @@ PLAYER_ID,PLAYER_NAME,WorkbookPlayerName,TEAM_ABBREVIATION,TEAM_ID,SEASON_ID,PRO
 1628963,Marvin Bagley III,Marvin Bagley III,DEN,1610612743,22026,10.0,22025.0,True,False,preseason_historical_prior,1.0,Athletic Roll Man,analyst_review,3.0,Bad/Slow Big Defender,analyst_review
 1643813,Alpha Diallo,Alpha Diallo,DEN,1610612743,22026,0.0,,False,False,missing_historical_profile,4.0,Spot-Up Role Player,manual_override,11.0,POA Defender,manual_override
 1643624,Bryce Hopkins,Bryce Hopkins,DEN,1610612743,22026,0.0,,False,False,missing_historical_profile,4.0,Spot-Up Role Player,manual_override,12.0,Non-POA Wing,manual_override
-1641715,Cam Whitmore,Cam Whitmore,DEN,1610612743,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
-1641747,DaRon Holmes II,DaRon Holmes II,DEN,1610612743,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
-1642354,KJ Simpson,KJ Simpson,DEN,1610612743,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
-1642948,Ryan Nembhard,Ryan Nembhard,DEN,1610612743,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1641715,Cam Whitmore,Cam Whitmore,DEN,1610612743,22026,0.0,22025.0,True,False,preseason_historical_prior,5.0,High Usage Wing,manual_override,12.0,Non-POA Wing,manual_override
+1641747,DaRon Holmes II,DaRon Holmes II,DEN,1610612743,22026,0.0,22025.0,True,False,preseason_historical_prior,9.0,Stretch Big,manual_override,7.0,Turtles,manual_override
+1642354,KJ Simpson,KJ Simpson,DEN,1610612743,22026,0.0,22025.0,True,False,preseason_historical_prior,6.0,Secondary Playmaker,manual_override,11.0,POA Defender,manual_override
+1642948,Ryan Nembhard,Ryan Nembhard,DEN,1610612743,22026,0.0,22025.0,True,False,preseason_historical_prior,2.0,Primary Ball Handler,manual_override,0.0,Non POA Guard,manual_override
 1642350,Trevon Brazile,Trevon Brazile,DEN,1610612743,22026,0.0,,False,False,missing_historical_profile,9.0,Stretch Big,manual_override,8.0,High Stock + D,manual_override
-1630192,Zeke Nnaji,Zeke Nnaji,DEN,1610612743,22026,0.0,22025.0,True,False,preseason_historical_prior,,,outside_minutes_cutoff,,,outside_minutes_cutoff
+1630192,Zeke Nnaji,Zeke Nnaji,DEN,1610612743,22026,0.0,22025.0,True,False,preseason_historical_prior,1.0,Athletic Roll Man,manual_override,7.0,Turtles,manual_override
 1630595,Cade Cunningham,Cade Cunningham,DET,1610612765,22026,33.90530303030303,22025.0,True,True,preseason_historical_prior,2.0,Primary Ball Handler,analyst_review,6.0,Long Wing/Secondary POA,analyst_review
 1631105,Jalen Duren,Jalen Duren,DET,1610612765,22026,30.905303030303035,22025.0,True,True,preseason_historical_prior,1.0,Athletic Roll Man,analyst_review,1.0,Rim Protector,analyst_review
 1641709,Ausar Thompson,Ausar Thompson,DET,1610612765,22026,29.905303030303035,22025.0,True,True,preseason_historical_prior,6.0,Secondary Playmaker,manual_override,11.0,POA Defender,analyst_review

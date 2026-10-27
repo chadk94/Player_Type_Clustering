@@ -66,7 +66,12 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1628963,Marvin Bagley III,DEN,False,,Athletic Roll Man,,Bad/Slow Big Defender,analyst_review,analyst_review
 1643813,Alpha Diallo,DEN,False,,Spot-Up Role Player,,POA Defender,manual_override,manual_override
 1643624,Bryce Hopkins,DEN,False,,Spot-Up Role Player,,Non-POA Wing,manual_override,manual_override
+1641715,Cam Whitmore,DEN,False,,High Usage Wing,,Non-POA Wing,manual_override,manual_override
+1641747,DaRon Holmes II,DEN,False,,Stretch Big,,Turtles,manual_override,manual_override
+1642354,KJ Simpson,DEN,False,,Secondary Playmaker,,POA Defender,manual_override,manual_override
+1642948,Ryan Nembhard,DEN,False,,Primary Ball Handler,,Non POA Guard,manual_override,manual_override
 1642350,Trevon Brazile,DEN,False,,Stretch Big,,High Stock + D,manual_override,manual_override
+1630192,Zeke Nnaji,DEN,False,,Athletic Roll Man,,Turtles,manual_override,manual_override
 1630595,Cade Cunningham,DET,False,Primary Ball Handler,Primary Ball Handler,Big Wing Defender,Long Wing/Secondary POA,analyst_review,analyst_review
 1631105,Jalen Duren,DET,True,Traditional Center,Athletic Roll Man,Cluster 10 (unnamed),Rim Protector,analyst_review,analyst_review
 1641709,Ausar Thompson,DET,False,Athletic Roll Man,Secondary Playmaker,POA Defender,POA Defender,manual_override,analyst_review
