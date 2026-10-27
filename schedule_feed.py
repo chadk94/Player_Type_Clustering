@@ -1,4 +1,6 @@
-"""Validated daily schedules with a bounded retry for transient feed failures."""
+"""Validated daily schedules and a bounded last-known-good fallback."""
+from threading import RLock
+
 import pandas as pd
 import requests
 
@@ -7,6 +9,49 @@ from live_projections import ESPN, fetch_json, parse_schedule
 
 class ScheduleUnavailable(ValueError):
     """The schedule could not be verified; this is not an empty slate."""
+
+
+class ScheduleMemory:
+    """Keep verified schedules through short outages, independently of feed TTLs.
+
+    Shared by Streamlit sessions; only public schedule data is retained. A cached
+    response keeps its original verification time, even after repeated reads.
+    """
+    max_age = pd.Timedelta(minutes=30)
+
+    def __init__(self):
+        self._frames = {}
+        self._lock = RLock()
+
+    def remember(self, season, date, frame):
+        checked = pd.Timestamp(frame.attrs.get('schedule_checked_at'))
+        if pd.isna(checked) or checked.tzinfo is None:
+            return
+        if (frame.attrs.get('schedule_season') != season
+                or frame.attrs.get('schedule_date') != date.isoformat()):
+            return
+        key = (season, date)
+        with self._lock:
+            previous = self._frames.get(key)
+            if previous is None or checked >= pd.Timestamp(previous.attrs['schedule_checked_at']):
+                self._frames[key] = frame.copy(deep=True)
+            # Bound memory even when many users browse different dates.
+            if len(self._frames) > 64:
+                oldest = min(self._frames, key=lambda k: self._frames[k].attrs['schedule_checked_at'])
+                del self._frames[oldest]
+
+    def recover(self, season, date, now=None):
+        now = pd.Timestamp.now(tz='UTC') if now is None else pd.Timestamp(now)
+        with self._lock:
+            frame = self._frames.get((season, date))
+            if frame is None:
+                return None
+            age = now - pd.Timestamp(frame.attrs['schedule_checked_at'])
+            if age < pd.Timedelta(0) or age > self.max_age:
+                return None
+            backup = frame.copy(deep=True)
+            backup.attrs['schedule_is_backup'] = True
+            return backup
 
 
 def validate_daily_schedule(payload, season_year, date):
@@ -48,7 +93,10 @@ def load_daily_schedule(season, date, fetcher=None):
     for attempt in range(2):
         try:
             payload = fetcher(url)
-            return validate_daily_schedule(payload, int(season[:4])+1, date)
+            frame = validate_daily_schedule(payload, int(season[:4])+1, date)
+            frame.attrs.update(schedule_checked_at=pd.Timestamp.now(tz='UTC').isoformat(),
+                               schedule_season=season, schedule_date=date.isoformat())
+            return frame
         except (requests.RequestException, ValueError, KeyError, TypeError, IndexError, AttributeError) as exc:
             if attempt == 1:
                 raise ScheduleUnavailable(

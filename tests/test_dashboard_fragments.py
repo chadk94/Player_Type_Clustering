@@ -14,7 +14,7 @@ from live_projections import STAT_NAMES
 from season_pipeline import ROOT
 from approved_minutes import digest, validate_bundle
 from import_minutes import TEAM_IDS
-from schedule_feed import ScheduleUnavailable
+from schedule_feed import ScheduleUnavailable, ScheduleMemory
 
 
 class DashboardFragmentTests(unittest.TestCase):
@@ -36,6 +36,8 @@ class DashboardFragmentTests(unittest.TestCase):
         self.logs = self.mock('current_matchup_logs', return_value=(logs, {'errors': []}))
         self.imported = self.mock('render_import', return_value=None)
         self.schedule = self.mock('today_schedule', return_value=pd.DataFrame())
+        self.schedule_memory = ScheduleMemory()
+        self.mock('verified_schedules', return_value=self.schedule_memory)
         self.mock('next_team_game', side_effect=lambda season, espn, team: {
             'Opponent': 'HOU' if team != 'HOU' else 'ATL',
             'GameTimeUTC': '2026-10-27T23:00:00Z',
@@ -151,6 +153,28 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertEqual(self.app.button(key='matchup_schedule_reload').label, 'Reload schedule')
         self.schedule.clear.assert_called_once_with(dashboard.SEASON, self.app.date_input(key='matchup_date').value)
         self.assertEqual([m.call_count for m in (self.live, self.logs, self.imported, self.build)], counts)
+
+    def test_team_schedule_outage_preserves_verified_games_and_projections(self):
+        day = self.app.date_input(key='team_projection_date').value
+        now = pd.Timestamp.now(tz='UTC')
+        start = (now + pd.Timedelta(hours=4)).isoformat()
+        frame = pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS['BOS'], Opponent='BKN', Venue='home', GameTimeUTC=start, GameStatus='Scheduled'),
+            dict(TEAM_ID=TEAM_IDS['BKN'], Opponent='BOS', Venue='away', GameTimeUTC=start, GameStatus='Scheduled'),
+        ])
+        frame.attrs.update(schedule_checked_at=(now-pd.Timedelta(minutes=6)).isoformat(),
+                           schedule_season=dashboard.SEASON, schedule_date=day.isoformat())
+        self.schedule_memory.remember(dashboard.SEASON, day, frame)
+        self.schedule.side_effect = ScheduleUnavailable('temporary feed failure')
+        self.fragment_id = self.fragment_for(self.app.selectbox(key='team_projection_book'))
+        counts = [m.call_count for m in (self.live, self.logs, self.imported)]
+        self.app.run()
+        self.assert_no_errors()
+        self.assertTrue(any('Showing the schedule verified at' in w.value for w in self.app.warning))
+        self.assertEqual(self.app.button(key='team_schedule_reload').label, 'Retry schedule')
+        self.assertIn('BKN @ BOS — FanDuel', [h.value for h in self.app.subheader])
+        self.assertTrue(self.app.dataframe)
+        self.assertEqual([m.call_count for m in (self.live, self.logs, self.imported)], counts)
 
     def test_new_approved_import_replaces_game_cache_for_all_tabs(self):
         selected = self.app.selectbox(key='projection_player').value

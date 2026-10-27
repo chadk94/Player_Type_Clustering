@@ -38,6 +38,9 @@ def scheduled_book_games(events, schedule, now=None):
             matched = matched[matched.GameTimeUTC.map(lambda value: abs(pd.Timestamp(value)-start) <= EVENT_TIME_TOLERANCE)]
             # A later book tip must never keep an already-started game eligible.
             matched = matched[matched.GameStatus.str.strip().str.lower().eq('scheduled')]
+            if schedule.attrs.get('schedule_is_backup'):
+                # A backup cannot verify a late tip or a still-scheduled status.
+                matched = matched[matched.GameTimeUTC.map(lambda value: pd.Timestamp(value) > now)]
             if matched.empty:
                 continue
             games.append({'id':event['id'],'Home':home,'Away':away,'GameTimeUTC':start,

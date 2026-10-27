@@ -26,7 +26,7 @@ from projection_presentation import over_line_label, matchup_rating
 from opponent_selection import render_opponent_selector
 from approved_minutes import render_import, for_matchup, projection_gaps, game_minutes_caption
 from import_minutes import TEAM_IDS
-from schedule_feed import load_daily_schedule
+from schedule_feed import load_daily_schedule, ScheduleMemory
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
                               player_quotes, compare_with_book, comparison_style, TEAM_NAMES)
 
@@ -41,16 +41,34 @@ def today_schedule(season, date):
     return load_daily_schedule(season, date)
 
 
+@st.cache_resource(show_spinner=False)
+def verified_schedules():
+    return ScheduleMemory()
+
+
 def schedule_for_view(ui, date, key):
-    """Retry just this dated slate; never label a failed request as no games."""
+    """Keep a recently verified slate visible while its live refresh is down."""
+    memory = verified_schedules()
+    using_backup = False
     try:
         schedule = today_schedule(SEASON, date)
+        memory.remember(SEASON, date, schedule)
     except (requests.RequestException, ValueError, KeyError, TypeError):
-        ui.warning(f'The schedule for {date:%b %d, %Y} is temporarily unavailable. Retry the schedule below.')
-        ui.button('Retry schedule', key=key, on_click=today_schedule.clear, args=(SEASON, date))
-        return None
-    ui.button('Reload schedule', key=key, on_click=today_schedule.clear, args=(SEASON, date),
+        schedule = memory.recover(SEASON, date)
+        using_backup = True
+        if schedule is None:
+            ui.warning(f'The schedule for {date:%b %d, %Y} is temporarily unavailable. Retry the schedule below.')
+        else:
+            checked = pd.Timestamp(schedule.attrs['schedule_checked_at']).tz_convert('America/Denver')
+            ui.warning(f'Live schedule refresh is temporarily unavailable. Showing the schedule verified at '
+                       f'{checked:%I:%M %p %Z} for {date:%b %d}. Recent schedule changes may not appear. '
+                       'This backup expires after 30 minutes.')
+    ui.button('Retry schedule' if using_backup else 'Reload schedule', key=key,
+              on_click=today_schedule.clear, args=(SEASON, date),
               help='Refresh only this date’s schedule, without reloading player stats or your minutes.')
+    if schedule is not None and not using_backup and schedule.attrs.get('schedule_checked_at'):
+        checked = pd.Timestamp(schedule.attrs['schedule_checked_at']).tz_convert('America/Denver')
+        ui.caption(f'Schedule verified: {checked:%b %d at %I:%M %p %Z} · ESPN')
     return schedule
 
 

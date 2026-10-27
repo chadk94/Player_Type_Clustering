@@ -792,10 +792,24 @@ clear only the selected date's schedule cache and rerun the current tab, preserv
 the loaded player data and approved minutes. The existing five-minute schedule
 cache, regular-season filtering and game-retention rules still apply.
 
+If both attempts fail, all three pages now share a **last verified schedule**
+backup, retained for at most **30 minutes from its original verification**.
+The page labels the backup and its timestamp and still offers Retry schedule.
+The backup is held in application memory across tab changes, browser sessions and
+normal feed-cache clears; it does not survive a server restart. It contains only
+public schedule data, keyed by season and date. Re-reading a cached schedule does
+not extend its lifetime. A newer verified empty slate or updated game status
+replaces the previous version. Without a recent backup, the unavailable message
+still appears. Team Projections retains its one-hour post-tip cutoff; sportsbook
+event matching and quote freshness checks continue to apply. Recent postponements
+may be absent during the brief backup window, as indicated on the page.
+Backup schedules cannot admit sportsbook games after the schedule's tip time,
+even if a book lists a slightly later start; a fresh schedule is required then.
+
 `tests/test_schedule_feed.py` checks bounded retries, malformed and mismatched
 responses, late games, and legitimate empty/completed slates. The dashboard
 fragment test verifies recovery without a league-wide reload or a false empty-slate
-message.
+message, including Team Projections rendering a verified backup during an outage.
 
 ## Stronger steals and blocks shrinkage (October 27, 2026)
 
