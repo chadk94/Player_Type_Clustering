@@ -153,7 +153,7 @@ def match_player_stats(roster, current):
 
 
 def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None, archetype_priors=None):
-    """Scale individual rates, or explicitly supplied temporary priors, to minutes."""
+    """Prefer actual rookie rates to estimates; retain veteran historical blends."""
     if opening_games < 0 or prior_minutes < 0:
         raise ValueError('Projection settings must be nonnegative')
     minutes_overrides = minutes_overrides or {}
@@ -194,18 +194,23 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
                'Season appearances':0 if observed is None else observed.GP}
         total_current_minutes = 0 if observed is None else observed.MIN * observed.GP
         prior_ok = profile is not None and pd.notna(profile.MIN) and profile.MIN > 0
-        current_ok = observed is not None and total_current_minutes > 0 and played is not None and played >= stats_start_game - 1
+        observed_ok = (observed is not None and np.isfinite(total_current_minutes) and total_current_minutes > 0
+                       and observed.MIN > 0 and observed.GP > 0 and played is not None and played > 0)
+        # Forecasts are gap-fillers, not historical evidence. Replace them with
+        # actual per-minute rates from the first verified season appearance.
+        actual_first = observed_ok and (not prior_ok or fallback_used)
+        current_ok = observed_ok and (actual_first or played >= stats_start_game - 1)
         archetype_used = False
-        if not prior_ok and not current_ok and player.PLAYER_ID in archetype_priors:
+        if not prior_ok and player.PLAYER_ID in archetype_priors:
             profile = pd.Series(archetype_priors[player.PLAYER_ID])
             prior_ok, archetype_used = True, True
             fallback_used = False
-        row['Estimated stat profile'] = archetype_used
-        row['Fallback details'] = profile.get('Fallback details', '') if archetype_used else ''
         prior_label = profile.get('BaselineLabel') if prior_ok else None
         if not isinstance(prior_label,str) or not prior_label:
             prior_label = '2025–26 archived snapshot'
-        if prior_ok and current_ok:
+        if actual_first:
+            weight, baseline_source = 1., 'Current season'
+        elif prior_ok and current_ok:
             weight = total_current_minutes / (total_current_minutes + prior_minutes)
             baseline_source = 'RotoWire projection + current season' if fallback_used else 'Prior season + current season'
         elif current_ok:
@@ -214,12 +219,21 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
             weight, baseline_source = 0., ('RotoWire 2026–27 projection' if fallback_used else prior_label)
         else:
             weight, baseline_source = 0., 'Unavailable — no statistical profile'
-        row['Stat baseline'] = baseline_source
+        row['Actual sample minutes'] = total_current_minutes if current_ok else 0.
         missing = []
+        estimated_stats = []
         for stat in STAT_NAMES:
             prior_rate = profile.get(stat, np.nan) / profile.MIN if prior_ok else np.nan
             new_rate = observed.get(stat, np.nan) / observed.MIN if current_ok else np.nan
-            if prior_ok and current_ok:
+            if actual_first:
+                if np.isfinite(new_rate) and new_rate >= 0:
+                    rate = new_rate  # Observed zero is a real result, not missing data.
+                elif np.isfinite(prior_rate) and prior_rate >= 0:
+                    rate = prior_rate
+                    estimated_stats.append(stat)
+                else:
+                    rate = np.nan
+            elif prior_ok and current_ok:
                 if stat == 'PF' and not np.isfinite(prior_rate):
                     rate = new_rate
                 elif stat == 'PF' and not np.isfinite(new_rate):
@@ -231,6 +245,13 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
             row[stat] = rate * minutes if np.isfinite(rate) and np.isfinite(minutes) else np.nan
             if stat in CORE_STATS and pd.isna(row[stat]):
                 missing.append(stat)
+        if actual_first and estimated_stats:
+            baseline_source += ' + ' + ('RotoWire fallback' if fallback_used else 'archetype fallback')
+        row['Stat baseline'] = baseline_source
+        row['Estimate fallback stats'] = ', '.join(estimated_stats)
+        archetype_used = archetype_used and (not actual_first or bool(estimated_stats))
+        row['Estimated stat profile'] = archetype_used
+        row['Fallback details'] = profile.get('Fallback details', '') if archetype_used else ''
         if source == 'Unavailable':
             row['Status'] = 'Team count unavailable' if played is None else 'Needs current-season minutes (no matched season appearances)'
         elif not prior_ok and not current_ok:

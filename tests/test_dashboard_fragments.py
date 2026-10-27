@@ -264,6 +264,38 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         for stat in ['STL','BLK']:
             self.assertEqual(without.loc[stat,'Projected'],without.loc[stat,'Baseline'])
 
+    def test_rookie_actual_rates_reach_player_edges_and_team_views(self):
+        selected = 'Kingston Flemings'
+        self.app.session_state['projection_player'] = selected
+        now = datetime.now(timezone.utc)
+        start = (now+timedelta(days=1)).isoformat()
+        event = dict(id='rookie_game',home_team='Houston Rockets',away_team='Atlanta Hawks',commence_time=start)
+        self.mock('get_odds_api_key',return_value='test-only')
+        self.mock('sportsbook_events',return_value=[event])
+        self.mock('next_team_game',return_value={'Opponent':'HOU','GameTimeUTC':start})
+        self.schedule.return_value = pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
+            for side,opp,venue in [('ATL','HOU','away'),('HOU','ATL','home')]])
+        payload = {**event,'bookmakers':[{'key':'fanduel','markets':[
+            {'key':market,'last_update':now.isoformat(),'outcomes':[
+                dict(description=selected,name=side,point=2.5,price=-110) for side in ['Over','Under']]}
+            for market in ['player_points','player_assists','player_rebounds','player_threes']]}]}
+        self.mock('sportsbook_props',return_value=payload)
+        self.mock('sportsbook_game_lines',return_value={**event,'bookmakers':[]})
+        self.app.session_state['edges_plays_only'] = False
+        self.app.run()
+        self.assert_no_errors()
+        frames = [d.value for d in self.app.dataframe]
+        preview = next(f for f in frames if 'Stat' in f and 'Book line (Over)' in f).set_index('Stat')
+        edges = next(f for f in frames if 'Rank' in f and 'Projected' in f).set_index('Stat')
+        contributions = next(f for f in frames if 'Player' in f and 'Stat baseline' in f and 'PRA' in f).set_index('Player')
+        for stat in ['PTS','AST','REB','3PM']:
+            self.assertEqual(preview.loc[stat,'Baseline'],3.)  # 3/24 actual rate × 24 projected minutes.
+            self.assertAlmostEqual(edges.loc[stat,'Projected'],preview.loc[stat,'Projected'])
+            self.assertEqual(contributions.loc[selected,stat],round(preview.loc[stat,'Projected'],2))
+        self.assertEqual(contributions.loc[selected,'Stat baseline'],'Current season')
+        self.assertTrue(any('Actual stat sample: 4 regular-season appearances' in c.value for c in self.app.caption))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -306,8 +306,10 @@ password or uploaded subscriber file is stored in GitHub. An optional normalized
 Only players without usable historical profiles use the RotoWire baseline. The
 per-minute statistical rates still scale to the user's selected minutes. RotoWire
 minutes never override workbook minutes in games 1–3 or season MPG from game 4.
-From team game 5, current observations gradually replace the RotoWire prior using the same 200-minute
-weight. All rows identify RotoWire as a forecast source, not actual prior-season stats.
+As of October 27, verified current-season rates replace these estimates from the
+first regular-season appearance; only missing actual categories retain a labeled
+estimate. The 200-minute blend is reserved for actual historical baselines.
+Rows identify any remaining RotoWire contribution as a forecast source.
 
 An existing authorized RotoWire export was found in the user's Downloads directory:
 `rotowire-nba-projections.csv`, modified 2026-10-16. It contains 457 projected player
@@ -835,3 +837,41 @@ BLK. These are conditional one-season results using observed minutes and fixed
 approved archetypes, not betting returns or a test of the current-season reset.
 Tests cover the exact weighting, positive/negative effects across both seasons,
 missing observations, and matching values/ratings in the two requested app pages.
+
+## Actual stats replace rookie estimates (October 27, 2026)
+
+Players using RotoWire or temporary archetype profiles, and players without a
+statistical profile, now use **actual current-season per-minute rates from their
+first verified regular-season appearance**. This includes rookies and returning
+players who needed an estimated baseline. The game-five gate and 200-minute
+synthetic blend no longer apply to these players. Actual rates scale to the
+existing approved, manual, workbook or season-average minutes; observed zero
+production remains zero. A player's missing or invalid actual stat category can
+still use its existing labeled estimate, while an unavailable category without
+an estimate stays blank. Players without a matched appearance retain their
+existing fallback. No new statistical values or archetypes are invented.
+
+ESPN player summaries must match the 2026–27 regular season (end year 2027,
+season type 2), with positive observed minutes and appearances, a positive
+verified team game count and an unambiguous player match. The same validated
+feed supplies all tabs; use **Refresh live data** to pick up subsequent games.
+Player vs Opponent shows the actual sample's appearances and minutes, plus any
+categories still filled by estimates. Pure actual profiles stop carrying the
+temporary-archetype flag; any remaining archetype-estimated categories retain
+that flag and the existing edge-ranking exclusion.
+
+Players using actual historical baselines keep the original game-five switch
+and 200-minute prior blend. Manual archetypes, approved-minute priority, opponent
+archetype adjustments (including STL/BLK shrinkage), and team PTS/AST/3PM/REB
+calibration are unchanged. The new rates flow through Player vs Opponent,
+Today's Best Matchups, Top Sportsbook Edges and Team Projections; PRA continues
+to use final PTS + REB + AST. Team calibration can redistribute projections
+across teammates when one player's baseline changes.
+
+The October 27 audit fetched all 30 teams and 406 player summaries without feed
+errors. It transitioned 54 estimated baselines and 9 previously blank profiles
+to complete actual rates; none of those 63 required category-level estimates in
+that snapshot. This is a data-coverage check, not an accuracy or betting test.
+Tests verify first-appearance priority, genuine zero stats, category fallback,
+ambiguous/invalid samples, preserved minutes and manual roles, unchanged veteran
+blending, and consistent rookie values across individual, edge and team views.

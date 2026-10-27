@@ -380,19 +380,19 @@ def render_live_dashboard(ui, roster):
     if stored_fallback.exists():
         fallback = pd.read_csv(stored_fallback)
     with ui.expander('RotoWire baseline for players without historical stats'):
-        ui.write('RotoWire supplies statistical rates for missing historical profiles and players without archetypes. Your approved minutes take priority for matching games; otherwise workbook/season-average minutes apply. Unassigned archetype sides use the baseline without an opponent multiplier. An uploaded CSV applies to this session and is not saved publicly.')
+        ui.write('Verified current-season stats replace RotoWire and archetype estimates from a player’s first regular-season appearance. RotoWire fills only players or stat categories without usable actuals. Your approved minutes take priority for matching games; otherwise workbook/season-average minutes apply. Unassigned archetype sides use the baseline without an opponent multiplier. An uploaded CSV applies to this session and is not saved publicly.')
         upload = ui.file_uploader('RotoWire 2026–27 season projections CSV',type=['csv'],key='rotowire_csv')
         if upload is not None:
             units = ui.selectbox('Export stat units',['Per game','Season totals','Per 36 minutes'],key='rotowire_units')
             try:
                 fallback, unmatched = normalize_rotowire(read_rotowire_csv(upload),roster,
                     {'Per game':'per_game','Season totals':'season_totals','Per 36 minutes':'per_36'}[units])
-                ui.caption(f'{len(fallback)} player rows matched; {len(unmatched)} unmatched rows ignored. Missing historical profiles and unclassified players use this fallback.')
+                ui.caption(f'{len(fallback)} player rows matched; {len(unmatched)} unmatched rows ignored. Estimates are used only where actual stats are unavailable.')
             except (ValueError, KeyError) as exc:
                 ui.error(str(exc))
                 fallback = None
         elif fallback is not None:
-            ui.caption(f'{len(fallback)} RotoWire baseline rows loaded from the October 16, 2026 export; missing historical profiles and unclassified players use them.')
+            ui.caption(f'{len(fallback)} RotoWire baseline rows loaded from the October 16, 2026 export; verified actual stats take priority.')
         elif fallback is None:
             ui.caption('No RotoWire export has been loaded yet. Players without individual profiles can use a flagged archetype-average estimate when both assigned roles have enough historical coverage.')
     archetype_priors = build_archetype_priors(roster, history)
@@ -430,7 +430,7 @@ def render_live_dashboard(ui, roster):
     # and cannot trigger league-wide ESPN refreshes or hidden-tab calculations.
     # Imports and Refresh live data rerun the parent and rebuild every tab.
     projection_tab, best_tab, edges_tab, team_tab, archetype_tab = ui.tabs(['Player vs Opponent', "🔥 Today's Best Matchups", '💰 Top Sportsbook Edges', '🏀 Team Projections', 'Archetypes'])
-    ui.caption('Last season’s stat rates for team games 1–4; current-season rates blend in from game 5. Opponent tendencies switch to this season after that opponent completes four games. Matchup samples are player-games with at least 5 minutes.')
+    ui.caption('Rookies and players using estimated profiles switch to actual stat rates from their first regular-season appearance. Players with historical baselines blend in current rates from game 5. Opponent tendencies switch to this season after that opponent completes four games. Matchup samples are player-games with at least 5 minutes.')
     @st.fragment
     def render_player_page():
         team_col, player_col, opponent_col = ui.columns(3)
@@ -487,6 +487,11 @@ def render_live_dashboard(ui, roster):
             ui.subheader(f'{player_name} vs {opponent}')
             ui.caption(f"{row['Offensive archetype']} · {row['Defensive archetype']} · {row['Projected minutes']:.1f} projected minutes ({row['Minutes source']})")
             ui.caption(f"Stat baseline: {row['Stat baseline']} · Opponent history: {row['Matchup data']} · Offensive samples: {row['Off samples']} · Defensive samples: {row['Def samples']}")
+            if str(row['Stat baseline']).startswith('Current season'):
+                ui.caption(f"Actual stat sample: {row['Season appearances']:g} regular-season appearances · "
+                           f"{row['Actual sample minutes']:.1f} minutes. Per-minute rates scale to your projected minutes.")
+            if row.get('Estimate fallback stats', ''):
+                ui.caption('Actual stats are unavailable for these categories; estimates remain: ' + row['Estimate fallback stats'])
             if row['Status'] != 'Available':
                 ui.warning(row['Status'])
             if row.get('Estimated stat profile', False):
@@ -567,7 +572,7 @@ def render_live_dashboard(ui, roster):
             with ui.expander('How matchup projections work'):
                 ui.write('Steals and blocks use stronger smoothing toward an average matchup, reducing the impact of small or noisy samples while retaining archetype differences.')
                 ui.write('Each archetype’s per-36 production against the selected opponent is compared with its league-wide per-36 average. Percent changes are weighted toward recent player-games and shrunk toward zero with 20 neutral samples for steals and blocks, and three for other stats. Offensive archetypes drive points, assists, offensive rebounds and shooting; defensive archetypes drive defensive rebounds, steals and blocks. Projected rebounds equal offensive plus defensive rebounds. Three-point makes use the attempts adjustment to preserve the player’s own shooting rate.')
-                ui.write('Minutes use your workbook for team games 1–3, then observed season minutes per appearance from game 4. Stat rates stay on last season (or the supplied RotoWire fallback) through game 4; from game 5, current rates blend with the prior using a 200-minute prior weight. Opponent matchup history uses last season until that opponent has completed four games, then only this season. Missing history stays unavailable. Samples count player-games, not unique team games.')
+                ui.write('Minutes use your workbook for team games 1–3, then observed season minutes per appearance from game 4. Approved game minutes take priority. Rookies and other players using estimates switch to actual per-minute rates after their first verified regular-season appearance, without blending in synthetic estimates. Missing actual categories can still use a labeled estimate. Players with historical baselines stay on last season through game 4; from game 5, current rates blend with the prior using a 200-minute prior weight. Opponent matchup history uses last season until that opponent has completed four games, then only this season. Samples count player-games, not unique team games.')
                 ui.write('Team assists use last season’s assist-to-made-field-goal rates, blended equally with the opponent’s allowed rate. Expected field goals come from market team points divided by the equally blended historical total-points-to-field-goals ratios. The team assist total is allocated in proportion to existing archetype-adjusted player assists, so shared defensive penalties cancel while relative archetype differences remain. No second assist multiplier is applied. PRA combines the final points, rebounds and assists.')
                 ui.write('Team threes use expected team field goals times a 50/50 blend of last season’s team 3PM/FGM and opponent 3PM/FGM allowed. That target is divided among players using their current minutes and normalized archetype-adjusted shooting shares. Supporting three-point attempts scale with makes to preserve shooting percentage. Points and PRA already include the threes; no extra points are added. The player slider recalculates this preview, while game edges use the saved automatic team minutes. Changes to an external workbook must be imported and published before the app can use them.')
                 ui.write('Team rebounds use both teams’ expected misses, derived from market team points and last season’s own/opponent rates. Historical credited-player-rebound fractions account approximately for dead-ball/team rebounds and non-reboundable free throws. Each pool splits into offensive rebounds and opposing defensive rebounds. The two components are allocated separately using normalized archetype shares, then added for REB. PRA includes the updated rebounds. Player matchup ratings retain the original archetype effect.')

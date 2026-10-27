@@ -66,7 +66,7 @@ class LiveProjectionTests(unittest.TestCase):
         self.assertIn('Needs statistical profile',result.Status)
         self.assertEqual(self.project(2).PTS,0.)  # Workbook zero takes precedence in opening window.
         self.roster.PROJECTED_MIN = 32.
-        self.assertTrue(pd.isna(self.project(1,history=no_history).PTS))
+        self.assertEqual(self.project(1,history=no_history).PTS,16.)
         self.assertEqual(self.project(4,history=no_history).PTS,12.)
 
     def test_rate_blend_does_not_replace_observed_denominator(self):
