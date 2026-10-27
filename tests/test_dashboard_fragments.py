@@ -105,10 +105,10 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertIn(f'{next_player} vs HOU', [h.value for h in self.app.subheader])
         self.assertFalse(self.app.tabs)  # Only the changed tab emitted deltas.
 
-        before = self.app.dataframe[0].value.set_index('Stat')
+        before = next(d.value for d in self.app.dataframe if 'Stat' in d.value and 'Projected' in d.value).set_index('Stat')
         self.app.slider[0].set_value(12.).run()
         self.assert_no_errors()
-        after = self.app.dataframe[0].value.set_index('Stat')
+        after = next(d.value for d in self.app.dataframe if 'Stat' in d.value and 'Projected' in d.value).set_index('Stat')
         self.assertAlmostEqual(after.loc['PTS', 'Projected'], before.loc['PTS', 'Projected'] / 2)
         self.assertAlmostEqual(after.loc['PRA', 'Projected'],
                                after.loc[['PTS', 'REB', 'AST'], 'Projected'].sum())
@@ -202,7 +202,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.fragment_id = self.fragment_for(refresh)
         self.app.run()  # An upload belongs to the parent dashboard fragment.
         self.assert_no_errors()
-        before = self.app.dataframe[0].value.set_index('Stat')
+        before = next(d.value for d in self.app.dataframe if 'Stat' in d.value and 'Projected' in d.value).set_index('Stat')
         self.assertTrue(any('39.9 minutes (Approved game minutes)' in c.value for c in self.app.caption))
 
         bundle['approvals'][0]['players'][0]['minutes'] = 34.9
@@ -212,7 +212,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.imported.return_value = validate_bundle(bundle, self.roster, '2026-27')
         self.app.run()
         self.assert_no_errors()
-        after = self.app.dataframe[0].value.set_index('Stat')
+        after = next(d.value for d in self.app.dataframe if 'Stat' in d.value and 'Projected' in d.value).set_index('Stat')
         self.assertTrue(any('34.9 minutes (Approved game minutes)' in c.value for c in self.app.caption))
         self.assertAlmostEqual(after.loc['PTS', 'Baseline'], before.loc['PTS', 'Baseline'] * 34.9 / 39.9)
 
@@ -260,7 +260,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.fragment_id = self.fragment_for(self.app.selectbox(key='projection_player'))
         self.app.toggle(key='opponent_adjustments').set_value(False).run()
         self.assert_no_errors()
-        without = self.app.dataframe[0].value.set_index('Stat')
+        without = next(d.value for d in self.app.dataframe if 'Stat' in d.value and 'Projected' in d.value).set_index('Stat')
         for stat in ['STL','BLK']:
             self.assertEqual(without.loc[stat,'Projected'],without.loc[stat,'Baseline'])
 
@@ -295,6 +295,59 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
             self.assertEqual(contributions.loc[selected,stat],round(preview.loc[stat,'Projected'],2))
         self.assertEqual(contributions.loc[selected,'Stat baseline'],'Current season')
         self.assertTrue(any('Actual stat sample: 4 regular-season appearances' in c.value for c in self.app.caption))
+
+    def test_progressive_team_pipeline_agrees_on_all_four_projection_pages(self):
+        selected = 'Kingston Flemings'
+        self.app.session_state['projection_player'] = selected
+        self.app.session_state['edges_plays_only'] = False
+        # Full historical fixture serves as a synthetic complete current season.
+        # Change rates so an accidental all-prior path cannot pass unnoticed.
+        current = self.logs.return_value[0].copy()
+        current.AST *= .8
+        current.FG3A += 1.
+        current.FGA += 1.
+        self.logs.return_value = (current, {'errors':[]})
+        self.live.return_value['teams']['GAMES_PLAYED'] = 82
+        # Use plausible shooting conversion; the generic fixture's 3 makes on
+        # 3 attempts deliberately cannot support a realistic team attempt target.
+        for stat,value in {'PTS':15.,'FGM':6.,'FGA':12.,'FG3M':1.,'FG3A':3.,'FTM':2.,'FTA':3.}.items():
+            self.live.return_value['players'][stat] = value
+        now = datetime.now(timezone.utc)
+        start = (now+timedelta(days=1)).isoformat()
+        event = dict(id='blend_game',home_team='Houston Rockets',away_team='Atlanta Hawks',commence_time=start)
+        self.mock('get_odds_api_key',return_value='test-only')
+        self.mock('sportsbook_events',return_value=[event])
+        self.mock('next_team_game',return_value={'Opponent':'HOU','GameTimeUTC':start})
+        self.schedule.return_value = pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
+            for side,opp,venue in [('ATL','HOU','away'),('HOU','ATL','home')]])
+        props = {**event,'bookmakers':[{'key':'fanduel','markets':[
+            {'key':market,'last_update':now.isoformat(),'outcomes':[
+                dict(description=selected,name=side,point=2.5,price=-110) for side in ['Over','Under']]}
+            for market in ['player_points','player_assists','player_rebounds','player_threes','player_points_rebounds_assists']]}]}
+        self.mock('sportsbook_props',return_value=props)
+        self.mock('sportsbook_game_lines',return_value={**event,'bookmakers':[{'key':'fanduel','markets':[
+            {'key':'totals','last_update':now.isoformat(),'outcomes':[
+                dict(name=side,point=220.,price=-110) for side in ['Over','Under']]},
+            {'key':'spreads','last_update':now.isoformat(),'outcomes':[
+                dict(name=side,point=0.,price=-110) for side in ['Atlanta Hawks','Houston Rockets']]}]}]})
+        self.app.run()
+        self.assert_no_errors()
+        frames = [d.value for d in self.app.dataframe]
+        player = next(f for f in frames if 'Stat' in f and 'Book line (Over)' in f).set_index('Stat')
+        edges = next(f for f in frames if 'Rank' in f and 'Projected' in f).set_index('Stat')
+        best = next(f for f in frames if 'Player' in f and 'Team rate status' in f and '3PM' in f).set_index('Player')
+        contributions = next(f for f in frames if 'Player' in f and 'Minutes source' in f and '3PM' in f).set_index('Player')
+        for stat in ['PTS','AST','REB','3PM','PRA']:
+            self.assertAlmostEqual(player.loc[stat,'Projected'],edges.loc[stat,'Projected'])
+            self.assertEqual(best.loc[selected,stat],round(player.loc[stat,'Projected'],2))
+            self.assertEqual(contributions.loc[selected,stat],round(player.loc[stat,'Projected'],2))
+        self.assertAlmostEqual(player.loc['PRA','Projected'],player.loc[['PTS','REB','AST'],'Projected'].sum())
+        weights = next(f for f in frames if 'Current weight' in f).set_index('Team')
+        self.assertAlmostEqual(weights.loc['ATL','Current weight'],82/92)
+        self.assertEqual(weights.loc['ATL','Status'],'Blended')
+        self.assertTrue(any('target attempts' in c.value for c in self.app.caption),
+                        [c.value for c in self.app.caption if 'three' in c.value.lower()])
 
 
 if __name__ == '__main__':

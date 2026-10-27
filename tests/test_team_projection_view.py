@@ -37,7 +37,8 @@ class TeamProjectionViewTests(unittest.TestCase):
         self.targets = {'BOS': 110., 'DET': 115.}
         self.rates = pd.DataFrame({
             'Assist rate': [.6, .65], 'Allowed assist rate': [.62, .64],
-            'Three rate': [.30, .32], 'Allowed three rate': [.34, .36],
+            'Three attempt rate': [.30, .32], 'Allowed three attempt rate': [.34, .36],
+            'Points per FGA': [1., 1.], 'Allowed points per FGA': [1., 1.],
             'Points per FGM': [2.5, 2.6], 'Allowed points per FGM': [2.4, 2.5],
         }, index=['BOS', 'DET'])
         final, _, _ = apply_market_points(self.before, self.targets)
@@ -59,9 +60,9 @@ class TeamProjectionViewTests(unittest.TestCase):
         threes = breakdown[breakdown.Team.eq('BOS') & breakdown.Stat.eq('3PM')].iloc[0]
         self.assertAlmostEqual(threes.Baseline, 6.)
         self.assertAlmostEqual(threes['After archetypes'], 6.6)
-        self.assertAlmostEqual(threes['Team target'], 14.52)
-        self.assertAlmostEqual(threes['Final projection'], 14.52)
-        self.assertAlmostEqual(threes['Team adjustment %'], 120.)
+        self.assertAlmostEqual(threes['Team target'], 12.1)
+        self.assertAlmostEqual(threes['Final projection'], 12.1)
+        self.assertAlmostEqual(threes['Team adjustment %'], (12.1/6.6-1)*100)
         pd.testing.assert_frame_equal(self.final, original)
 
     def test_missing_stat_is_blank_instead_of_a_partial_total(self):

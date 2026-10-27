@@ -505,7 +505,7 @@ are used, independently of current workbook team membership and manual overrides
 * Expected team FGM = selected sportsbook's implied team points / [50% × team
   PTS/FGM + 50% × opponent PTS allowed/FGM allowed]. The total-points-to-FGM ratio
   includes free throws and the mix of two- and three-point baskets. This is an
-  internal estimate shared by the assist and three-point team targets.
+  internal estimate used by the assist target. Threes instead use PTS/FGA below.
 * Team AST target = expected assisted-basket rate × expected team FGM.
 * Player AST = team AST target × existing opponent-adjusted player AST / sum of
   existing opponent-adjusted AST for the full positive-minute roster.
@@ -518,11 +518,40 @@ applied after allocation. Custom minutes update the selected player's production
 and share in the full roster; the edges page retains automatic minutes. With the
 opponent-adjustment toggle off, the allocation uses unadjusted player shares.
 
-The 50/50 blends and last season's team styles are explicit modeling assumptions,
-not sportsbook-published assist totals or optimized weights. Team-target rates
-remain on 2025–26 until that policy is revised; the existing game-5 player-rate
-and opponent-archetype policies still govern the allocation weights. Roster
-turnover can make last year's team style less representative.
+### Progressive team rates: last season is a 10-game prior
+
+All four projection views—Player vs Opponent, Today's Best Matchups stat lines,
+Top Sportsbook Edges and Team Projections—share one team-rate snapshot. Every
+team's own and opponent-allowed assist, three-attempt and rebound ratios use
+**game-equivalent Bayesian-style shrinkage**:
+
+`blended rate = (10 × 2025–26 rate + g × 2026–27 rate) / (10 + g)`
+
+Here `g` is that team's completed regular-season games, not player appearances.
+Current-season weights are 0% at zero games, 16.7% at two, 23.1% at three, 28.6%
+at four, 50% at ten, and 66.7% at twenty. Each season's ratio is calculated from
+pooled box-score counts first. This implements the requested ten-game prior;
+it is not a binomial attempt-count posterior or an estimated uncertainty interval.
+The fixed 80/20 preview is superseded by this progressive rule. After blending
+seasons independently for both teams, the matchup still uses a 50/50 own/allowed
+mix. Supporting PTS/FGM, PTS/FGA, missed-shot and credited-rebound ratios use the
+same seasonal weights. The `PRIOR_GAMES = 10` policy lives in `team_rate_blend.py`.
+
+The current feed is fetched from the first completed game and cached in the
+shared dashboard snapshot. Every game reconciles player shooting, assists,
+rebounds and points to ESPN's published team box. Rounded-zero-minute appearances
+with real attempts are included in team rates. Completed-game counts must match
+standings for each team; a missing game or invalid rates retain that team's
+prior-season rates with a visible coverage status. An unaffected team can still
+blend. Manual overrides and the existing player-rate/archetype-history policies
+are unchanged. This changes team targets, not the player's individual baseline
+shooting percentage. Refresh live data updates weights; widget reruns reuse the
+snapshot without another league fetch.
+
+The 50/50 matchup mix and ten-game prior are explicit modeling assumptions,
+not sportsbook-published totals or backtest-optimized weights. Normalized
+archetype shares retain relative player effects without a second defensive
+multiplier. PRA always uses final PTS + REB + AST.
 
 Fresh verified game lines are required, using the existing book/event/freshness
 checks. Missing rates, invalid minutes, or incomplete positive-minute AST/PTS/REB
@@ -534,32 +563,31 @@ AST, team target, allocation factor, expected FGM and player share for auditing.
 
 ### Team threes with normalized archetype effects
 
-Player vs Opponent and Top Sportsbook Edges apply the reviewed team-first model
-after points and assists. All 2025–26 regular-season appearances contribute to
-historical ratios; the same paired-game and 82-games-per-team checks apply.
+All projection pages apply the attempt-based team model after points and
+assists. Complete 2025–26 regular-season ratios provide the ten-game prior;
+verified current-season ratios progressively update it as described above.
 
-* Expected team FGM uses the same market team points / blended PTS-to-FGM estimate
-  as assists.
-* Team 3PM target = expected team FGM × [50% × historical team 3PM/FGM + 50% ×
-  historical opponent 3PM allowed/FGM allowed]. These ratios describe the share
-  of **made baskets** from three, not three-point shooting percentage.
-* Player 3PM = team 3PM target × current minute/archetype-adjusted player 3PM /
-  the full positive-minute roster's sum of those projections.
+* Expected team FGA = market team points / [50% × blended team PTS/FGA +
+  50% × blended opponent PTS allowed/FGA allowed].
+* Team 3PA target = expected FGA × [50% × blended team 3PA/FGA + 50% ×
+  blended opponent 3PA allowed/FGA allowed].
+* Player 3PA = team 3PA target × existing archetype-adjusted player 3PA /
+  sum of those attempts across the full positive-minute roster.
+* Player 3PM = existing archetype-adjusted player 3PM × the same attempt
+  scaling factor. This retains each player's expected 3P%, including players
+  with nonzero attempts but zero makes. Team 3PM is the sum of player makes.
 
-This is equivalent to allocating the team target using pre-matchup shooting
-shares, then multiplying each player's archetype effect by the inverse of the
-team's baseline-three-weighted average archetype modifier. Shared defensive
-effects cancel, relative player effects remain, and final player threes sum to
-the target before rounding. The 50/50 blend and prior-season team style remain
-explicit modeling assumptions. Team rates stay on 2025–26; existing player and
-archetype rate updates still change the allocation weights.
+The common multiplier cancels in normalized attempt shares; relative archetype
+effects remain. Attempt totals hit the team target exactly. Individual minutes
+and expected shooting percentages determine the resulting made-threes total.
+The assist estimate of FGM remains separate from the three-attempt estimate of
+FGA. CSVs expose both, along with the attempt target, made total and player shares.
 
-Supporting FG3A scales by the same factor as FG3M to preserve player conversion
-rates. This changes the shooting mix within the existing points estimate:
-**PTS, AST, REB and PRA are not increased or decreased again for the threes
-change**. Matchup ratings retain pre-calibration effects, while 3PM sportsbook
-edges/ranks use calibrated makes. CSVs preserve original makes/attempts, the team
-target and factor, historical rate and player share.
+This changes the shooting mix within the existing points estimate:
+**PTS, AST, REB and PRA do not receive another threes adjustment**. PRA reflects
+the final points, assists and rebounds from their own steps. Matchup ratings and
+Today's Best Matchups heatmap retain the original archetype effects; projected
+stat lines and sportsbook edges use the final calibrated values.
 
 Fresh matching game lines and complete positive-minute FG3M/FG3A/PTS coverage are
 required. Invalid or missing minutes, impossible shooting rates, or a result where
@@ -571,7 +599,7 @@ preserved.
 **Minutes changes:** no player share or normalization factor is cached. When
 updated team minutes are imported, published to the app's roster snapshot, and
 the app reloads, both pages recalculate their player projections and shares. The
-team target remains tied to market points and historical matchup rates. A local
+team attempt target remains tied to market points and progressively blended matchup rates; the made-threes total also follows roster shooting percentages. A local
 spreadsheet edit alone does not synchronize with Streamlit. The individual slider
 recalculates that player's preview against the rest of the team's automatic
 minutes; it does not overwrite the saved team allocation used by the edges page.
@@ -980,3 +1008,16 @@ players with real prior-season stats return from RotoWire to that historical
 baseline. No current-season actual baseline reverted. Once these players receive
 minutes, their assigned archetypes affect matchup adjustments, and newly labeled
 historical appearances can contribute to opponents' archetype samples.
+
+### October 27 progressive-rate rollout validation
+
+Tests cover team-specific prior weights, 0/1/3/4/10/20/82-game boundaries,
+partial-feed fallback, player appearances versus team games, attempt-based
+allocation, normalized archetype effects, preserved shooting percentages,
+zero-make shooters, missed-shot pool conservation and PRA reconciliation.
+Streamlit fragment tests verify identical player values on all four projection
+pages with fresh mocked spreads/totals and a nontrivial current-season blend.
+The Today's Best Matchups sportsbook selector defaults to FanDuel; pages agree
+when game, book, minutes and snapshot agree. Games without verified market
+lines retain labeled matchup projections. No manual archetype files or saved
+minutes are modified by this rollout.

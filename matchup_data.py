@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import argparse
 import json
 import hashlib
+import numpy as np
 import pandas as pd
 from live_projections import ESPN, ALIASES, fetch_json
 from season_pipeline import ROOT
@@ -39,7 +40,9 @@ def parse_boxscore(payload, year):
                 try:
                     minute = str(values['MIN'])
                     minutes = float(minute) if ':' not in minute else sum(float(v)/60**i for i,v in enumerate(minute.split(':')))
-                    if minutes <= 0:
+                    # ESPN rounds brief appearances to zero minutes, even when
+                    # a shot was attempted. Team rates must include that shot.
+                    if not np.isfinite(minutes) or minutes < 0:
                         continue
                     row = {'ESPN_PLAYER_ID':str(entry['athlete']['id']), 'PLAYER_NAME':entry['athlete']['displayName'],
                            'GAME_ID':str(header['id']), 'GAME_DATE':competition['date'],
@@ -58,6 +61,34 @@ def parse_boxscore(payload, year):
                 except (KeyError, ValueError):
                     continue
     return rows
+
+
+def validate_team_boxscores(payload, rows):
+    """Reject partial player coverage before it can enter current team rates."""
+    if not rows:
+        return  # Includes the explicitly excluded NBA Cup final.
+    frame = pd.DataFrame(rows)
+    if frame.duplicated(['GAME_ID','ESPN_PLAYER_ID']).any():
+        raise ValueError('Duplicate box-score player rows')
+    box = frame.groupby('Team').sum(numeric_only=True)
+    if len(box) != 2 or len(payload.get('boxscore',{}).get('teams',[])) != 2:
+        raise ValueError('Incomplete team box scores')
+    for team in payload['boxscore']['teams']:
+        abbreviation = team['team']['abbreviation']
+        abbreviation = ALIASES.get(abbreviation, abbreviation)
+        stats = {s['name']:s['displayValue'] for s in team['statistics']}
+        for key,cols in [('fieldGoalsMade-fieldGoalsAttempted',['FGM','FGA']),
+                         ('threePointFieldGoalsMade-threePointFieldGoalsAttempted',['FG3M','FG3A']),
+                         ('freeThrowsMade-freeThrowsAttempted',['FTM','FTA'])]:
+            if not np.allclose(box.loc[abbreviation,cols], list(map(float,stats[key].split('-')))):
+                raise ValueError(f'{abbreviation}: incomplete {key} coverage')
+        for key,col in [('assists','AST'),('offensiveRebounds','OREB'),('defensiveRebounds','DREB'),('totalRebounds','REB')]:
+            if box.loc[abbreviation,col] != float(stats[key]):
+                raise ValueError(f'{abbreviation}: incomplete {col} coverage')
+    for competitor in payload['header']['competitions'][0]['competitors']:
+        abbreviation = competitor['team']['abbreviation']
+        if box.loc[ALIASES.get(abbreviation,abbreviation),'PTS'] != float(competitor['score']):
+            raise ValueError('Incomplete box-score points coverage')
 
 
 def load_game_logs(year, espn_team_ids, cache_dir=None):
@@ -84,7 +115,9 @@ def load_game_logs(year, espn_team_ids, cache_dir=None):
             payload = fetch_json(f'{ESPN}/site/v2/sports/basketball/nba/summary?event={event_id}')
             if path:
                 path.write_text(json.dumps(payload))
-        return parse_boxscore(payload,year)
+        rows = parse_boxscore(payload,year)
+        validate_team_boxscores(payload, rows)
+        return rows
     rows = []
     with ThreadPoolExecutor(max_workers=6) as pool:
         jobs = {pool.submit(box, event_id):event_id for event_id in events}

@@ -8,8 +8,8 @@ from team_threes import historical_three_rates, three_target, apply_team_threes
 class TeamThreeTests(unittest.TestCase):
     def setUp(self):
         self.rates = pd.DataFrame({
-            'Three rate': [.30,.32], 'Allowed three rate': [.34,.40],
-            'Points per FGM': [2.5,2.6], 'Allowed points per FGM': [2.4,2.5],
+            'Three attempt rate': [.30,.32], 'Allowed three attempt rate': [.34,.40],
+            'Points per FGA': [1.,1.1], 'Allowed points per FGA': [1.2,1.],
         }, index=['BOS','DET'])
         self.frame = pd.DataFrame({
             'PLAYER_ID': [1,2,3], 'Team': ['BOS']*3, 'Opponent': ['DET']*3,
@@ -32,19 +32,21 @@ class TeamThreeTests(unittest.TestCase):
             ['g2','BOS','DET',12.,40.,110.,40.],
             ['g2','DET','BOS',10.,35.,90.,40.],
         ], columns=['GAME_ID','Team','Opponent','FG3M','FGM','PTS','MIN'])
+        logs['FGA'] = logs.FGM*2
+        logs['FG3A'] = logs.FG3M*2
         rates = historical_three_rates(logs,2)
-        self.assertAlmostEqual(rates.loc['BOS','Three rate'],18/65)
-        self.assertAlmostEqual(rates.loc['DET','Allowed three rate'],18/65)
+        self.assertAlmostEqual(rates.loc['BOS','Three attempt rate'],18/65)
+        self.assertAlmostEqual(rates.loc['DET','Allowed three attempt rate'],18/65)
         with self.assertRaises(ValueError): historical_three_rates(logs,82)
         with self.assertRaises(ValueError): historical_three_rates(logs.iloc[:-1])
         logs.loc[0,'FG3M'] = 21.
         with self.assertRaises(ValueError): historical_three_rates(logs)
 
-    def test_team_target_matches_field_goals_times_blended_three_share(self):
+    def test_team_attempt_target_matches_fga_times_blended_attempt_share(self):
         target,rate,fgm = three_target(self.rates,'BOS','DET',100.)
         self.assertAlmostEqual(rate,.35)
-        self.assertAlmostEqual(fgm,40.)
-        self.assertAlmostEqual(target,14.)
+        self.assertAlmostEqual(fgm,100.)
+        self.assertAlmostEqual(target,35.)
         with self.assertRaises(ValueError): three_target(self.rates,'BOS','BOS',100.)
         with self.assertRaises(ValueError): three_target(self.rates,'BOS','DET',float('nan'))
 
@@ -52,8 +54,9 @@ class TeamThreeTests(unittest.TestCase):
         result,summary,issues = self.calibrate()
         self.assertEqual(issues,[])
         # Equal baseline shares and modifiers .8/1.0 -> weighted mean .9.
-        self.assertAlmostEqual(result.FG3M.iloc[0]/7.,.8/.9)
-        self.assertAlmostEqual(result.FG3M.sum(),14.)
+        self.assertAlmostEqual(result.FG3M.iloc[0]/6.3,.8/.9)
+        self.assertAlmostEqual(result.FG3A.sum(),35.)
+        self.assertAlmostEqual(result.FG3M.sum(),12.6)
         self.assertAlmostEqual(result.FG3M.iloc[0]/result.FG3M.iloc[1],.8)
         common = self.frame.copy()
         common[['FG3M','FG3A']] *= .72
@@ -90,6 +93,17 @@ class TeamThreeTests(unittest.TestCase):
         self.assertGreater(second.FG3M.iloc[0],first.FG3M.iloc[0])
         self.assertLess(second.FG3M.iloc[1],first.FG3M.iloc[1])
         self.assertNotEqual(first['Team 3PM factor'].iloc[0],second['Team 3PM factor'].iloc[0])
+
+    def test_zero_make_shooter_keeps_attempts_and_does_not_overwrite_assist_fgm(self):
+        frame = self.frame.copy()
+        frame.loc[0,'FG3M'] = 0.
+        frame['Expected team FGM'] = 44.
+        result, summary, issues = self.calibrate(frame)
+        self.assertEqual(issues, [])
+        self.assertAlmostEqual(result.loc[0,'FG3A'],14.)
+        self.assertEqual(result.loc[0,'FG3M'],0.)
+        self.assertTrue(result['Expected team FGM'].eq(44.).all())
+        self.assertAlmostEqual(result.FG3M.sum(),summary.iloc[0]['Team 3PM target'])
 
     def test_incomplete_or_impossible_team_retains_original_threes(self):
         for field,value in [('FG3M',np.nan),('FG3A',np.nan),('FG3A',1.),
