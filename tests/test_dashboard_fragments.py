@@ -1,8 +1,10 @@
 """Exercise real Streamlit fragment reruns, with all external feeds stubbed."""
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 import unittest
 
+import numpy as np
 import pandas as pd
 from streamlit.testing.v1 import AppTest
 from streamlit.testing.v1.local_script_runner import LocalScriptRunner
@@ -189,6 +191,54 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         after = self.app.dataframe[0].value.set_index('Stat')
         self.assertTrue(any('34.9 minutes (Approved game minutes)' in c.value for c in self.app.caption))
         self.assertAlmostEqual(after.loc['PTS', 'Baseline'], before.loc['PTS', 'Baseline'] * 34.9 / 39.9)
+
+    def test_player_and_top_edges_share_stronger_steals_blocks_projections(self):
+        selected = self.app.selectbox(key='projection_player').value
+        now = datetime.now(timezone.utc)
+        start = (now+timedelta(days=1)).isoformat()
+        event = dict(id='test_game', home_team='Houston Rockets', away_team='Atlanta Hawks', commence_time=start)
+        self.mock('get_odds_api_key', return_value='test-only')
+        self.mock('sportsbook_events', return_value=[event])
+        self.mock('next_team_game', return_value={'Opponent':'HOU','GameTimeUTC':start})
+        self.schedule.return_value = pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
+            for side,opp,venue in [('ATL','HOU','away'),('HOU','ATL','home')]])
+        payload = {**event,'bookmakers':[{'key':'fanduel','markets':[
+            {'key':market,'last_update':now.isoformat(),'outcomes':[
+                dict(description=selected,name=side,point=.5,price=-110) for side in ['Over','Under']]}
+            for market in ['player_steals','player_blocks']]}]}
+        self.mock('sportsbook_props', return_value=payload)
+        self.mock('sportsbook_game_lines', return_value={**event,'bookmakers':[]})
+        self.app.session_state['edges_plays_only'] = False
+        self.app.run()
+        self.assert_no_errors()
+        frames = [d.value for d in self.app.dataframe]
+        preview = next(f for f in frames if 'Stat' in f and 'Baseline' in f and 'Book line (Over)' in f).set_index('Stat')
+        edges = next(f for f in frames if 'Rank' in f and 'Projected' in f).set_index('Stat')
+        self.assertEqual(set(edges.index), {'STL','BLK'})
+        from matchup_projections import assign_game_archetypes
+        logs = assign_game_archetypes(self.logs.return_value[0],self.roster)
+        cluster = self.roster.set_index('PLAYER_NAME').loc[selected,'DefCluster']
+        group = logs[logs.MIN.ge(5) & logs.DefCluster.eq(cluster)].sort_values(['GAME_DATE','GAME_ID','ESPN_PLAYER_ID'])
+        for stat in ['STL','BLK']:
+            rates = group[stat]/group.MIN*36
+            deviations = (rates[group.Opponent.eq('HOU')]/rates.mean()-1).dropna()
+            weights = 2 ** (-np.arange(len(deviations)-1,-1,-1)/10.)
+            lift = np.dot(deviations,weights)/(20+weights.sum())
+            expected = preview.loc[stat,'Baseline']*(1+lift)
+            self.assertAlmostEqual(preview.loc[stat,'Projected'],expected)
+            self.assertAlmostEqual(edges.loc[stat,'Projected'],expected)
+            self.assertEqual(edges.loc[stat,'Matchup rating'],preview.loc[stat,'Matchup rating'])
+
+    def test_disabling_matchups_keeps_steals_blocks_at_baseline(self):
+        # Keep this separate: AppTest 1.53 mis-serializes single-select pills
+        # on a second run when the mocked sportsbook game chooser is present.
+        self.fragment_id = self.fragment_for(self.app.selectbox(key='projection_player'))
+        self.app.toggle(key='opponent_adjustments').set_value(False).run()
+        self.assert_no_errors()
+        without = self.app.dataframe[0].value.set_index('Stat')
+        for stat in ['STL','BLK']:
+            self.assertEqual(without.loc[stat,'Projected'],without.loc[stat,'Baseline'])
 
 
 if __name__ == '__main__':

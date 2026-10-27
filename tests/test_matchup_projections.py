@@ -45,6 +45,43 @@ class MatchupTests(unittest.TestCase):
         current = {key:{**value,'PTS':20.} for key,value in effects.items()}
         self.assertEqual(apply_matchup(self.base,self.roster,self.teams,effects,current).iloc[0].PTS,12.)
 
+    def test_steals_blocks_shrink_without_changing_other_stat_weights(self):
+        # Two differently aged BOS observations test decay as well as the prior.
+        last = self.logs.iloc[[1]].copy()
+        last['GAME_ID'], last['GAME_DATE'], last['Opponent'] = '3', '2025-11-03', 'BOS'
+        for stat in OFF_STATS + DEF_STATS:
+            last[stat] = 50.
+        logs = pd.concat([self.logs, last], ignore_index=True)
+        effects = matchup_effects(logs)
+        for kind, stats in [('Off', OFF_STATS), ('Def', DEF_STATS)]:
+            for stat in stats:
+                with self.subTest(stat=stat):
+                    half = 15 if stat == 'AST' else 10 if stat in ['OREB','DREB','STL','BLK','PF'] else 999
+                    older_weight = 2 ** (-1/half)
+                    numerator = ((10/30-1)*older_weight + (50/30-1))*100
+                    prior = 20 if stat in ['STL','BLK'] else 3
+                    self.assertAlmostEqual(effects[kind,6 if kind=='Off' else 11,'BOS'][stat],
+                                           numerator/(prior+older_weight+1))
+
+    def test_steals_blocks_smoothing_applies_to_both_seasons_and_signs(self):
+        prior = matchup_effects(self.logs)
+        current_logs = self.logs.copy()
+        current_logs[['STL','BLK']] = [[30.,30.],[10.,10.]]
+        current = matchup_effects(current_logs)
+        for completed, expected in [(3,10*(1-.5/21)),(4,10*(1+.5/21))]:
+            with self.subTest(completed=completed):
+                teams = self.teams.assign(GAMES_PLAYED=completed)
+                row = apply_matchup(self.base,self.roster,teams,prior,current).iloc[0]
+                self.assertAlmostEqual(row.STL,expected)
+                self.assertAlmostEqual(row.BLK,expected)
+                self.assertEqual(row['Def samples'],1)  # The prior is not real coverage.
+
+    def test_missing_block_observations_are_not_neutral_prior_events(self):
+        self.logs.loc[0,'BLK'] = np.nan
+        effect = matchup_effects(self.logs)['Def',11,'BOS']
+        self.assertTrue(np.isnan(effect['BLK']))
+        self.assertAlmostEqual(effect['STL'],-50/21)
+
     def test_unclassified_side_keeps_baseline_and_known_side_keeps_effect(self):
         effects = matchup_effects(self.logs)
         roster = self.roster.assign(OffCluster=np.nan)

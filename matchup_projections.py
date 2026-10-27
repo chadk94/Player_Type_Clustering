@@ -52,9 +52,10 @@ def assign_game_archetypes(logs, roster):
 
 
 def matchup_effects(logs):
-    """Mean player-game per-36 deviations, shrunk toward neutral by three samples.
+    """Mean player-game per-36 deviations shrunk toward an average matchup.
 
-    Reproduces the prior app's half-life policy. Counts are player-games, not games.
+    STL/BLK use 20 neutral prior samples; all other stats retain three.
+    Decay is unchanged. Counts are player-games, not games.
     Missing or zero cluster baselines produce unavailable effects, never invented zeroes.
     """
     effects = {}
@@ -76,7 +77,8 @@ def matchup_effects(logs):
                         continue
                     half_life = 15 if stat == 'AST' else 10 if stat in ['OREB','DREB','STL','BLK','PF'] else 999
                     weights = 0.5 ** (np.arange(len(differences)-1,-1,-1)/half_life)
-                    result[stat] = float(np.dot(differences,weights)/(3+weights.sum()))
+                    neutral_samples = 20 if stat in ['STL','BLK'] else 3
+                    result[stat] = float(np.dot(differences,weights)/(neutral_samples+weights.sum()))
                 if kind == 'Off':
                     result['FG3M'] = result['FG3A']  # Preserve player's own 3P conversion rate.
                 effects[(kind,int(cluster),opponent)] = result

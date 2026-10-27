@@ -796,3 +796,28 @@ cache, regular-season filtering and game-retention rules still apply.
 responses, late games, and legitimate empty/completed slates. The dashboard
 fragment test verifies recovery without a league-wide reload or a false empty-slate
 message.
+
+## Stronger steals and blocks shrinkage (October 27, 2026)
+
+STL and BLK opponent effects now use **20 neutral prior appearances instead of 3**.
+The 10-appearance recency half-life and per-36 archetype baseline are unchanged:
+the weighted sum of percentage deviations is divided by `20 + sum(weights)`.
+All other categories retain their existing three-appearance prior and decay.
+The extra prior weight is not included in displayed matchup sample counts.
+
+The shared calculation feeds Player vs Opponent and Top Sportsbook Edges, including
+their matchup ratings, percentages and downloads. Best Matchups and Team Projections
+use the same effects for consistency. Both historical and current-season opponent
+samples use the new prior; the existing game-5 switch is unchanged. Turning off
+opponent adjustments still returns the individual baseline. Manual archetypes,
+approved minutes, player baseline rates, and team-level PTS/AST/3PM/REB adjustments
+are unchanged. The historical-effect cache includes the calculation source hash,
+so this release cannot reuse the old three-sample STL/BLK effects.
+
+The user approved the previously tested `shrink20` candidate. In the offline
+2025–26 study (5,716 eligible appearances / 335 March–April held-out games), it
+reduced Poisson deviance versus the former method by 1.76% for STL and 2.06% for
+BLK. These are conditional one-season results using observed minutes and fixed
+approved archetypes, not betting returns or a test of the current-season reset.
+Tests cover the exact weighting, positive/negative effects across both seasons,
+missing observations, and matching values/ratings in the two requested app pages.
