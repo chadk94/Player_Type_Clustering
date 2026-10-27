@@ -57,15 +57,16 @@ def bootstrap(minutes_path, output, window=OPENING_GAMES):
         result['AssignmentSource'] = result.AssignmentSource.fillna(pd.Series(np.select(
             [result.Cluster.notna(), ~result.ModelEligibleMinutes],
             ['auto_model', 'outside_minutes_cutoff'], default='missing_historical_profile'), index=result.index))
-        # A role is independent of the >10 MPG model-training cutoff. Fill positive-
-        # minute players from real named historical profiles, then human rules win.
+        # Roles do not depend on projected minutes or the model-training cutoff.
+        # Restore every real named historical profile, including zero-minute reserves;
+        # reviewed provisional roles and manual overrides then take precedence.
         reference = pd.read_csv(ROOT / 'references' / filename)
         features = json.loads((ROOT / 'clustering_features.json').read_text())[f'cluster_players_{side}']
         historical_roles, _ = assign_named_roles(reference, reference, features, side, rules,
                                                  apply_overrides, prior_mode=True)
         known = historical_roles[historical_roles.MIN.gt(0)].set_index('PLAYER_ID')
         fallback_roles = result.PLAYER_ID.map(known.Cluster)
-        fill = result.Cluster.isna() & result.PROJECTED_MIN.gt(0) & fallback_roles.notna()
+        fill = result.Cluster.isna() & fallback_roles.notna()
         result.loc[fill,'Cluster'] = fallback_roles[fill]
         result.loc[fill,'AssignmentSource'] = 'historical_named_role_low_minutes'
         result = apply_overrides(result, side, rules)

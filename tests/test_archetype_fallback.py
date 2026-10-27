@@ -108,10 +108,14 @@ class ClevelandCoverageRegression(unittest.TestCase):
         before = build_projections(cle,history,teams,pd.DataFrame(),fallback=fallback,approved_minutes=minutes)
         after = build_projections(cle,history,teams,pd.DataFrame(),fallback=fallback,approved_minutes=minutes,
                                   archetype_priors=build_archetype_priors(roster,history))
-        mask = before.Player.ne('Mario Hezonja')
+        # Newly classified zero-minute reserves can now receive an estimate too.
+        # Existing individual profiles must remain untouched, and Hezonja must
+        # still be the only active estimate in this approved rotation.
+        mask = before.Player.ne('Mario Hezonja') & before.PTS.notna()
         pd.testing.assert_frame_equal(before[mask], after[mask])
         self.assertEqual(after['Projected minutes'].sum(), 240.)
-        self.assertEqual(after.loc[after['Estimated stat profile'], 'Player'].tolist(), ['Mario Hezonja'])
+        active_estimate = after['Estimated stat profile'] & after['Projected minutes'].gt(0)
+        self.assertEqual(after.loc[active_estimate, 'Player'].tolist(), ['Mario Hezonja'])
         effects = matchup_effects(assign_game_archetypes(logs, roster))
         for opponent in ['PHI', 'BOS', 'NYK', 'BKN']:
             matchup = apply_matchup(after,roster,teams,effects,{},opponent)

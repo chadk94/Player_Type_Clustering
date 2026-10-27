@@ -941,3 +941,42 @@ and reasons are in `data/audit/reserve_roles_approved_2026-10-27.csv`.
 The previous 214 player-side overrides remain unchanged. These ten new overrides
 survive zero minutes, stale exports and future bootstrap runs; no saved minutes
 or statistical baselines were changed.
+
+### Complete roster coverage, including zero-minute reserves
+
+The October 27 league audit filled 343 missing player-side roles across 176
+players, all with zero saved workbook minutes. All 541 players in the model now
+have named offensive and defensive archetypes. All existing assigned sides and
+all 224 player-side manual overrides remain unchanged; the manual override file
+is byte-for-byte preserved. Saved team affiliations and minutes are unchanged.
+
+`archetype_league_reviews.csv` records the assignments, reasons, evidence sources,
+confidence, prior labels and positions. Reviews use 85 archived feature profiles,
+28 prior-season box-score profiles, 12 official NBA draft profiles and two official
+college profiles. The remaining 49 use conservative position defaults. Overall,
+114 players remain provisional because their NBA role evidence is limited; these
+are explicit judgments, not tracking observations or a fresh league-wide fit.
+Spot-Up Role Player remains the model's complementary offensive bucket, including
+cutters; default defense is Non POA Guard, Non-POA Wing, or Turtles. Documented
+playing-style evidence can supersede a coarse roster G/F/C designation.
+
+The bootstrap no longer requires positive projected minutes to recover a real
+historical named role. Explicit league reviews also repair stale exports at the
+live-app boundary and survive future regeneration. They sit below manual
+overrides; no previous review or override was replaced. The >10-minute training
+cutoff remains separate. The matchup cache includes the new review file's hash.
+
+`data/audit/league_roster_before_2026-10-27.csv` and
+`data/audit/league_coverage_manifest.json` make the preservation checks reproducible.
+Tests cover all 541 roles, every previously assigned side, manual precedence,
+zero-minute regeneration, the historical fallback without a review, and unchanged
+reference observations. Historical profile fields remain blank where data is
+absent; assignments do not fabricate box scores or tracking statistics.
+
+The frozen October 27 projection check found no changes to minutes or numerical
+baseline projections. Assigning roles does enable existing fallback behavior:
+27 zero-minute players gain a labeled archetype-average profile; 16 zero-minute
+players with real prior-season stats return from RotoWire to that historical
+baseline. No current-season actual baseline reverted. Once these players receive
+minutes, their assigned archetypes affect matchup adjustments, and newly labeled
+historical appearances can contribute to opponents' archetype samples.

@@ -63,6 +63,8 @@ def build_audit():
             'manual_override_file_sha256':hashlib.sha256((ROOT/'archetype_overrides.json').read_bytes()).hexdigest(),
             'additional_reference_reviews':len(pd.read_csv(ROOT/'archetype_reference_reviews.csv')),
             'low_minute_reviews':len(pd.read_csv(ROOT/'archetype_rotation_reviews.csv')),
+            'league_coverage_reviews':len(pd.read_csv(ROOT/'archetype_league_reviews.csv')),
+            'league_review_file_sha256':hashlib.sha256((ROOT/'archetype_league_reviews.csv').read_bytes()).hexdigest(),
             'reference_review_file_sha256':hashlib.sha256((ROOT/'archetype_reference_reviews.csv').read_bytes()).hexdigest(),
             'review_file_sha256':hashlib.sha256((ROOT/'archetype_reviews.csv').read_bytes()).hexdigest(),
             'role_policy':'User manual override > analyst review > fixed named historical role/centroid',
@@ -71,7 +73,7 @@ def build_audit():
     meta['additional_players_with_changed_roles'] = sum(not row['In original 100'] for row in changes)
     meta['unchanged_workbook_minutes'] = roster.PROJECTED_MIN.equals(original.PROJECTED_MIN)
     meta['named_eligible_players'] = int((roster.ModelEligibleMinutes & roster.OffArchetype.notna() & roster.DefArchetype.notna()).sum())
-    meta['role_policy_version'] = hashlib.sha256(b''.join((ROOT/p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv','archetype_overrides.json','archetype_model.py'])).hexdigest()
+    meta['role_policy_version'] = hashlib.sha256(b''.join((ROOT/p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv','archetype_league_reviews.csv','archetype_overrides.json','archetype_model.py'])).hexdigest()
     (destination/'review_manifest.json').write_text(json.dumps(meta,indent=2)+'\n')
     return report
 

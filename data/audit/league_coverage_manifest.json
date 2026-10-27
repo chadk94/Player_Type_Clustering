@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-27",
+  "roster_players": 541,
+  "newly_completed_players": 176,
+  "new_offensive_roles": 176,
+  "new_defensive_roles": 167,
+  "missing_roles_after": 0,
+  "existing_assignments_preserved": true,
+  "saved_minutes_preserved": true,
+  "manual_override_file_sha256": "516b20a38e1445ba8fbde8d7fc2a04f63cb3dbbeba8f92fbabef3615843f40db",
+  "reference_sha256": {
+    "player_clusters_detailed.csv": "9c443a322cf01cc9758b5c3c528d1ad144951b88ddb53f41ea3a7d1a47b05282",
+    "def_player_clusters_detailed.csv": "032b2c9718e451bb146c6d10523af73ca646cd80314247b24c4c538381d9f2ea"
+  },
+  "review_source_counts": {
+    "Archived feature profile": 85,
+    "Position default": 49,
+    "Prior-season box scores": 28,
+    "Official draft profile": 12,
+    "Official college profile": 2
+  },
+  "confidence_counts": {
+    "Provisional": 114,
+    "Historical review": 62
+  },
+  "tests_passed": 162,
+  "frozen_snapshot": "2026-10-27T18:21:08+00:00",
+  "frozen_minutes_and_numeric_baseline_projections_unchanged": true,
+  "current_actual_baselines_unchanged": true,
+  "new_zero_minute_archetype_estimates": 27,
+  "zero_minute_profiles_returning_to_real_prior_stats": 16
+}

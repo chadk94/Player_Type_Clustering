@@ -414,7 +414,7 @@ def render_live_dashboard(ui, roster):
             game_projection_cache[key] = pd.concat(
                 [projections[~projections.PLAYER_ID.isin(minutes)], changed], ignore_index=True)
         return game_projection_cache[key]
-    role_policy_version = hashlib.sha256(b''.join((ROOT / p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv','archetype_overrides.json','archetype_model.py','matchup_projections.py','matchup_data.py'])).hexdigest()
+    role_policy_version = hashlib.sha256(b''.join((ROOT / p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv','archetype_league_reviews.csv','archetype_overrides.json','archetype_model.py','matchup_projections.py','matchup_data.py'])).hexdigest()
     prior_effects = prior_matchup_effects(roster, role_policy_version)
     current_effects = {}
     if not teams.empty and teams.GAMES_PLAYED.ge(4).any():

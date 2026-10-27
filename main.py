@@ -1559,7 +1559,7 @@ def main():
     if audit_path.exists() and roster_path.exists():
         audit = json.loads(audit_path.read_text())
         if audit.get('season') == SEASON:
-    # October 27 approvals include the five Denver reserves with zero workbook minutes.
+            # October 27 coverage includes every saved roster player, including zero-minute reserves.
             from projection_dashboard import render_live_dashboard
             render_live_dashboard(st, pd.read_csv(roster_path))
             return
