@@ -875,3 +875,44 @@ that snapshot. This is a data-coverage check, not an accuracy or betting test.
 Tests verify first-appearance priority, genuine zero stats, category fallback,
 ambiguous/invalid samples, preserved minutes and manual roles, unchanged veteran
 blending, and consistent rookie values across individual, edge and team views.
+
+## Approved early-season archetypes (October 27, 2026)
+
+The user accepted all 19 provisional players from the current-stat review, with
+these corrections: Nate Ament and Carter Bryant → Spot-Up Role Player on offense;
+Bryant and Alpha Diallo → POA Defender; Jonathan Mogbo → Big Wing Defender;
+Jamison Battle → Non-POA Wing; Christian Anderson → Non POA Guard;
+Trevon Brazile → High Stock + D. Other proposed assignments for those 19 stay as
+reviewed. All 42 players in that review now have both roles.
+
+The remaining 23 players had fewer than 20 observed minutes. Their user-approved
+offensive default is Spot-Up Role Player, except Baba Miller, Koa Peat and Zuby
+Ejiofor → Athletic Roll Man; Hannes Steinbach, Tarris Reed Jr. and Nick Martinelli
+→ Traditional Center; Chris Cenac Jr. → Stretch Big; Ebuka Okorie → Primary Ball
+Handler. "Role player" and "Traditional Big" use the existing model labels
+Spot-Up Role Player and Traditional Center.
+
+For those 23, defensive defaults follow the verified ESPN roster positions shown
+in the review: G → Non POA Guard; F → Non-POA Wing; C → Turtles. These are coarse
+roster positions, independent of offensive archetype. Thus Steinbach, Cenac and
+Martinelli (listed F) receive Non-POA Wing; Reed (C) receives Turtles. Jett Howard
+and Kobe Brown are listed G and receive Non POA Guard. These position-based
+defaults are user-directed placeholders, not confident inferences from tiny
+samples. The 19 provisional proposals used the October 27 actual regular-season
+snapshot (18:21 UTC) and reduced box-score/size features; no tracking, matchup or
+mobility data was fabricated.
+
+`data/audit/rookie_roles_approved_2026-10-27.csv` records all 42 approvals, observed
+minutes, roster positions, old roles, reasons and prior override status. They are
+saved as manual overrides, taking precedence over later clustering or reviews.
+All 131 previous player-side manual overrides remain intact, including Pickett's
+existing defensive role; 83 new player-side overrides were added. Non-target
+roles, saved minutes and historical reference data are unchanged.
+
+`data/current_season_baselines.json` preserves the previously approved 63-player
+actual-stat cohort for 2026–27. Assigning a formerly missing role cannot silently
+restore a historical or estimated baseline. Verified positive current-season
+appearances are still required, and missing categories retain labeled fallback.
+Other historical players retain their existing transition rules. Tests check
+the explicit assignments, existing-override preservation, stale-export repair,
+future bootstrap regeneration and actual-rate priority after role assignment.

@@ -1,0 +1,43 @@
+PLAYER_ID,PLAYER_NAME,Team,Group,Position,Games,ActualMinutes,OffWasManual,OffPrevious,OffCluster,OffArchetype,OffReason,DefWasManual,DefPrevious,DefCluster,DefArchetype,DefReason
+1631204,Marcus Sasser,DAL,Provisional,G,4,85.0,False,,6,Secondary Playmaker,User accepted provisional proposal,False,,0,Non POA Guard,User accepted provisional proposal
+1627777,Georges Niang,GSW,Provisional,F,4,75.0,False,,0,Catch & Shoot Wing,User accepted provisional proposal,False,,12,Non-POA Wing,User accepted provisional proposal
+1629637,Jaxson Hayes,UTA,Provisional,C,3,70.999998,False,,1,Athletic Roll Man,User accepted provisional proposal,False,,1,Rim Protector,User accepted provisional proposal
+1642350,Trevon Brazile,DEN,Provisional,F,3,63.0,False,,9,Stretch Big,User accepted provisional proposal,False,,8,High Stock + D,User correction
+1643624,Bryce Hopkins,DEN,Provisional,F,3,52.000002,False,,4,Spot-Up Role Player,User accepted provisional proposal,False,,12,Non-POA Wing,User accepted provisional proposal
+1631321,Sidy Cissoko,POR,Provisional,G,2,51.0,False,,4,Spot-Up Role Player,User accepted provisional proposal,False,,12,Non-POA Wing,User accepted provisional proposal
+1643567,Emanuel Sharp,SAC,Provisional,G,3,45.999999,False,,4,Spot-Up Role Player,User accepted provisional proposal,False,,0,Non POA Guard,User accepted provisional proposal
+1643515,Christian Anderson,CHA,Provisional,G,4,43.0,False,,6,Secondary Playmaker,User accepted provisional proposal,False,,0,Non POA Guard,User correction
+1631288,Jamal Cain,ORL,Provisional,F,3,39.999999,False,,4,Spot-Up Role Player,User accepted provisional proposal,False,,12,Non-POA Wing,User accepted provisional proposal
+1631172,Ousmane Dieng,MIL,Provisional,F,3,39.999999,False,,4,Spot-Up Role Player,User accepted provisional proposal,False,,12,Non-POA Wing,User accepted provisional proposal
+1642892,Bennett Stirtz,OKC,Provisional,G,4,38.0,False,,4,Spot-Up Role Player,User accepted provisional proposal,False,,0,Non POA Guard,User accepted provisional proposal
+1642419,Jamison Battle,TOR,Provisional,F,3,36.0,False,,0,Catch & Shoot Wing,User accepted provisional proposal,False,,12,Non-POA Wing,User correction
+1628964,Mo Bamba,UTA,Provisional,C,1,29.0,False,,1,Athletic Roll Man,User accepted provisional proposal,False,,1,Rim Protector,User accepted provisional proposal
+1641771,Jalen Slawson,IND,Provisional,F,3,27.0,False,,4,Spot-Up Role Player,User accepted provisional proposal,False,,8,High Stock + D,User accepted provisional proposal
+1643018,LJ Cryer,GSW,Provisional,G,3,26.000001,False,,2,Primary Ball Handler,User accepted provisional proposal,False,,0,Non POA Guard,User accepted provisional proposal
+1642367,Jonathan Mogbo,SAC,Provisional,F,2,26.0,False,,4,Spot-Up Role Player,User accepted provisional proposal,False,,5,Big Wing Defender,User correction
+1643417,Nate Ament,MIL,Provisional,F,2,25.0,False,,4,Spot-Up Role Player,User correction,False,,5,Big Wing Defender,User accepted provisional proposal
+1643813,Alpha Diallo,DEN,Provisional,F,1,22.0,False,,4,Spot-Up Role Player,User accepted provisional proposal,False,,11,POA Defender,User correction
+1642868,Carter Bryant,SAS,Provisional,F,3,21.0,False,,4,Spot-Up Role Player,User correction,False,,11,POA Defender,User correction
+1642502,Malevy Leons,GSW,Low sample,F,3,16.0000005,False,,4,Spot-Up Role Player,User low-sample default,False,,12,Non-POA Wing,User position default; verified roster position F
+1642853,Rasheer Fleming,PHX,Low sample,F,2,15.0,False,,4,Spot-Up Role Player,User low-sample default,False,,12,Non-POA Wing,User position default; verified roster position F
+1642394,Baba Miller,LAC,Low sample,F,2,12.0,False,,1,Athletic Roll Man,User offensive exception,False,,12,Non-POA Wing,User position default; verified roster position F
+1643419,Hannes Steinbach,CHA,Low sample,F,1,12.0,False,,8,Traditional Center,User offensive exception,False,,12,Non-POA Wing,User position default; verified roster position F
+1643520,Koa Peat,PHX,Low sample,F,2,10.0,False,,1,Athletic Roll Man,User offensive exception,False,,12,Non-POA Wing,User position default; verified roster position F
+1643544,Zuby Ejiofor,ATL,Low sample,F,2,10.0,False,,1,Athletic Roll Man,User offensive exception,False,,12,Non-POA Wing,User position default; verified roster position F
+1643558,Jaden Bradley,TOR,Low sample,G,3,9.9999999,False,,4,Spot-Up Role Player,User low-sample default,False,,0,Non POA Guard,User position default; verified roster position G
+1642912,Isaiah Evans,MIN,Low sample,F,3,8.0000001,False,,4,Spot-Up Role Player,User low-sample default,False,,12,Non-POA Wing,User position default; verified roster position F
+1643542,Tarris Reed Jr.,SAS,Low sample,C,2,8.0,False,,8,Traditional Center,User offensive exception,False,,7,Turtles,User position default; verified roster position C
+1642066,Myron Gardner,MIA,Low sample,F,2,6.0,False,,4,Spot-Up Role Player,User low-sample default,False,,12,Non-POA Wing,User position default; verified roster position F
+1642284,Alex Karaban,SAC,Low sample,F,1,5.0,False,,4,Spot-Up Role Player,User low-sample default,False,,12,Non-POA Wing,User position default; verified roster position F
+1643416,Chris Cenac Jr.,BOS,Low sample,F,1,5.0,False,,9,Stretch Big,User offensive exception,False,,12,Non-POA Wing,User position default; verified roster position F
+1630256,Jae'Sean Tate,HOU,Low sample,F,3,4.0000002,False,,4,Spot-Up Role Player,User low-sample default,False,,12,Non-POA Wing,User position default; verified roster position F
+1643551,Ja'Kobi Gillespie,SAS,Low sample,G,2,4.0,False,,4,Spot-Up Role Player,User low-sample default,False,,0,Non POA Guard,User position default; verified roster position G
+1641724,Jett Howard,DAL,Low sample,G,1,4.0,False,,4,Spot-Up Role Player,User low-sample default,False,,0,Non POA Guard,User position default; verified roster position G
+1643538,Joshua Jefferson,BKN,Low sample,F,1,4.0,False,,4,Spot-Up Role Player,User low-sample default,False,,12,Non-POA Wing,User position default; verified roster position F
+1643536,Ebuka Okorie,DET,Low sample,G,1,2.0,False,,2,Primary Ball Handler,User offensive exception,False,,0,Non POA Guard,User position default; verified roster position G
+1629618,Jalen Pickett,LAC,Low sample,G,1,2.0,False,,4,Spot-Up Role Player,User low-sample default,True,Non POA Guard,0,Non POA Guard,User position default; verified roster position G
+1641738,Kobe Brown,IND,Low sample,G,2,2.0,False,,4,Spot-Up Role Player,User low-sample default,False,,0,Non POA Guard,User position default; verified roster position G
+1643568,Nick Martinelli,LAC,Low sample,F,1,2.0,False,,8,Traditional Center,User offensive exception,False,,12,Non-POA Wing,User position default; verified roster position F
+1630264,Anthony Gill,WAS,Low sample,F,1,1.0,False,,4,Spot-Up Role Player,User low-sample default,False,,12,Non-POA Wing,User position default; verified roster position F
+1642357,David Jones Garcia,SAS,Low sample,F,1,1.0,False,,4,Spot-Up Role Player,User low-sample default,False,,12,Non-POA Wing,User position default; verified roster position F
+1643576,Maliq Brown,SAS,Low sample,F,1,1.0,False,,4,Spot-Up Role Player,User low-sample default,False,,12,Non-POA Wing,User position default; verified roster position F

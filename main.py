@@ -1559,7 +1559,7 @@ def main():
     if audit_path.exists() and roster_path.exists():
         audit = json.loads(audit_path.read_text())
         if audit.get('season') == SEASON:
-            # Actual rookie stat rates replace synthetic baselines across tabs.
+    # Approved October 27 roles and actual rookie rates are shared across tabs.
             from projection_dashboard import render_live_dashboard
             render_live_dashboard(st, pd.read_csv(roster_path))
             return

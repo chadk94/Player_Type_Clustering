@@ -1,6 +1,8 @@
 """Player projections from validated regular-season summaries, independent of odds feeds."""
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+import json
+from pathlib import Path
 import re
 import unicodedata
 
@@ -167,6 +169,8 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
     profiles = history.set_index('PLAYER_ID')
     matches = match_player_stats(roster, current)
     fallback_profiles = fallback.set_index('PLAYER_ID') if fallback is not None and not fallback.empty else pd.DataFrame()
+    actual_policy = json.loads((Path(__file__).parent / 'data/current_season_baselines.json').read_text())
+    actual_ids = {int(key) for key in actual_policy['players']}
     output = []
     for player in roster.itertuples():
         played = counts.get(player.TEAM_ID)
@@ -198,7 +202,10 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
                        and observed.MIN > 0 and observed.GP > 0 and played is not None and played > 0)
         # Forecasts are gap-fillers, not historical evidence. Replace them with
         # actual per-minute rates from the first verified season appearance.
-        actual_first = observed_ok and (not prior_ok or fallback_used)
+        # Assigning a role must not undo an already approved actual-stat baseline.
+        approved_actual = (getattr(player, 'SEASON_ID', None) == actual_policy['season_id']
+                           and player.PLAYER_ID in actual_ids)
+        actual_first = observed_ok and (approved_actual or not prior_ok or fallback_used)
         current_ok = observed_ok and (actual_first or played >= stats_start_game - 1)
         archetype_used = False
         if not prior_ok and player.PLAYER_ID in archetype_priors:
@@ -246,7 +253,8 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
             if stat in CORE_STATS and pd.isna(row[stat]):
                 missing.append(stat)
         if actual_first and estimated_stats:
-            baseline_source += ' + ' + ('RotoWire fallback' if fallback_used else 'archetype fallback')
+            baseline_source += ' + ' + ('RotoWire fallback' if fallback_used else
+                                       'archetype fallback' if archetype_used else 'historical fallback')
         row['Stat baseline'] = baseline_source
         row['Estimate fallback stats'] = ', '.join(estimated_stats)
         archetype_used = archetype_used and (not actual_first or bool(estimated_stats))

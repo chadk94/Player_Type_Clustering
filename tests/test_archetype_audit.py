@@ -30,6 +30,14 @@ class ArchetypeAuditTests(unittest.TestCase):
     def test_ausar_and_jrue_changes_preserve_all_existing_manual_rules(self):
         import hashlib
         rules = load_rules()
+        # Later approvals may add overrides; the original rules must still match
+        # the historical digest after removing only those newly added entries.
+        later = pd.read_csv(ROOT/'data/audit/rookie_roles_approved_2026-10-27.csv')
+        for row in later.itertuples():
+            for side in ['Off','Def']:
+                if not getattr(row,side+'WasManual'):
+                    self.assertEqual(rules[side.upper()+'_CLUSTER_OVERRIDES'].pop(row.PLAYER_NAME),
+                                     getattr(row,side+'Cluster'))
         for name in ['Ausar Thompson','Jrue Holiday']:
             self.assertEqual(rules['OFF_CLUSTER_OVERRIDES'][name],6)
             for filename in ['preseason_archetypes.csv','player_clusters_detailed.csv']:
