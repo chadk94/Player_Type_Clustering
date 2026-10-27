@@ -776,3 +776,23 @@ tabs, manual minutes still recalculate and reset, Refresh rebuilds all tabs, and
 replacement approved import changes the game projections instead of reusing old
 minutes. The test runner supplies fragment IDs because Streamlit 1.53 AppTest
 normally sends full-script reruns.
+
+## Schedule recovery (October 27, 2026)
+
+Daily ESPN scoreboard requests retry once after a network or invalid-response
+failure. Responses must contain a valid event list, the requested season and
+Eastern schedule date, and complete regular-season matchups. Late games after
+midnight UTC retain their correct US schedule date. Verified empty slates remain
+empty; failed requests no longer display the misleading "No upcoming games"
+message.
+
+Today's Best Matchups, Team Projections and Top Sportsbook Edges each provide a
+**Retry schedule** button on failure and **Reload schedule** after success. These
+clear only the selected date's schedule cache and rerun the current tab, preserving
+the loaded player data and approved minutes. The existing five-minute schedule
+cache, regular-season filtering and game-retention rules still apply.
+
+`tests/test_schedule_feed.py` checks bounded retries, malformed and mismatched
+responses, late games, and legitimate empty/completed slates. The dashboard
+fragment test verifies recovery without a league-wide reload or a false empty-slate
+message.

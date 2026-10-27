@@ -12,6 +12,7 @@ from live_projections import STAT_NAMES
 from season_pipeline import ROOT
 from approved_minutes import digest, validate_bundle
 from import_minutes import TEAM_IDS
+from schedule_feed import ScheduleUnavailable
 
 
 class DashboardFragmentTests(unittest.TestCase):
@@ -128,6 +129,26 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.live.clear.assert_called_once()
         self.logs.clear.assert_called_once()
         self.assertEqual(len(self.app.tabs), 5)
+
+    def test_schedule_failure_has_retry_not_a_false_empty_slate(self):
+        self.fragment_id = self.fragment_for(self.app.date_input(key='matchup_date'))
+        self.schedule.side_effect = ScheduleUnavailable('temporary feed failure')
+        counts = [m.call_count for m in (self.live, self.logs, self.imported, self.build)]
+        self.app.run()
+        self.assert_no_errors()
+        self.assertTrue(any('temporarily unavailable' in w.value for w in self.app.warning))
+        self.assertFalse(any('No upcoming' in i.value for i in self.app.info))
+        retry = self.app.button(key='matchup_schedule_reload')
+        self.assertEqual(retry.label, 'Retry schedule')
+        self.schedule.side_effect = None
+        self.schedule.return_value = pd.DataFrame()
+        retry.click().run()
+        self.assert_no_errors()
+        self.assertTrue(any('No upcoming' in i.value for i in self.app.info))
+        self.assertFalse(self.app.warning)
+        self.assertEqual(self.app.button(key='matchup_schedule_reload').label, 'Reload schedule')
+        self.schedule.clear.assert_called_once_with(dashboard.SEASON, self.app.date_input(key='matchup_date').value)
+        self.assertEqual([m.call_count for m in (self.live, self.logs, self.imported, self.build)], counts)
 
     def test_new_approved_import_replaces_game_cache_for_all_tabs(self):
         selected = self.app.selectbox(key='projection_player').value

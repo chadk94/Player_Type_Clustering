@@ -9,7 +9,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from live_projections import (ESPN, build_projections, fetch_json, load_live_state, parse_schedule, next_regular_season_game, round_projected_minutes)
+from live_projections import (ESPN, build_projections, fetch_json, load_live_state, next_regular_season_game, round_projected_minutes)
 from archetype_fallback import build_archetype_priors
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import load_game_logs
@@ -26,6 +26,7 @@ from projection_presentation import over_line_label, matchup_rating
 from opponent_selection import render_opponent_selector
 from approved_minutes import render_import, for_matchup, projection_gaps, game_minutes_caption
 from import_minutes import TEAM_IDS
+from schedule_feed import load_daily_schedule
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
                               player_quotes, compare_with_book, comparison_style, TEAM_NAMES)
 
@@ -37,8 +38,20 @@ def live_state(season):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def today_schedule(season, date):
-    payload = fetch_json(f'{ESPN}/site/v2/sports/basketball/nba/scoreboard?dates={date:%Y%m%d}')
-    return parse_schedule(payload, int(season[:4]) + 1)
+    return load_daily_schedule(season, date)
+
+
+def schedule_for_view(ui, date, key):
+    """Retry just this dated slate; never label a failed request as no games."""
+    try:
+        schedule = today_schedule(SEASON, date)
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        ui.warning(f'The schedule for {date:%b %d, %Y} is temporarily unavailable. Retry the schedule below.')
+        ui.button('Retry schedule', key=key, on_click=today_schedule.clear, args=(SEASON, date))
+        return None
+    ui.button('Reload schedule', key=key, on_click=today_schedule.clear, args=(SEASON, date),
+              help='Refresh only this date’s schedule, without reloading player stats or your minutes.')
+    return schedule
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -195,8 +208,10 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
         date = ui.date_input('Team projection date', value=datetime.now(ZoneInfo('America/Denver')).date(), key='team_projection_date')
     with book_col:
         book_name = ui.selectbox('Sportsbook for team projections', list(BOOKS), key='team_projection_book')
+    schedule = schedule_for_view(ui, date, 'team_schedule_reload')
+    if schedule is None:
+        return
     try:
-        schedule = today_schedule(SEASON, date)
         games = upcoming_team_games(schedule, now=now)
     except (requests.RequestException, ValueError, KeyError, TypeError):
         ui.warning('The game schedule could not be loaded. Use Refresh live data to retry.')
@@ -547,11 +562,9 @@ def render_live_dashboard(ui, roster):
         date_col, rank_col, sample_col = ui.columns(3)
         with date_col:
             date = ui.date_input('Slate date',value=datetime.now(ZoneInfo('America/Denver')).date(),key='matchup_date')
-        try:
-            schedule = today_schedule(SEASON,date)
-        except (requests.RequestException, ValueError, KeyError, TypeError):
-            schedule = pd.DataFrame()
-            ui.warning('The selected day’s schedule could not be loaded.')
+        schedule = schedule_for_view(ui, date, 'matchup_schedule_reload')
+        if schedule is None:
+            return
         if schedule.empty:
             ui.info(f'No upcoming regular-season games were found for {date:%b %d, %Y}. Choose another date to preview its matchups.')
         else:
@@ -627,7 +640,9 @@ def render_live_dashboard(ui, roster):
                     if ui.checkbox(stat,value=True,key=f'edges_stat_{stat}'):
                         selected_stats.append(stat)
             plays_only = ui.checkbox('Only show plays above 5% edge',value=True,key='edges_plays_only')
-            edge_schedule = today_schedule(SEASON,edge_date)
+            edge_schedule = schedule_for_view(ui, edge_date, 'edges_schedule_reload')
+            if edge_schedule is None:
+                return
             games = scheduled_book_games(edge_events,edge_schedule,now=now)
             if not games:
                 ui.info('No upcoming regular-season games with a verified sportsbook event were found for this date. Choose another date. Lines are never substituted from a different game.')
