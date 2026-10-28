@@ -707,8 +707,13 @@ Use **Import Approved Minutes** near the top of the live dashboard. Upload the
 JSON produced by the NBA model’s **Download Approved Minutes** button after
 explicitly approving both teams in every game on that day. The validated file is
 saved in this browser's local storage and restored after refresh, reopening the
-app, or an app reboot. Another browser/profile needs its own import; already-open
-tabs pick up the saved file on their next full refresh. The file is never committed,
+app, or an app reboot. Another browser/profile needs its own import. Already-open
+tabs synchronize on browser storage changes and recheck when focused or made
+visible. Only a changed file triggers a rerun; there is no refresh timer. A tab
+cannot replay its old acknowledged upload over a newer saved rotation. External
+updates and clears are validated and invalidate the same player-slider and team
+snapshot caches as a new upload. Team Projections displays saved-rotation coverage
+for the entire selected slate and lists every uncovered game. The file is never committed,
 publicly shared, or written over the baseline workbook. No new credentials or
 shared data store are required. A visible banner names the active date and source;
 the team and sportsbook pages also show each game's minute sources and totals.

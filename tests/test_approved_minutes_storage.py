@@ -94,3 +94,45 @@ class BrowserMinutesTests(unittest.TestCase):
         self.assertIsNone(state['bundle'])
         self.assertIsNone(state['error'])
         self.assertFalse(state['pending'])
+
+    def test_another_tab_replaces_clears_and_validates_without_resaving_old_upload(self):
+        state = new_state(self.season)
+        old_content = json.dumps(self.bundle).encode()
+        update_upload(state, old_content, self.roster, self.season)
+        accept_reply(state, reply(state), self.roster, self.season)
+        changed = deepcopy(self.bundle)
+        changed['approvals'][0]['players'][0]['minutes'] = 30.
+        changed['approvals'][0]['players'][1]['minutes'] = 48.
+        changed['approvals'][0]['players'][5]['minutes'] = 42.
+        reseal(changed)
+        event = reply(state, source='storage', revision=1, bundle=json.dumps(changed))
+        accept_reply(state,event,self.roster,self.season)
+        self.assertEqual(state['bundle'],changed)
+        update_upload(state,old_content,self.roster,self.season)
+        self.assertEqual(state['bundle'],changed)
+        self.assertFalse(state['pending'])
+        corrupt = deepcopy(changed)
+        corrupt['approvals'][0]['players'][0]['minutes'] = 1.
+        accept_reply(state,reply(state,source='storage',revision=2,bundle=corrupt),self.roster,self.season)
+        self.assertIsNone(state['bundle'])
+        self.assertIn('checksum',state['error'])
+        accept_reply(state,reply(state,source='storage',revision=3,bundle=changed),self.roster,self.season)
+        self.assertEqual(state['bundle'],changed)
+        self.assertIsNone(state['error'])
+        accept_reply(state,reply(state,source='storage',revision=4,bundle=None),self.roster,self.season)
+        self.assertIsNone(state['bundle'])
+        self.assertFalse(state['pending'])
+        accept_reply(state,reply(state,source='storage',revision=4,bundle=changed),self.roster,self.season)
+        self.assertEqual(state['bundle'],changed)
+
+    def test_pending_upload_ignores_external_event_and_external_invalid_blocks_old_minutes(self):
+        state = new_state(self.season)
+        update_upload(state,json.dumps(self.bundle).encode(),self.roster,self.season)
+        accept_reply(state,reply(state,source='storage',revision=1,bundle=None),self.roster,self.season)
+        self.assertEqual(state['bundle'],self.bundle)
+        self.assertTrue(state['pending'])
+        accept_reply(state,reply(state),self.roster,self.season)
+        invalid=reply(state,source='storage',revision=2); invalid['status']='invalid'
+        accept_reply(state,invalid,self.roster,self.season)
+        self.assertIsNone(state['bundle'])
+        self.assertIsNotNone(state['error'])

@@ -239,6 +239,13 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
     if not games:
         ui.info('No upcoming games or games within one hour of scheduled tip-off were found for this date. Choose another date.')
         return
+    if approved_bundle:
+        uncovered = [f"{g['Away']} @ {g['Home']}" for g in games
+                     if unmatched_minutes_message(approved_bundle, g['Away'], g['Home'], g['GameTimeUTC'])]
+        ui.caption(f'Saved rotations cover {len(games)-len(uncovered)} of {len(games)} games on this slate. Open tabs sync when the saved file changes.')
+        if uncovered:
+            ui.warning('Games without an approved rotation in this file: '+', '.join(uncovered)+
+                       '. Import the full slate to use your saved minutes for these games.')
     by_key = {game['key']: game for game in games}
     if st.session_state.get('team_projection_game') not in by_key:
         st.session_state['team_projection_game'] = games[0]['key']

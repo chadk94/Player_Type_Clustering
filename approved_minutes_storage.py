@@ -43,15 +43,28 @@ def update_upload(state, content, roster, season, clear=False):
 def accept_reply(state, reply, roster, season):
     if not isinstance(reply, dict) or reply.get('request') != state['request']['request']:
         return
-    if not state['pending']:
+    external = reply.get('source') == 'storage'
+    if external:
+        # A component remount may restart its counter. Include the value so a
+        # distinct saved file can never be mistaken for an earlier reply.
+        value_hash = sha256(json.dumps(reply.get('bundle'), sort_keys=True).encode()).hexdigest()
+        marker = (reply['request'], reply.get('revision'), reply.get('status'), value_hash)
+        if state['pending'] or state.get('last_storage_reply') == marker:
+            return
+        state['last_storage_reply'] = marker
+    elif not state['pending']:
         return
     state['pending'] = False
     if reply.get('status') != 'ok':
         state['storage_error'] = reply.get('status', 'unavailable')
-        if state['request']['action'] == 'restore' and reply.get('status') == 'invalid':
+        if (external or state['request']['action'] == 'restore') and reply.get('status') == 'invalid':
+            state['bundle'] = None
             state['error'] = 'Saved minutes could not be read. Clear them or import the approved file again.'
         return
-    if state['request']['action'] == 'restore' and reply.get('bundle') is not None:
+    if external or state['request']['action'] == 'restore':
+        state.update(bundle=None, error=None, storage_error=None)
+        if reply.get('bundle') is None:
+            return
         try:
             # Browser storage is untrusted input, just like a fresh upload.
             state['bundle'] = validate_bundle(reply['bundle'], roster, season)

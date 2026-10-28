@@ -152,10 +152,10 @@ def render_import(ui, roster, season):
         upload = ui.file_uploader('Approved minutes from NBA model', type=['json'],
                                   key=f"approved_game_minutes_{st.session_state.get('minutes_upload_version', 0)}")
         ui.button('Clear saved minutes', on_click=clear_saved, key='clear_saved_minutes')
-        ui.caption('Saved privately in this browser and restored after refresh or reopening the app. A different browser needs its own import. Nothing is published or written to the baseline workbook. Import a new file after changing approvals.')
+        ui.caption('Saved privately in this browser. Other open app tabs pick up changes automatically; a different browser needs its own import. Nothing is published or written to the baseline workbook. Import a new file after changing approvals.')
     update_upload(state, None if upload is None else upload.getvalue(), roster, season,
                   clear=st.session_state.pop('minutes_clear_requested', False))
-    reply = storage_component()(data=state['request'], key='approved_minutes_browser_storage',
+    reply = storage_component()(data={**state['request'], 'pending': state['pending']}, key='approved_minutes_browser_storage',
                                 default={'reply': None}, height=1, on_reply_change=lambda: None).reply
     accept_reply(state, reply, roster, season)
     if state['pending']:
