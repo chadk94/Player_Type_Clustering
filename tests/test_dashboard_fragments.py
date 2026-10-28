@@ -19,6 +19,7 @@ from schedule_feed import ScheduleUnavailable, ScheduleMemory
 
 class DashboardFragmentTests(unittest.TestCase):
     def setUp(self):
+        dashboard.current_matchup_effects.clear()
         self.roster = pd.read_csv(ROOT / 'preseason_archetypes.csv')
         teams = self.roster[['TEAM_ID', 'TEAM_ABBREVIATION']].drop_duplicates()
         teams['ESPN_TEAM_ID'] = teams.TEAM_ABBREVIATION
@@ -38,6 +39,7 @@ class DashboardFragmentTests(unittest.TestCase):
         # AppTest's mock runtime does not implement the v2 component registry.
         # Browser navigation is exercised separately; keep real widget state.
         self.mock('render_player_navigation')
+        self.mock('send_player_navigation')
         self.schedule = self.mock('today_schedule', return_value=pd.DataFrame())
         self.schedule_memory = ScheduleMemory()
         self.mock('verified_schedules', return_value=self.schedule_memory)
@@ -138,6 +140,8 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertEqual(len(self.app.tabs), 5)
 
     def test_team_player_navigation_selects_player_and_exact_matchup(self):
+        self.fragment_id = self.fragment_for(self.app.selectbox(key='projection_player'))
+        counts = [m.call_count for m in (self.live, self.logs, self.effects, self.imported, self.schedule)]
         target = self.roster[self.roster.TEAM_ABBREVIATION.eq('HOU')].iloc[0]
         self.app.session_state['pending_player_navigation'] = dict(
             player_id=int(target.PLAYER_ID), team='HOU', opponent='MIL',
@@ -149,6 +153,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertEqual(self.app.selectbox(key='projection_opponent').value, 'MIL')
         self.assertIn(f'{target.PLAYER_NAME} vs MIL', [h.value for h in self.app.subheader])
         self.assertTrue(any('Selected game: HOU vs MIL' in c.value for c in self.app.caption))
+        self.assertEqual([m.call_count for m in (self.live, self.logs, self.effects, self.imported, self.schedule)], counts)
         self.app.button(key='reset_projection_opponent').click().run()
         self.assert_no_errors()
         self.assertEqual(self.app.selectbox(key='projection_opponent').value, 'ATL')
@@ -393,6 +398,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.mock('prior_matchup_effects',return_value={key:value for key,value in prior.items() if key[0]!='Def'})
         self.effects.side_effect = lambda logs: {
             key:value for key,value in original(logs).items() if key[0] != 'Def'}
+        dashboard.current_matchup_effects.clear()  # The mocked calculation changed.
         start = (datetime.now(timezone.utc)+timedelta(days=1)).isoformat()
         self.schedule.return_value = pd.DataFrame([
             dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')

@@ -26,8 +26,8 @@ from team_projection_view import upcoming_team_games, team_projection_tables, TE
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from projection_presentation import over_line_label, matchup_rating
 from opponent_selection import render_opponent_selector
-from player_navigation import (selected_player_request, apply_pending_navigation,
-                               selected_game_context, render_player_navigation)
+from player_navigation import (apply_pending_navigation, selected_game_context,
+                               render_player_navigation, queue_player_selection, send_player_navigation)
 from approved_minutes import render_import, for_matchup, projection_gaps, game_minutes_caption, unmatched_minutes_message
 from import_minutes import TEAM_IDS
 from schedule_feed import load_daily_schedule, ScheduleMemory
@@ -104,6 +104,12 @@ def current_matchup_logs(year, team_ids):
 @st.cache_data(show_spinner=False)
 def prior_matchup_effects(roster, role_policy_version):
     logs = pd.read_csv(ROOT / 'data' / 'game_logs_2026.csv.gz', dtype={'GAME_ID':str,'ESPN_PLAYER_ID':str})
+    return matchup_effects(assign_game_archetypes(logs, roster))
+
+
+@st.cache_data(max_entries=4, show_spinner=False)
+def current_matchup_effects(logs, roster, role_policy_version):
+    """Reuse the same public matchup calculation until inputs or rules change."""
     return matchup_effects(assign_game_archetypes(logs, roster))
 
 
@@ -335,13 +341,11 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
         # clears the selection, allowing the same player to be opened again.
         row_ids = ','.join(player_rows.PLAYER_ID.astype(str))
         table_key = hashlib.sha256(f'{selected}:{row_ids}'.encode()).hexdigest()[:16]
-        event = ui.dataframe(display.round(2), hide_index=True, width='stretch',
-                            key=f'contribution_players_{table_key}_{st.session_state.get("player_navigation_revision", 0)}',
-                            on_select='rerun', selection_mode=['single-row', 'single-cell'])
-        request = selected_player_request(event.selection, player_rows, game, book_name)
-        if request:
-            st.session_state['pending_player_navigation'] = request
-            st.rerun()
+        widget_key = f'contribution_players_{table_key}_{st.session_state.get("contribution_selection_revision", 0)}'
+        ui.dataframe(display.round(2), hide_index=True, width='stretch', key=widget_key,
+                     on_select=lambda: queue_player_selection(widget_key, player_rows, game, book_name),
+                     selection_mode=['single-row', 'single-cell'])
+        send_player_navigation()
         ui.caption('Zero-minute players are excluded from totals. Approved game minutes retain their exact 240-minute allocation. Other minute sources round individually to 0.5. Importing a new approved file recalculates matching games; the local NBA model does not sync automatically.')
     with ui.expander('Where the assist and three-point targets come from'):
         inputs = ['Market team total', 'Expected team FGM', 'Expected team FGA', 'Team 3PA target', 'Team assist rate', 'Team three attempt rate']
@@ -373,7 +377,6 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
 @st.fragment
 def render_live_dashboard(ui, roster):
     roster = apply_roster_rules(roster)
-    apply_pending_navigation(st.session_state, roster)
     roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)
     ui.title(f'🏀 Player Stat Projections ({SEASON})')
     ui.caption(f'Your workbook minutes for each team’s first {OPENING_GAMES} games; season-average minutes from game {OPENING_GAMES + 1}. Counts include completed regular-season team games, not player appearances. Imported approved minutes take priority for matching games.')
@@ -458,7 +461,7 @@ def render_live_dashboard(ui, roster):
             try:
                 logs, details = current_matchup_logs(int(SEASON[:4])+1, tuple(teams.ESPN_TEAM_ID))
                 if not logs.empty:
-                    current_effects = matchup_effects(assign_game_archetypes(logs,roster))
+                    current_effects = current_matchup_effects(logs, roster, role_policy_version)
                 if details['errors']:
                     ui.warning('Some current-season matchup games could not be loaded. Sample counts may be incomplete.')
             except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
@@ -479,6 +482,8 @@ def render_live_dashboard(ui, roster):
     ui.caption('Rookies and players using estimated profiles switch to actual stat rates from their first regular-season appearance. Players with historical baselines blend in current rates from game 5. Archetype matchup effects gradually blend both seasons with a 10-game prior. Matchup samples are player-games with at least 5 minutes; blend weights count distinct relevant games.')
     @st.fragment
     def render_player_page():
+        render_player_navigation()
+        apply_pending_navigation(st.session_state, roster)
         team_col, player_col, opponent_col = ui.columns(3)
         with team_col:
             team = ui.selectbox('Player team', sorted(roster.TEAM_ABBREVIATION.unique()), key='projection_team')
@@ -486,10 +491,10 @@ def render_live_dashboard(ui, roster):
         names = team_players.sort_values('Projected minutes',ascending=False).Player.tolist()
         with player_col:
             player_name = ui.selectbox('Player',names,key='projection_player')
-        upcoming = None
+        upcoming = selected_game_context(st.session_state, team, st.session_state.get('projection_opponent'))
         try:
             team_record = teams[teams.TEAM_ABBREVIATION.eq(team)] if 'TEAM_ABBREVIATION' in teams else teams.iloc[:0]
-            if not team_record.empty:
+            if upcoming is None and not team_record.empty:
                 upcoming = next_team_game(SEASON,str(team_record.iloc[0].ESPN_TEAM_ID),team)
         except (requests.RequestException,ValueError,KeyError,TypeError):
             pass
@@ -855,4 +860,3 @@ def render_live_dashboard(ui, roster):
         ui.download_button('Download archetypes CSV', selected.to_csv(index=False), 'preseason_archetypes.csv', 'text/csv')
     with archetype_tab:
         render_archetypes_page()
-    render_player_navigation()

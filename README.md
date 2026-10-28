@@ -655,6 +655,10 @@ Click a player name (or select a row) in **Player contributions and minutes** to
 open **Player vs Opponent** for that player, opponent, game date and sportsbook.
 The selected game's approved minutes remain in use; existing manual player-minute
 sliders are preserved. Changing the team/opponent resumes ordinary preview selection.
+Player navigation updates only the player preview fragment. It reuses the loaded
+league snapshot and does not rebuild hidden tabs or refresh league-wide feeds.
+Current archetype effects are cached by their public data and rule inputs, so
+multiple sessions do not repeat the same calculation; changed inputs invalidate it.
 
 Games come from the ESPN regular-season schedule, even if no sportsbook
 event is available. Team Projections retains games, including in-progress games,
