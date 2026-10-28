@@ -177,6 +177,9 @@ class GameEdgeTests(unittest.TestCase):
         invalid.loc[:,'Matchup status']='Insufficient archetype matchup history'
         bad,_=game_edges(invalid,self.payload,self.event,'fanduel',now=self.now)
         self.assertTrue(bad.empty)
+        invalid.loc[:,'Matchup status']='Baseline fallback — missing matchup history'
+        bad,_=game_edges(invalid,self.payload,self.event,'fanduel',now=self.now)
+        self.assertTrue(bad.empty)
 
     def test_game_selector_allows_small_tip_changes_but_rejects_wrong_or_started_games(self):
         scheduled = pd.Timestamp(self.event['commence_time'])

@@ -291,6 +291,12 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
     totals, breakdown, issues = team_projection_tables(base, before, final, order)
     for issue in issues:
         ui.warning(issue)
+    fallback = final.loc[final['Projected minutes'].gt(0) &
+                         final.get('Matchup fallback stats', pd.Series('', index=final.index)).ne('')]
+    if not fallback.empty:
+        details = '; '.join(f"{row['Player']} ({row['Matchup fallback stats']})" for _, row in fallback.iterrows())
+        ui.info('Missing archetype matchup history: ' + details +
+                '. These categories retain player baseline rates before team adjustments. No opponent effect is assumed.')
     calibrated = breakdown['Team target'].notna()
     if not calibrated.all():
         ui.info('Some team targets are unavailable. Those rows retain the existing model projection; missing player data stays blank. See Adjustment details.')
@@ -307,7 +313,7 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
     ui.caption('PTS targets come from the selected sportsbook’s spread and total. AST, 3PA and REB targets use progressive team/opponent rates with a 10-game prior; 3PM uses the roster’s shooting percentages. Steals, blocks and turnovers retain their player matchup projections. PRA = final PTS + REB + AST.')
     with ui.expander('Player contributions and minutes'):
         active = final['Projected minutes'].gt(0) | final['Projected minutes'].isna()
-        columns = ['Player', 'Team', 'Projected minutes', *TEAM_STATS.values(), 'OREB', 'DREB', 'Minutes source', 'Stat baseline', 'Fallback details', 'Status', 'Matchup status']
+        columns = ['Player', 'Team', 'Projected minutes', *TEAM_STATS.values(), 'OREB', 'DREB', 'Minutes source', 'Stat baseline', 'Fallback details', 'Status', 'Matchup status', 'Matchup fallback stats']
         display = final.loc[active, [c for c in columns if c in final]].sort_values(['Team', 'Projected minutes'], ascending=[True, False]).rename(columns={'FG3M': '3PM'})
         ui.dataframe(display.round(2), hide_index=True, width='stretch')
         ui.caption('Zero-minute players are excluded from totals. Approved game minutes retain their exact 240-minute allocation. Other minute sources round individually to 0.5. Importing a new approved file recalculates matching games; the local NBA model does not sync automatically.')
@@ -510,6 +516,9 @@ def render_live_dashboard(ui, roster):
                 ui.caption(row['Fallback details'] + ' This temporary estimate is excluded from the top-edge rankings.')
             if row['Matchup status'] == 'Baseline fallback — missing archetype':
                 ui.info('Using baseline rates for the unassigned archetype, then the normal team adjustments. No archetype has been assigned. Matchup ratings stay blank, and this player is excluded from the top-edge rankings until classified.')
+            elif row['Matchup status'] == 'Baseline fallback — missing matchup history':
+                ui.info('No usable archetype matchup history for: ' + row['Matchup fallback stats'] +
+                        '. These categories retain baseline rates, then normal team adjustments apply. Matchup ratings stay blank and this player is excluded from top-edge rankings until matchup coverage is available.')
             elif row['Matchup status'] != 'Available':
                 ui.warning(row['Matchup status'] + '. Unavailable adjustments stay blank; turn off matchup adjustments to view the baseline.')
             stats = ['PTS','REB','AST','FG3M','STL','BLK','TOV','PF','PRA']

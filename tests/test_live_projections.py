@@ -58,8 +58,9 @@ class LiveProjectionTests(unittest.TestCase):
         self.assertEqual(self.project(2)['PTS'],0.)
         no_current = self.current.iloc[:0]
         result = self.project(3,current=no_current)
-        self.assertTrue(pd.isna(result['Projected minutes']))
-        self.assertTrue(pd.isna(result.PTS))
+        self.assertEqual(result['Projected minutes'],0.)
+        self.assertEqual(result['Minutes source'],'Saved zero minutes')
+        self.assertEqual(result.PTS,0.)
         no_history = self.history.iloc[:0]
         result = self.project(0,current=no_current,history=no_history)
         self.assertTrue(pd.isna(result.PTS))
@@ -68,6 +69,25 @@ class LiveProjectionTests(unittest.TestCase):
         self.roster.PROJECTED_MIN = 32.
         self.assertEqual(self.project(1,history=no_history).PTS,16.)
         self.assertEqual(self.project(4,history=no_history).PTS,12.)
+
+    def test_saved_zero_reserves_do_not_mask_real_missing_rotation_minutes(self):
+        no_current = self.current.iloc[:0]
+        for saved in [32.,np.nan]:
+            self.roster.PROJECTED_MIN = saved
+            result = self.project(8,current=no_current)
+            self.assertTrue(pd.isna(result['Projected minutes']))
+            self.assertTrue(pd.isna(result.PTS))
+        self.roster.PROJECTED_MIN = 0.
+        # Season appearances supersede the old zero; so do approved/manual minutes.
+        self.assertEqual(self.project(8)['Projected minutes'],24.)
+        teams = pd.DataFrame([{'TEAM_ID':TEAM_IDS['ATL'],'GAMES_PLAYED':8}])
+        approved = build_projections(self.roster,self.history,teams,no_current,approved_minutes={1:18.}).iloc[0]
+        self.assertEqual(approved['Projected minutes'],18.)
+        self.assertEqual(approved['Minutes source'],'Approved game minutes')
+        manual = build_projections(self.roster,self.history,teams,no_current,approved_minutes={1:18.},minutes_overrides={1:22.}).iloc[0]
+        self.assertEqual(manual['Projected minutes'],22.)
+        unknown = build_projections(self.roster,self.history,teams.iloc[:0],no_current).iloc[0]
+        self.assertTrue(pd.isna(unknown['Projected minutes']))
 
     def test_rate_blend_does_not_replace_observed_denominator(self):
         self.current.loc[0,'PTS'] = 24.

@@ -16,8 +16,14 @@ The user selected this minutes policy: **workbook minutes for games 1–3 of eac
 team, then current-season average minutes from game 4 onward**. A team’s completed
 regular-season wins plus losses drives the boundary, independently for each team.
 The player’s season MPG divides minutes by appearances, excluding DNPs; the team
-count is not the denominator. There is no post-window fallback to workbook minutes
-for a player without matched season appearances. Unknown values remain blank.
+count is not the denominator. A reserve explicitly assigned **zero workbook
+minutes** keeps that known zero when no season appearances are matched, including
+after the opening window. A matched season average, approved game minutes or
+manual player adjustment supersedes that zero. Positive or unknown saved minutes
+without matched appearances still remain unavailable; the app does not assume an
+injured or unmatched rotation player is out. Team warnings name those unresolved
+players and request approved game minutes. Known zero-minute reserves cannot
+blank otherwise complete team totals.
 
 Per-game stat estimates use full 2025–26 regular-season per-minute rates multiplied by
 the selected minutes. These stay on the prior through team game 4. From game 5, current-season
@@ -26,7 +32,7 @@ per-minute rates receive weight `current minutes / (current minutes + 200)`; the
 user’s three-game minutes rule. Players without a prior profile can receive estimates
 from observed current-season stats from team game 5; a manual archetype alone cannot
 create numeric rates. Counts, minutes sources, statistical baselines and missing-data
-statuses are shown per player. Workbook zeroes are retained during the opening window.
+statuses are shown per player. Retained reserve zeroes are labeled “Saved zero minutes.”
 
 Selecting a player team defaults the opponent to its next verified regular-season fixture from the ESPN team schedule, retaining a current matchup until one hour after scheduled tip-off (the same window as Team Projections). Completed, postponed, canceled and wrong-season games are excluded. The opponent dropdown remains editable; changing players, minutes or sportsbook preserves a manual opponent choice, while choosing another team loads that team’s current/next opponent. If no fixture can be verified, the opponent starts blank for manual selection.
 
@@ -1021,3 +1027,29 @@ The Today's Best Matchups sportsbook selector defaults to FanDuel; pages agree
 when game, book, minutes and snapshot agree. Games without verified market
 lines retain labeled matchup projections. No manual archetype files or saved
 minutes are modified by this rollout.
+
+### October 28 missing team-total fixes
+
+After the opening minutes window, a reserve's explicitly saved zero minutes
+remains zero when there are no matched season appearances. Current-season
+minutes, approved game minutes and manual adjustments still take precedence.
+Positive or unknown saved minutes without current appearances remain unresolved,
+and team warnings name the players requiring an approved game allocation. Unknown
+team records still pause automatic projections.
+
+The MIA–ATL check exposed a separate gap: Atlanta had no current-season defensive
+sample for Bobby Portis's assigned archetype. Missing matchup evidence now retains
+the player's existing baseline for the affected categories before normal team
+calibration, rather than deleting valid player production. Known matchup effects
+still apply, including normalized team allocations and recalculated PRA. Missing
+player stat rates themselves remain unavailable. This does not substitute last
+season's opponent effect or change the game-five switch, smoothing, or archetypes.
+
+`Matchup fallback stats` identifies affected categories; effect percentages remain
+unavailable and sample counts remain actual observations. Player and team pages
+explain the fallback. A player with incomplete matchup coverage has no matchup
+rating and remains excluded from top sportsbook edges. Verified October 28
+standings/player summaries and complete four-game MIA/ATL logs reproduce both
+failures and confirm finite totals after the fixes. Regression tests cover zero
+reserve minutes, override precedence, partial matchup coverage, preserved missing
+stat rates, full team totals and Streamlit page rendering.

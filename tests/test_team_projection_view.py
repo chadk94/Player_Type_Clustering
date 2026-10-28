@@ -85,6 +85,8 @@ class TeamProjectionViewTests(unittest.TestCase):
         self.assertTrue(totals.iloc[0][['Minutes', 'PTS', 'REB', 'AST', '3PM', 'STL', 'BLK', 'TOV', 'PRA']].isna().all())
         self.assertEqual(totals.iloc[0]['Stat coverage'], 'Incomplete')
         self.assertEqual(len(issues), 1)
+        self.assertIn('100',issues[0])
+        self.assertIn('Import approved minutes for this game',issues[0])
         self.assertAlmostEqual(totals.iloc[1].PTS, 115.)
 
     def test_no_market_fallback_keeps_model_and_has_no_target(self):

@@ -187,6 +187,12 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
             minutes, source = player.PROJECTED_MIN, 'Your workbook'
         elif played is not None and observed is not None and observed.GP > 0:
             minutes, source = observed.MIN, 'Season average'
+        elif played is not None and player.PROJECTED_MIN == 0:
+            # An explicit saved zero remains a known non-rotation assignment
+            # until appearances or a game/manual override supply new minutes.
+            # Do not make every team total unavailable because a reserve has
+            # no season average yet. Positive/unknown saved minutes stay unknown.
+            minutes, source = 0., 'Saved zero minutes'
         if player.PLAYER_ID in approved_minutes:
             minutes, source = float(approved_minutes[player.PLAYER_ID]), 'Approved game minutes'
         if played is not None and player.PLAYER_ID in minutes_overrides:

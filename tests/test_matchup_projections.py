@@ -40,10 +40,50 @@ class MatchupTests(unittest.TestCase):
         self.teams.GAMES_PLAYED = 4
         late = apply_matchup(self.base,self.roster,self.teams,effects,{})
         self.assertEqual(late.iloc[0]['Matchup data'],'2026–27')
-        self.assertTrue(pd.isna(late.iloc[0].PTS))
+        self.assertEqual(late.iloc[0].PTS,10.)
         self.assertEqual(late.iloc[0]['Off samples'],0)
+        self.assertTrue(pd.isna(late.iloc[0]['PTS %']))
+        self.assertEqual(late.iloc[0]['Matchup status'],'Baseline fallback — missing matchup history')
         current = {key:{**value,'PTS':20.} for key,value in effects.items()}
         self.assertEqual(apply_matchup(self.base,self.roster,self.teams,effects,current).iloc[0].PTS,12.)
+
+    def test_missing_defensive_history_preserves_team_coverage_and_real_offense(self):
+        from team_projection_view import team_projection_tables
+        from market_points import match_points
+        prior = matchup_effects(self.logs)
+        current = {('Off',6,'BOS'):prior['Off',6,'BOS']}
+        teams = self.teams.assign(GAMES_PLAYED=4)
+        base = self.base.assign(Team='ATL',**{'Projected minutes':24.})
+        original = self.roster.copy(deep=True)
+        result = apply_matchup(base,self.roster,teams,prior,current)
+        row = result.iloc[0]
+        self.assertEqual(row.PTS,8.75)  # Existing current offense still applies.
+        self.assertEqual(row.DREB,10.)  # No old-season effect substituted.
+        self.assertEqual(row.STL,10.)
+        self.assertEqual(row.BLK,10.)
+        self.assertEqual(row.REB,18.75)
+        self.assertEqual(row.PRA,row.PTS+row.REB+row.AST)
+        self.assertEqual(row['Def samples'],0)
+        self.assertEqual(row['Matchup fallback stats'],'DREB, STL, BLK, PF')
+        self.assertTrue(pd.isna(row['DREB %']))
+        adjusted,_ = match_points(result,{'ATL':110.})
+        totals,_,issues = team_projection_tables(base,result,adjusted,['ATL'])
+        self.assertEqual(totals.iloc[0]['Stat coverage'],'Complete')
+        self.assertFalse(issues)
+        self.assertEqual(adjusted.iloc[0].PRA,110.+row.REB+row.AST)
+        pd.testing.assert_frame_equal(original,self.roster)
+
+    def test_missing_single_effect_keeps_baseline_but_not_missing_player_stats(self):
+        effects = matchup_effects(self.logs)
+        effects['Def',11,'BOS']['BLK'] = np.nan
+        row = apply_matchup(self.base,self.roster,self.teams,effects,{}).iloc[0]
+        self.assertEqual(row.BLK,10.)
+        self.assertEqual(row.DREB,8.75)
+        self.assertEqual(row['Matchup fallback stats'],'BLK')
+        self.assertEqual(row['Def samples'],1)
+        self.assertEqual(row['Matchup status'],'Baseline fallback — missing matchup history')
+        missing = apply_matchup(self.base.assign(BLK=np.nan),self.roster,self.teams,effects,{}).iloc[0]
+        self.assertTrue(pd.isna(missing.BLK))
 
     def test_steals_blocks_shrink_without_changing_other_stat_weights(self):
         # Two differently aged BOS observations test decay as well as the prior.

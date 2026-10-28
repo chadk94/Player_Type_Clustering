@@ -312,6 +312,9 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         # 3 attempts deliberately cannot support a realistic team attempt target.
         for stat,value in {'PTS':15.,'FGM':6.,'FGA':12.,'FG3M':1.,'FG3A':3.,'FTM':2.,'FTA':3.}.items():
             self.live.return_value['players'][stat] = value
+        reserve = self.roster[self.roster.TEAM_ABBREVIATION.eq('ATL') & self.roster.PROJECTED_MIN.eq(0)].iloc[0]
+        self.live.return_value['players'] = self.live.return_value['players'][
+            ~self.live.return_value['players'].PLAYER_NAME.eq(reserve.PLAYER_NAME)]
         now = datetime.now(timezone.utc)
         start = (now+timedelta(days=1)).isoformat()
         event = dict(id='blend_game',home_team='Houston Rockets',away_team='Atlanta Hawks',commence_time=start)
@@ -346,8 +349,34 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         weights = next(f for f in frames if 'Current weight' in f).set_index('Team')
         self.assertAlmostEqual(weights.loc['ATL','Current weight'],82/92)
         self.assertEqual(weights.loc['ATL','Status'],'Blended')
+        totals = next(f for f in frames if 'Minutes' in f and 'Stat coverage' in f)
+        self.assertTrue(totals['Stat coverage'].eq('Complete').all())
+        self.assertTrue(np.isfinite(totals[['PTS','AST','REB','3PM','PRA']]).all().all())
+        self.assertNotIn(reserve.PLAYER_NAME,contributions.index)
         self.assertTrue(any('target attempts' in c.value for c in self.app.caption),
                         [c.value for c in self.app.caption if 'three' in c.value.lower()])
+
+    def test_missing_matchup_history_keeps_player_and_team_stats_visible(self):
+        original = dashboard.matchup_effects._mock_wraps
+        self.effects.side_effect = lambda logs: {
+            key:value for key,value in original(logs).items() if key[0] != 'Def'}
+        start = (datetime.now(timezone.utc)+timedelta(days=1)).isoformat()
+        self.schedule.return_value = pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
+            for side,opp,venue in [('ATL','HOU','away'),('HOU','ATL','home')]])
+        self.app.run()
+        self.assert_no_errors()
+        frames = [d.value for d in self.app.dataframe]
+        player = next(f for f in frames if 'Stat' in f and 'Projected' in f).set_index('Stat')
+        self.assertTrue(np.isfinite(player.Projected).all())
+        self.assertEqual(player.loc['STL','Projected'],player.loc['STL','Baseline'])
+        self.assertEqual(player.loc['BLK','Projected'],player.loc['BLK','Baseline'])
+        self.assertTrue(player['Matchup rating'].eq('—').all())
+        totals = next(f for f in frames if 'Minutes' in f and 'Stat coverage' in f)
+        self.assertTrue(totals['Stat coverage'].eq('Complete').all())
+        self.assertTrue(np.isfinite(totals[['PTS','AST','REB','3PM','STL','BLK','PRA']]).all().all())
+        self.assertTrue(any('No usable archetype matchup history' in item.value for item in self.app.info))
+        self.assertTrue(any('Missing archetype matchup history:' in item.value for item in self.app.info))
 
 
 if __name__ == '__main__':

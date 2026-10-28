@@ -86,7 +86,12 @@ def matchup_effects(logs):
 
 
 def apply_matchup(baselines, roster, teams, prior_effects, current_effects, opponent=None):
-    """Opponent defensive sample switches after four completed opponent games."""
+    """Switch history after four opponent games; keep baselines for absent effects.
+
+    Missing matchup evidence is not missing player production. Preserve the
+    baseline only for affected stats, retaining unavailable percentages and
+    real sample counts so these players cannot acquire invented matchup ratings.
+    """
     clusters = roster.set_index('PLAYER_ID')
     counts = teams.set_index('TEAM_ABBREVIATION').GAMES_PLAYED.to_dict() if 'TEAM_ABBREVIATION' in teams else {}
     output = []
@@ -99,6 +104,7 @@ def apply_matchup(baselines, roster, teams, prior_effects, current_effects, oppo
         row['Matchup data'] = '2026–27' if current else '2025–26'
         player = clusters.loc[row['PLAYER_ID']]
         missing_role = False
+        fallback_stats = []
         for kind,stats in [('Off',OFF_STATS),('Def',DEF_STATS)]:
             cluster = player[f'{kind}Cluster']
             unclassified = pd.isna(cluster)
@@ -110,17 +116,20 @@ def apply_matchup(baselines, roster, teams, prior_effects, current_effects, oppo
                 row[f'{stat} %'] = pct
                 row[f'Baseline {stat}'] = base.get(stat,np.nan)
                 base_value = base.get(stat,np.nan)
-                if unclassified:
+                if unclassified or not np.isfinite(pct):
                     # Keep real baseline production in team shares without
                     # inventing an archetype, matchup effect or sample count.
                     row[stat] = max(0,base_value) if np.isfinite(base_value) else np.nan
+                    if not unclassified:
+                        fallback_stats.append(stat)
                 else:
                     row[stat] = max(0,base_value*(1+pct/100)) if np.isfinite(pct) and np.isfinite(base_value) else np.nan
         row['Baseline REB'] = base.get('REB',np.nan)
         row['REB'] = row['OREB'] + row['DREB']
         row['PRA'] = row['PTS'] + row['REB'] + row['AST']
+        row['Matchup fallback stats'] = ', '.join(fallback_stats)
         row['Matchup status'] = ('Baseline fallback — missing archetype' if missing_role else
-            'Available' if row['Off samples'] and row['Def samples'] else 'Insufficient archetype matchup history')
+            'Baseline fallback — missing matchup history' if fallback_stats else 'Available')
         output.append(row)
     return pd.DataFrame(output)
 

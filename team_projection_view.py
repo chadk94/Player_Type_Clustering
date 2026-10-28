@@ -75,7 +75,10 @@ def team_projection_tables(baselines, matchups, adjusted, team_order):
         row['Stat coverage'] = 'Incomplete' if missing else ('Provisional — archetype estimates' if not estimated.empty else 'Complete')
         row['Estimated players'] = names
         if pd.isna(row['Minutes']):
-            issues.append(f'{team}: projected minutes are missing or invalid; team totals stay blank.')
+            unknown = final.loc[~np.isfinite(final['Projected minutes']) | final['Projected minutes'].lt(0)]
+            unknown_names = ', '.join(unknown.get('Player',unknown.PLAYER_ID.astype(str)).astype(str)) or 'no usable roster'
+            issues.append(f'{team}: projected minutes are missing or invalid for {unknown_names}; team totals stay blank. '
+                          'Import approved minutes for this game, including zero for players who will not play.')
         elif missing:
             affected = []
             for _, player in active.iterrows():
