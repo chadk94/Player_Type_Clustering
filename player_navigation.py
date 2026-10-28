@@ -16,6 +16,10 @@ def selected_player_request(selection, rows, game, book):
     if not isinstance(position, int) or not 0 <= position < len(rows):
         return None
     row = rows.iloc[position]
+    if 'Home' not in game:
+        game = game.get(row.get('Game key'))
+        if game is None:
+            return None
     team = row['Team']
     if team not in (game['Home'], game['Away']):
         return None

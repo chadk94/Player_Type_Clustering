@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from streamlit.testing.v1 import AppTest
 from streamlit.testing.v1.local_script_runner import LocalScriptRunner
+from streamlit.testing.v1.element_tree import ButtonGroup
 
 import projection_dashboard as dashboard
 from live_projections import STAT_NAMES
@@ -20,6 +21,18 @@ from schedule_feed import ScheduleUnavailable, ScheduleMemory
 class DashboardFragmentTests(unittest.TestCase):
     def setUp(self):
         dashboard.current_matchup_effects.clear()
+        # AppTest 1.53 treats a single-select pills value as a character list.
+        # Serialize it like the browser while keeping actual widget behavior.
+        old_indices = ButtonGroup.indices.fget
+        def indices(widget):
+            if widget.proto.click_mode == 0:
+                value = widget.value
+                values = [] if value is None else value if isinstance(value, list) else [value]
+                return [widget.options.index(widget.format_func(v)) for v in values]
+            return old_indices(widget)
+        pills_patch = patch.object(ButtonGroup, 'indices', property(indices))
+        pills_patch.start()
+        self.addCleanup(pills_patch.stop)
         self.roster = pd.read_csv(ROOT / 'preseason_archetypes.csv')
         teams = self.roster[['TEAM_ID', 'TEAM_ABBREVIATION']].drop_duplicates()
         teams['ESPN_TEAM_ID'] = teams.TEAM_ABBREVIATION
@@ -177,6 +190,36 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertEqual(self.app.button(key='matchup_schedule_reload').label, 'Reload schedule')
         self.schedule.clear.assert_called_once_with(dashboard.SEASON, self.app.date_input(key='matchup_date').value)
         self.assertEqual([m.call_count for m in (self.live, self.logs, self.imported, self.build)], counts)
+
+    def test_all_game_player_rankings_match_single_game_and_sort_without_rebuilding(self):
+        start = (pd.Timestamp.now(tz='UTC')+pd.Timedelta(hours=4)).isoformat()
+        self.schedule.return_value = pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
+            for side,opp,venue in [('HOU','ATL','home'),('ATL','HOU','away'),
+                                   ('DET','BOS','home'),('BOS','DET','away')]])
+        self.app.run()
+        self.assert_no_errors()
+        single = next(d.value for d in self.app.dataframe
+                      if 'Player' in d.value and 'Stat baseline' in d.value and 'PRA' in d.value).set_index('Player')
+        view = self.app.radio(key='team_projection_view')
+        self.fragment_id = self.fragment_for(view)
+        view.set_value('All games — player projections').run()
+        self.assert_no_errors()
+        all_players = next(d.value for d in self.app.dataframe if 'Rank' in d.value and 'Game' in d.value)
+        self.assertEqual(set(all_players.Team), {'ATL','HOU','BOS','DET'})
+        self.assertTrue(all_players.PTS.dropna().is_monotonic_decreasing)
+        # This shares the exact final game projections, not a new approximation.
+        for stat in ['PTS','REB','AST','3PM','PRA']:
+            pd.testing.assert_series_equal(all_players.set_index('Player').loc[single.index,stat],single[stat],check_names=False)
+        counts = [m.call_count for m in (self.live,self.logs,self.effects,self.imported,self.schedule,self.build)]
+        sort = self.app.selectbox(key='team_players_sort')
+        self.assertNotEqual(self.fragment_for(sort),self.fragment_id)
+        self.fragment_id = self.fragment_for(sort)
+        sort.select('Rebounds (REB)').run()
+        self.assert_no_errors()
+        ranked = next(d.value for d in self.app.dataframe if 'Rank' in d.value and 'Game' in d.value)
+        self.assertTrue(ranked.REB.dropna().is_monotonic_decreasing)
+        self.assertEqual([m.call_count for m in (self.live,self.logs,self.effects,self.imported,self.schedule,self.build)],counts)
 
     def test_team_schedule_outage_preserves_verified_games_and_projections(self):
         day = self.app.date_input(key='team_projection_date').value
@@ -391,6 +434,13 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertNotIn(reserve.PLAYER_NAME,contributions.index)
         self.assertTrue(any('target attempts' in c.value for c in self.app.caption),
                         [c.value for c in self.app.caption if 'three' in c.value.lower()])
+        view = self.app.radio(key='team_projection_view')
+        self.fragment_id = self.fragment_for(view)
+        view.set_value('All games — player projections').run()
+        self.assert_no_errors()
+        combined = next(d.value for d in self.app.dataframe if 'Rank' in d.value and 'Game' in d.value).set_index('Player')
+        for stat in ['PTS','AST','REB','3PM','PRA']:
+            pd.testing.assert_series_equal(combined.loc[contributions.index,stat],contributions[stat],check_names=False)
 
     def test_missing_matchup_history_keeps_player_and_team_stats_visible(self):
         original = dashboard.matchup_effects._mock_wraps

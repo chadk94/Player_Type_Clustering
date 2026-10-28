@@ -23,6 +23,7 @@ from team_threes import apply_team_threes
 from team_rebounds import apply_team_rebounds, REBOUND_METADATA
 from team_rate_blend import season_rates, blend_team_rates, PRIOR_GAMES, POLICY_VERSION
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
+from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from projection_presentation import over_line_label, matchup_rating
 from opponent_selection import render_opponent_selector
@@ -223,9 +224,145 @@ def set_edge_stats(selected):
         st.session_state[f'edges_stat_{stat}'] = selected
 
 
+def team_game_projection(ui, game, book_name, schedule, now, snapshots, projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle=None):
+    if project_for_game is not None:
+        projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
+    snapshot_key = (game['key'], BOOKS[book_name], POLICY_VERSION, MATCHUP_POLICY_VERSION)
+    order = [game['Away'], game['Home']]
+    base = projections[projections.Team.isin(order)].copy()
+    ui.caption(game_minutes_caption(base, order))
+    notice = unmatched_minutes_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
+    if notice:
+        ui.warning(notice)
+    rows = [apply_matchup(base[base.Team.eq(side)], roster, teams, prior_effects, current_effects, opponent)
+            for side, opponent in [(game['Away'], game['Home']), (game['Home'], game['Away'])]
+            if not base[base.Team.eq(side)].empty]
+    if len(rows) != 2:
+        ui.warning('Both teams need roster projections before a game total can be shown.')
+        return
+    before = pd.concat(rows, ignore_index=True)
+    final = before.copy()
+    try:
+        api_key = get_odds_api_key()
+        if not api_key:
+            raise OddsFeedError('Sportsbook feed access is not configured.')
+        verified = scheduled_book_games(sportsbook_events(api_key), schedule)
+        matches = [event for event in verified if event['Home'] == game['Home'] and event['Away'] == game['Away']
+                   and abs(event['GameTimeUTC'] - game['GameTimeUTC']) <= EVENT_TIME_TOLERANCE]
+        if len(matches) != 1:
+            raise OddsFeedError('No unique sportsbook event matches this scheduled game.')
+        event = {**matches[0], 'commence_time': matches[0]['GameTimeUTC'].isoformat()}
+        final = team_projection_preview(ui, before, event, BOOKS[book_name], api_key, team_rates)
+        if 'Market team total' not in final or not final['Market team total'].notna().any():
+            raise OddsFeedError('Pregame team targets are unavailable.')
+        snapshots[snapshot_key] = {'base': base.copy(deep=True), 'before': before.copy(deep=True),
+                                   'final': final.copy(deep=True), 'saved_at': now,
+                                   'expires': game['GameTimeUTC'] + TEAM_GAME_RETENTION}
+    except (OddsFeedError, requests.RequestException, ValueError, KeyError, TypeError):
+        saved = snapshots.get(snapshot_key) if game['GameTimeUTC'] <= now else None
+        if saved is not None:
+            base, before, final = (saved[name].copy(deep=True) for name in ['base', 'before', 'final'])
+            ui.caption(f"Showing the pregame projection saved at {saved['saved_at'].tz_convert('America/Denver'):%I:%M %p %Z}. In-game odds are not used.")
+        else:
+            final = before.copy()
+            ui.caption('Pregame lines are unavailable and no pregame projection is saved in this session. Showing model projections without team-target adjustments.')
+    return base, before, final
+
+
+class ProjectionNotes:
+    """Collect the shared model's explanations without drawing a panel per game."""
+    def __init__(self):
+        self.messages = []
+
+    def caption(self, message):
+        self.messages.append(message)
+
+    warning = caption
+
+
+@st.fragment
+def render_slate_player_table(ui, frame, by_key, book_name, date, notes):
+    # Sorting and row clicks reuse this captured frame. They never fetch odds,
+    # rebuild the slate, or rerun any other dashboard tab.
+    ui.subheader('All player projections')
+    sort_col, zero_col = ui.columns([2, 1])
+    with sort_col:
+        sort_label = ui.selectbox('Rank players by', list(PLAYER_SORTS), key='team_players_sort')
+    with zero_col:
+        include_zero = ui.checkbox('Include zero-minute players', key='team_players_include_zero')
+    ranked = rank_slate_players(frame, PLAYER_SORTS[sort_label], include_zero)
+    if ranked.empty:
+        ui.info('No players remain in the selected games. Games stay available until one hour after tip-off.')
+        return
+    count = ranked['Game key'].nunique()
+    ui.caption(f'{len(ranked)} players across {count} games · {date:%b %d, %Y} · {book_name}. '
+               'Highest projections first. You can also click any stat column to sort. '
+               'Click a player name to open that matchup.')
+    missing = ranked[PLAYER_SORTS[sort_label]].isna().sum()
+    if missing:
+        ui.caption(f'{missing} players lack a projection for this category and appear at the bottom.')
+    model_only = ranked.loc[ranked['Projected minutes'].gt(0) &
+                            ranked['Projection source'].eq('Player model — no team target'), 'Game'].unique()
+    if len(model_only):
+        ui.info('Team targets are unavailable for some players in ' + ', '.join(model_only) +
+                '. Those rows retain their player-model projections. See Projection coverage and sources.')
+    columns = ['Rank', 'Player', 'Team', 'Opponent', 'Game', 'Projected minutes',
+               *TEAM_STATS.values(), 'OREB', 'DREB', 'PF', 'Minutes source',
+               'Projection source', 'Stat baseline', 'Status', 'Matchup status', 'Fallback details']
+    display = ranked[[c for c in columns if c in ranked]].rename(columns={'FG3M': '3PM'})
+    identity = ranked[['Game key', 'PLAYER_ID']].to_csv(index=False) + book_name + sort_label
+    token = hashlib.sha256(identity.encode()).hexdigest()[:16]
+    widget_key = f'all_game_players_{token}_{st.session_state.get("contribution_selection_revision", 0)}'
+    ui.dataframe(display.round(2), hide_index=True, width='stretch', height=650, key=widget_key,
+                 on_select=lambda: queue_player_selection(widget_key, ranked, by_key, book_name),
+                 selection_mode=['single-row', 'single-cell'])
+    send_player_navigation()
+    ui.caption('Uses each game’s saved minutes and the same team adjustments as the single-game view. '
+               'Unknown stats stay blank; zero-minute players are hidden unless included above. '
+               'Rank uses unrounded values. Refresh live data updates projections and sportsbook targets.')
+    ui.download_button('Download all player projections', display.to_csv(index=False),
+                       f'all_player_projections_{date.isoformat()}.csv', 'text/csv', key='all_player_projections_download')
+    with ui.expander('Projection coverage and sources'):
+        ui.dataframe(pd.DataFrame(notes), hide_index=True, width='stretch')
+
+
+def render_all_team_players(ui, games, book_name, date, schedule, now, snapshots,
+                            projections, roster, teams, prior_effects, current_effects,
+                            team_rates, project_for_game, approved_bundle):
+    frames, notes = [], []
+    with ui.spinner('Loading player projections across all games…'):
+        for game in games:
+            messages = ProjectionNotes()
+            result = team_game_projection(messages, game, book_name, schedule, now, snapshots,
+                projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle)
+            label = f"{game['Away']} @ {game['Home']}"
+            if result is None:
+                notes.append({'Game': label, 'Coverage': 'Unavailable', 'Details': ' '.join(messages.messages)})
+                continue
+            base, before, final = result
+            _, _, issues = team_projection_tables(base, before, final, [game['Away'], game['Home']])
+            rows = final.copy()
+            rows['Game key'], rows['Game'], rows['GameTimeUTC'] = game['key'], label, game['GameTimeUTC']
+            rows['Opponent'] = rows.Team.map({game['Home']: game['Away'], game['Away']: game['Home']})
+            market = rows.get('Market team total', pd.Series(float('nan'), index=rows.index)).notna()
+            rows['Projection source'] = market.map({True: 'Market + team model', False: 'Player model — no team target'})
+            frames.append(rows)
+            notes.append({'Game': label, 'Coverage': 'Review data gaps' if issues else 'Available',
+                          'Details': ' '.join([*issues, *messages.messages])})
+    if not frames:
+        ui.warning('Player projections could not be built for these games.')
+        ui.dataframe(pd.DataFrame(notes), hide_index=True, width='stretch')
+        return
+    unavailable = [row['Game'] for row in notes if row['Coverage'] == 'Unavailable']
+    if unavailable:
+        ui.warning('Missing game projections: ' + ', '.join(unavailable))
+    render_slate_player_table(ui, pd.concat(frames, ignore_index=True),
+                             {g['key']: g for g in games}, book_name, date, notes)
+
+
 def render_team_projections(ui, projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game=None, approved_bundle=None):
     ui.subheader('🏀 Team Projections')
-    ui.caption('Both teams’ projected stat totals, using the same saved minutes and adjustments as Top Sportsbook Edges. Player sliders affect individual previews only.')
+    ui.caption('Compare team totals or rank all players using the same saved minutes and adjustments as Top Sportsbook Edges. Player sliders affect individual previews only.')
     ui.caption('Games stay available until one hour after their scheduled tip-off. The list updates when you use a control or refresh.')
     now = pd.Timestamp(datetime.now(timezone.utc))
     snapshots = st.session_state.setdefault('team_projection_snapshots', {})
@@ -256,6 +393,12 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
             ui.warning('Games without an approved rotation in this file: '+', '.join(uncovered)+
                        '. Import the full slate to use your saved minutes for these games.')
     by_key = {game['key']: game for game in games}
+    view = ui.radio('Projection view', ['One game', 'All games — player projections'],
+                    horizontal=True, key='team_projection_view')
+    if view == 'All games — player projections':
+        render_all_team_players(ui, games, book_name, date, schedule, now, snapshots,
+            projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle)
+        return
     if st.session_state.get('team_projection_game') not in by_key:
         st.session_state['team_projection_game'] = games[0]['key']
     selected = ui.pills('Team matchup', list(by_key), selection_mode='single', key='team_projection_game',
@@ -264,49 +407,14 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
         ui.info('Select a game to view its team projections.')
         return
     game = by_key[selected]
-    if project_for_game is not None:
-        projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
-    snapshot_key = (selected, BOOKS[book_name], POLICY_VERSION, MATCHUP_POLICY_VERSION)
-    order = [game['Away'], game['Home']]
-    base = projections[projections.Team.isin(order)].copy()
-    ui.caption(game_minutes_caption(base, order))
-    notice = unmatched_minutes_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
-    if notice:
-        ui.warning(notice)
-    rows = [apply_matchup(base[base.Team.eq(side)], roster, teams, prior_effects, current_effects, opponent)
-            for side, opponent in [(game['Away'], game['Home']), (game['Home'], game['Away'])]
-            if not base[base.Team.eq(side)].empty]
-    if len(rows) != 2:
-        ui.warning('Both teams need roster projections before a game total can be shown.')
-        return
-    before = pd.concat(rows, ignore_index=True)
-    final = before.copy()
     ui.subheader(f"{game['Away']} @ {game['Home']} — {book_name}")
     with ui.expander('Adjustment details'):
-        try:
-            api_key = get_odds_api_key()
-            if not api_key:
-                raise OddsFeedError('Sportsbook feed access is not configured.')
-            verified = scheduled_book_games(sportsbook_events(api_key), schedule)
-            matches = [event for event in verified if event['Home'] == game['Home'] and event['Away'] == game['Away']
-                       and abs(event['GameTimeUTC'] - game['GameTimeUTC']) <= EVENT_TIME_TOLERANCE]
-            if len(matches) != 1:
-                raise OddsFeedError('No unique sportsbook event matches this scheduled game.')
-            event = {**matches[0], 'commence_time': matches[0]['GameTimeUTC'].isoformat()}
-            final = team_projection_preview(ui, before, event, BOOKS[book_name], api_key, team_rates)
-            if 'Market team total' not in final or not final['Market team total'].notna().any():
-                raise OddsFeedError('Pregame team targets are unavailable.')
-            snapshots[snapshot_key] = {'base': base.copy(deep=True), 'before': before.copy(deep=True),
-                                       'final': final.copy(deep=True), 'saved_at': now,
-                                       'expires': game['GameTimeUTC'] + TEAM_GAME_RETENTION}
-        except (OddsFeedError, requests.RequestException, ValueError, KeyError, TypeError):
-            saved = snapshots.get(snapshot_key) if game['GameTimeUTC'] <= now else None
-            if saved is not None:
-                base, before, final = (saved[name].copy(deep=True) for name in ['base', 'before', 'final'])
-                ui.caption(f"Showing the pregame projection saved at {saved['saved_at'].tz_convert('America/Denver'):%I:%M %p %Z}. In-game odds are not used.")
-            else:
-                final = before.copy()
-                ui.caption('Pregame lines are unavailable and no pregame projection is saved in this session. Showing model projections without team-target adjustments.')
+        result = team_game_projection(ui, game, book_name, schedule, now, snapshots,
+            projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle)
+    if result is None:
+        return
+    base, before, final = result
+    order = [game['Away'], game['Home']]
     totals, breakdown, issues = team_projection_tables(base, before, final, order)
     for issue in issues:
         ui.warning(issue)

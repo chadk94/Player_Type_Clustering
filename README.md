@@ -637,6 +637,15 @@ minutes; it does not overwrite the saved team allocation used by the edges page.
 
 ### Team Projections tab
 
+Choose **All games — player projections** to compare every player on the selected
+date's available slate. **Rank players by** sorts highest-first by PTS, REB, AST,
+3PM, STL, BLK, TOV, PRA, OREB, DREB, PF or minutes; table headers also support sorting.
+The same game calculations, approved minutes, sportsbook and pregame snapshot
+fallbacks drive both views. Missing values remain blank and sort last. Zero-minute
+players can be included. Player names open the correct game's preview, including
+after sorting. Download the displayed rankings as CSV. Sorting runs independently
+and does not refetch odds or recalculate the slate.
+
 Select a date, scheduled game and sportsbook to compare both teams' final PTS,
 REB, AST, 3PM, STL, BLK, TOV and PRA, alongside total projected minutes. A second
 table traces PTS/AST/3PM/REB from baseline to archetype-adjusted player sums, then the
