@@ -22,6 +22,7 @@ def mark_manual_opponent():
 
 def reset_opponent():
     st.session_state['projection_opponent_manual'] = False
+    st.session_state.pop('projection_game_context', None)
 
 
 def render_opponent_selector(ui, team, opponents, upcoming):

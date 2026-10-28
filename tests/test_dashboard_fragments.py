@@ -35,6 +35,9 @@ class DashboardFragmentTests(unittest.TestCase):
         self.live = self.mock('live_state', return_value=state)
         self.logs = self.mock('current_matchup_logs', return_value=(logs, {'errors': []}))
         self.imported = self.mock('render_import', return_value=None)
+        # AppTest's mock runtime does not implement the v2 component registry.
+        # Browser navigation is exercised separately; keep real widget state.
+        self.mock('render_player_navigation')
         self.schedule = self.mock('today_schedule', return_value=pd.DataFrame())
         self.schedule_memory = ScheduleMemory()
         self.mock('verified_schedules', return_value=self.schedule_memory)
@@ -133,6 +136,22 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.live.clear.assert_called_once()
         self.logs.clear.assert_called_once()
         self.assertEqual(len(self.app.tabs), 5)
+
+    def test_team_player_navigation_selects_player_and_exact_matchup(self):
+        target = self.roster[self.roster.TEAM_ABBREVIATION.eq('HOU')].iloc[0]
+        self.app.session_state['pending_player_navigation'] = dict(
+            player_id=int(target.PLAYER_ID), team='HOU', opponent='MIL',
+            start='2026-10-29T00:00:00+00:00', book='FanDuel')
+        self.app.run()
+        self.assert_no_errors()
+        self.assertEqual(self.app.selectbox(key='projection_team').value, 'HOU')
+        self.assertEqual(self.app.selectbox(key='projection_player').value, target.PLAYER_NAME)
+        self.assertEqual(self.app.selectbox(key='projection_opponent').value, 'MIL')
+        self.assertIn(f'{target.PLAYER_NAME} vs MIL', [h.value for h in self.app.subheader])
+        self.assertTrue(any('Selected game: HOU vs MIL' in c.value for c in self.app.caption))
+        self.app.button(key='reset_projection_opponent').click().run()
+        self.assert_no_errors()
+        self.assertEqual(self.app.selectbox(key='projection_opponent').value, 'ATL')
 
     def test_schedule_failure_has_retry_not_a_false_empty_slate(self):
         self.fragment_id = self.fragment_for(self.app.date_input(key='matchup_date'))

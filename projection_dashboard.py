@@ -26,6 +26,8 @@ from team_projection_view import upcoming_team_games, team_projection_tables, TE
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from projection_presentation import over_line_label, matchup_rating
 from opponent_selection import render_opponent_selector
+from player_navigation import (selected_player_request, apply_pending_navigation,
+                               selected_game_context, render_player_navigation)
 from approved_minutes import render_import, for_matchup, projection_gaps, game_minutes_caption, unmatched_minutes_message
 from import_minutes import TEAM_IDS
 from schedule_feed import load_daily_schedule, ScheduleMemory
@@ -325,8 +327,21 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
     with ui.expander('Player contributions and minutes'):
         active = final['Projected minutes'].gt(0) | final['Projected minutes'].isna()
         columns = ['Player', 'Team', 'Projected minutes', *TEAM_STATS.values(), 'OREB', 'DREB', 'Minutes source', 'Stat baseline', 'Fallback details', 'Status', 'Matchup status', 'Matchup fallback stats']
-        display = final.loc[active, [c for c in columns if c in final]].sort_values(['Team', 'Projected minutes'], ascending=[True, False]).rename(columns={'FG3M': '3PM'})
-        ui.dataframe(display.round(2), hide_index=True, width='stretch')
+        player_rows = final.loc[active].sort_values(['Team', 'Projected minutes'], ascending=[True, False])
+        display = player_rows[[c for c in columns if c in final]].rename(columns={'FG3M': '3PM'})
+        ui.caption('Click a player’s name or select their row to open Player vs Opponent for this matchup.')
+        # Include row identity in the key so changing games/rotations cannot
+        # apply an old selection to a different player. A navigation revision
+        # clears the selection, allowing the same player to be opened again.
+        row_ids = ','.join(player_rows.PLAYER_ID.astype(str))
+        table_key = hashlib.sha256(f'{selected}:{row_ids}'.encode()).hexdigest()[:16]
+        event = ui.dataframe(display.round(2), hide_index=True, width='stretch',
+                            key=f'contribution_players_{table_key}_{st.session_state.get("player_navigation_revision", 0)}',
+                            on_select='rerun', selection_mode=['single-row', 'single-cell'])
+        request = selected_player_request(event.selection, player_rows, game, book_name)
+        if request:
+            st.session_state['pending_player_navigation'] = request
+            st.rerun()
         ui.caption('Zero-minute players are excluded from totals. Approved game minutes retain their exact 240-minute allocation. Other minute sources round individually to 0.5. Importing a new approved file recalculates matching games; the local NBA model does not sync automatically.')
     with ui.expander('Where the assist and three-point targets come from'):
         inputs = ['Market team total', 'Expected team FGM', 'Expected team FGA', 'Team 3PA target', 'Team assist rate', 'Team three attempt rate']
@@ -358,6 +373,7 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
 @st.fragment
 def render_live_dashboard(ui, roster):
     roster = apply_roster_rules(roster)
+    apply_pending_navigation(st.session_state, roster)
     roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)
     ui.title(f'🏀 Player Stat Projections ({SEASON})')
     ui.caption(f'Your workbook minutes for each team’s first {OPENING_GAMES} games; season-average minutes from game {OPENING_GAMES + 1}. Counts include completed regular-season team games, not player appearances. Imported approved minutes take priority for matching games.')
@@ -480,9 +496,12 @@ def render_live_dashboard(ui, roster):
         opponents = [t for t in sorted(roster.TEAM_ABBREVIATION.unique()) if t != team]
         with opponent_col:
             opponent = render_opponent_selector(ui, team, opponents, upcoming)
+        selected_game = selected_game_context(st.session_state, team, opponent)
+        if selected_game:
+            upcoming = selected_game
         if upcoming:
             next_time = pd.Timestamp(upcoming['GameTimeUTC']).tz_convert('America/Denver')
-            game_label = 'Current matchup' if next_time <= pd.Timestamp.now(tz='UTC') else 'Next scheduled game'
+            game_label = 'Selected game' if selected_game else 'Current matchup' if next_time <= pd.Timestamp.now(tz='UTC') else 'Next scheduled game'
             ui.caption(f'{game_label}: {team} vs {upcoming["Opponent"]} · {next_time:%b %d at %I:%M %p %Z}. The default keeps this matchup until one hour after scheduled tip-off. You can change the opponent for any preview.')
         else:
             ui.caption('The next regular-season opponent could not be verified. Choose an opponent manually.')
@@ -517,7 +536,7 @@ def render_live_dashboard(ui, roster):
                 ui.caption(f'Automatic setting: {automatic_minutes:.1f} minutes ({team_players.loc[team_players.Player.eq(player_name),"Minutes source"].iloc[0]}).')
             adjusted = apply_matchup(baseline,roster,teams,prior_effects,current_effects,opponent)
             row = adjusted.iloc[0]
-            ui.subheader(f'{player_name} vs {opponent}')
+            ui.subheader(f'{player_name} vs {opponent}', anchor='selected-player-projection')
             ui.caption(f"{row['Offensive archetype']} · {row['Defensive archetype']} · {row['Projected minutes']:.1f} projected minutes ({row['Minutes source']})")
             ui.caption(f"Stat baseline: {row['Stat baseline']} · Opponent history: {row['Matchup data']} · Offensive samples: {row['Off prior samples']} prior / {row['Off current samples']} current · Defensive samples: {row['Def prior samples']} prior / {row['Def current samples']} current")
             with ui.expander('Archetype matchup blend details'):
@@ -836,3 +855,4 @@ def render_live_dashboard(ui, roster):
         ui.download_button('Download archetypes CSV', selected.to_csv(index=False), 'preseason_archetypes.csv', 'text/csv')
     with archetype_tab:
         render_archetypes_page()
+    render_player_navigation()
