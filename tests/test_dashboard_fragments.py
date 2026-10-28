@@ -378,6 +378,25 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertTrue(any('No usable archetype matchup history' in item.value for item in self.app.info))
         self.assertTrue(any('Missing archetype matchup history:' in item.value for item in self.app.info))
 
+    def test_selected_team_game_warns_when_saved_rotation_is_for_another_day(self):
+        # Read-only coverage warning must not apply yesterday's injury decisions.
+        from test_approved_minutes import example
+        bundle,_=example()
+        self.imported.return_value=bundle
+        start=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat()
+        self.schedule.return_value=pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
+            for side,opp,venue in [('CHA','DET','away'),('DET','CHA','home')]])
+        # The unrelated synthetic bundle has player IDs absent from the real roster.
+        self.mock('projection_gaps',return_value=pd.DataFrame())
+        self.app.run()
+        self.assert_no_errors()
+        warnings=[w.value for w in self.app.warning]
+        self.assertTrue(any('does not cover CHA vs DET' in message and '2026-10-21' in message for message in warnings))
+        frames=[d.value for d in self.app.dataframe]
+        contributions=next(f for f in frames if 'Player' in f and 'Minutes source' in f and '3PM' in f)
+        self.assertTrue(contributions['Minutes source'].eq('Season average').all())
+
 
 if __name__ == '__main__':
     unittest.main()

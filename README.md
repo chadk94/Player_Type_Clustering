@@ -1053,3 +1053,11 @@ standings/player summaries and complete four-game MIA/ATL logs reproduce both
 failures and confirm finite totals after the fixes. Regression tests cover zero
 reserve minutes, override precedence, partial matchup coverage, preserved missing
 stat rates, full team totals and Streamlit page rendering.
+
+Saved-file banners now distinguish storage from active game coverage. When a
+file's date or pairing does not cover the selected game, all projection views
+explicitly warn that workbook/season-average minutes are being used. A saved
+October 27 injury rotation cannot silently apply to October 28. Reusing a rotation
+for another fixture requires an explicit approval/import for that fixture; the
+original workbook and manual archetypes are unchanged. These notices do not
+alter minutes selection or automatically carry injury decisions forward.

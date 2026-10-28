@@ -2,7 +2,7 @@ from copy import deepcopy
 import json
 import unittest
 import pandas as pd
-from approved_minutes import digest, validate_bundle, for_matchup, projection_gaps
+from approved_minutes import digest, validate_bundle, for_matchup, projection_gaps, unmatched_minutes_message
 from live_projections import build_projections, STAT_NAMES
 from import_minutes import TEAM_IDS
 
@@ -31,6 +31,18 @@ def reseal(bundle):
 
 
 class ApprovalTests(unittest.TestCase):
+    def test_saved_file_notice_matches_exact_game_and_eastern_date(self):
+        bundle,roster=example()
+        original=deepcopy(bundle)
+        self.assertEqual(unmatched_minutes_message(bundle,'DET','BOS','2026-10-22T01:00:00Z'),'')
+        message=unmatched_minutes_message(bundle,'DET','BOS','2026-10-23T01:00:00Z')
+        self.assertIn('2026-10-21',message)
+        self.assertIn('DET vs BOS on 2026-10-22',message)
+        self.assertIn('not your saved rotation',message)
+        self.assertTrue(unmatched_minutes_message(bundle,'DET','CHA','2026-10-22T01:00:00Z'))
+        self.assertEqual(unmatched_minutes_message(None,'DET','BOS','2026-10-23T01:00:00Z'),'')
+        self.assertEqual(bundle,original)
+
     def test_coverage_uses_approved_active_players_and_preserves_profiles(self):
         bundle, roster = example()
         profiles = roster.rename(columns={'PLAYER_NAME':'Player', 'TEAM_ABBREVIATION':'Team',

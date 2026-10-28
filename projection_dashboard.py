@@ -25,7 +25,7 @@ from team_projection_view import upcoming_team_games, team_projection_tables, TE
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from projection_presentation import over_line_label, matchup_rating
 from opponent_selection import render_opponent_selector
-from approved_minutes import render_import, for_matchup, projection_gaps, game_minutes_caption
+from approved_minutes import render_import, for_matchup, projection_gaps, game_minutes_caption, unmatched_minutes_message
 from import_minutes import TEAM_IDS
 from schedule_feed import load_daily_schedule, ScheduleMemory
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
@@ -214,7 +214,7 @@ def set_edge_stats(selected):
         st.session_state[f'edges_stat_{stat}'] = selected
 
 
-def render_team_projections(ui, projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game=None):
+def render_team_projections(ui, projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game=None, approved_bundle=None):
     ui.subheader('🏀 Team Projections')
     ui.caption('Both teams’ projected stat totals, using the same saved minutes and adjustments as Top Sportsbook Edges. Player sliders affect individual previews only.')
     ui.caption('Games stay available until one hour after their scheduled tip-off. The list updates when you use a control or refresh.')
@@ -254,6 +254,9 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
     order = [game['Away'], game['Home']]
     base = projections[projections.Team.isin(order)].copy()
     ui.caption(game_minutes_caption(base, order))
+    notice = unmatched_minutes_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
+    if notice:
+        ui.warning(notice)
     rows = [apply_matchup(base[base.Team.eq(side)], roster, teams, prior_effects, current_effects, opponent)
             for side, opponent in [(game['Away'], game['Home']), (game['Home'], game['Away'])]
             if not base[base.Team.eq(side)].empty]
@@ -480,6 +483,9 @@ def render_live_dashboard(ui, roster):
             if upcoming and upcoming['Opponent'] == opponent:
                 matched_projections = project_for_game(team, opponent, upcoming['GameTimeUTC'])
                 team_players = matched_projections[matched_projections.Team.eq(team)]
+                notice = unmatched_minutes_message(approved_bundle, team, opponent, upcoming['GameTimeUTC'])
+                if notice:
+                    ui.warning(notice)
             adjusted_on = ui.toggle('Apply opponent matchup adjustments',value=True,key='opponent_adjustments')
             baseline = team_players[team_players.Player.eq(player_name)]
             player_id = int(baseline.iloc[0].PLAYER_ID)
@@ -615,10 +621,17 @@ def render_live_dashboard(ui, roster):
             ui.info(f'No upcoming regular-season games were found for {date:%b %d, %Y}. Choose another date to preview its matchups.')
         else:
             scheduled_frames = []
+            uncovered = {}
             for fixture in schedule.itertuples():
                 side = next((name for name,tid in TEAM_IDS.items() if tid == fixture.TEAM_ID), None)
                 frame = project_for_game(side, fixture.Opponent, fixture.GameTimeUTC)
                 scheduled_frames.append(frame[frame.TEAM_ID.eq(fixture.TEAM_ID)])
+                notice = unmatched_minutes_message(approved_bundle, side, fixture.Opponent, fixture.GameTimeUTC)
+                if notice:
+                    uncovered[tuple(sorted([side, fixture.Opponent]))] = notice
+            if uncovered:
+                extra = f' {len(uncovered)-1} other scheduled games are also not covered.' if len(uncovered)>1 else ''
+                ui.warning(next(iter(uncovered.values())) + extra)
             slate_projections = pd.concat(scheduled_frames,ignore_index=True)
             slate = slate_projections.merge(schedule,on='TEAM_ID',how='inner',validate='many_to_one')
             matchups = apply_matchup(slate,roster,teams,prior_effects,current_effects)
@@ -729,6 +742,9 @@ def render_live_dashboard(ui, roster):
                     game = by_id[game_id]
                     game_projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
                     ui.caption(game_minutes_caption(game_projections, [game['Away'], game['Home']]))
+                    notice = unmatched_minutes_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
+                    if notice:
+                        ui.warning(notice)
                     matchup_rows = []
                     for side,opponent in [(game['Home'],game['Away']),(game['Away'],game['Home'])]:
                         # Keep the whole roster so unavailable minutes cannot silently
@@ -776,7 +792,7 @@ def render_live_dashboard(ui, roster):
 
     @st.fragment
     def render_team_page():
-        render_team_projections(ui, projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game)
+        render_team_projections(ui, projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle)
     with team_tab:
         render_team_page()
 

@@ -86,6 +86,23 @@ def for_matchup(bundle, roster, team, opponent, start):
     return result
 
 
+def unmatched_minutes_message(bundle, team, opponent, start):
+    """Explain when a saved file is not the source for the selected game."""
+    if not bundle or start is None:
+        return ''
+    timestamp = pd.Timestamp(start)
+    if timestamp.tzinfo is None or team not in TEAM_IDS or opponent not in TEAM_IDS:
+        return ''
+    day = str(timestamp.tz_convert('America/New_York').date())
+    ids = {TEAM_IDS[team], TEAM_IDS[opponent]}
+    if any(g['game_date'] == day and {g['away_team_id'], g['home_team_id']} == ids for g in bundle['games']):
+        return ''
+    saved = ', '.join(sorted({g['game_date'] for g in bundle['games']}))
+    return (f'The saved minutes file ({saved}) does not cover {team} vs {opponent} on {day}. '
+            'This game is using workbook/season-average minutes, not your saved rotation. '
+            'Import approved minutes for this game, including zero for players who are out.')
+
+
 def projection_gaps(bundle, projections):
     """Report newly active players without changing their saved profiles or roles."""
     columns = ['Player', 'Team', 'Approved minutes', 'Missing data']
@@ -153,7 +170,7 @@ def render_import(ui, roster, season):
     if bundle:
         day = bundle['games'][0]['game_date']
         suffix = 'Active for this session only.' if state['storage_error'] else 'Saved in this browser.'
-        ui.success(f"Minutes source: approved file · {day} · {len(bundle['approvals'])} teams. {suffix}")
+        ui.info(f"Saved minutes file · {day} · {len(bundle['approvals'])} teams. Applies only to matching games on that date. {suffix}")
         warnings = [f"{a['team']}: {'; '.join(a['warnings'])}" for a in bundle['approvals'] if a['warnings']]
         if warnings: ui.warning('Approved with injury-report limitations: '+' · '.join(warnings))
     else:
