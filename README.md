@@ -44,7 +44,32 @@ The **Player vs Opponent** tab selects a player and any other team, with an oppo
 
 `matchup_projections.py` restores the legacy app's per-36 archetype-versus-opponent model. Only player-games with at least five minutes qualify. Each archetype's mean per-36 rate against an opponent is compared with its overall mean; deviations decay with half-lives of 15 samples for AST, 10 for OREB/DREB/STL/BLK and 999 for other stats, then shrink toward zero with three neutral samples. Offensive clusters drive PTS/AST/OREB/shooting/TOV; defensive clusters drive DREB/STL/BLK. Three-point makes use the attempts percentage to preserve individual conversion rates. REB = OREB + DREB and PRA = PTS + REB + AST. Sample counts are **player-games**, not unique team games. Missing/zero cluster baselines or missing matchup history remain blank, never an assumed neutral adjustment.
 
-**Game-5 policy:** player stat-rate blending begins after the player's team completes four games; opponent tendencies use last season until the opponent completes four games, then use only current-season games. The minutes boundary remains game 4. This separates a player's rate sample from the opponent's defensive sample and lets teams cross the boundary independently. Current samples remain small, so the model retains neutral shrinkage and exposes counts. No pace, injury, starting-lineup or home-court adjustment is applied.
+**Player-rate policy:** player stat-rate blending begins after the player's team completes four games. The minutes boundary remains game 4. Archetype matchup effects use the progressive season blend below rather than switching to current-only history at game 5.
+
+**Archetype matchup season blend (October 28, 2026):** each archetype/opponent/stat
+effect starts from its independently smoothed 2025–26 estimate. The 2026–27
+estimate receives weight `g / (g + 10)`, where `g` is the number of distinct
+completed games with a usable observation for that archetype/opponent/stat,
+capped by the verified opponent completed-game count. One game with several
+qualifying players still counts as one game. Blending begins with the first
+usable current game; there is no game-4/5 cutoff. Four relevant games give
+28.6% current / 71.4% prior; ten give 50/50. Ten prior game-equivalents are an
+explicit smoothing assumption, not a fitted optimum or invented observations.
+
+Existing within-season decay and neutral shrinkage remain unchanged: 20 neutral
+player-appearances for STL/BLK, three for other categories. Missing current
+evidence retains the historical effect; without historical evidence, a supported
+current effect is shrunk toward neutral by the same weight. Missing both retains
+the player baseline with an unavailable matchup rating. 3PM uses the 3PA effect
+and the same blend weight, preserving the player's own shooting percentage.
+
+All projection pages share this calculation. Market points targets, progressive
+team-rate targets and normalized archetype allocation formulas remain unchanged;
+PRA is recomputed from final PTS + REB + AST. Player baselines, approved minutes
+and manual archetype assignments are untouched. The player view includes
+**Archetype matchup blend details** with both season effects and actual weights.
+Exports separate prior/current player-game samples and current distinct games;
+the ten prior equivalents are never added to observed sample counts.
 
 `data/game_logs_2026.csv.gz` contains 26,547 player appearances across all **1,230 2025–26 regular-season games**, retrieved 2026-10-19 from ESPN team schedules and summary box scores. Each of 30 teams has 82 games. The NBA Cup Championship is explicitly excluded even though ESPN tags it season type 2. Source details are in `data/game_logs_2026.csv.source.json`. Current approved archetypes/manual overrides label these historical appearances; archived labels cover players outside the current roster. Exact unambiguous canonical/workbook name matching links providers; unmatched players do not contribute cluster samples. Full-season averages derived from these box scores supersede partial archived stat baselines where matched; archived feature data remains unchanged for clustering. RotoWire still covers players without actual prior-season profiles.
 
@@ -863,7 +888,7 @@ The extra prior weight is not included in displayed matchup sample counts.
 The shared calculation feeds Player vs Opponent and Top Sportsbook Edges, including
 their matchup ratings, percentages and downloads. Best Matchups and Team Projections
 use the same effects for consistency. Both historical and current-season opponent
-samples use the new prior; the existing game-5 switch is unchanged. Turning off
+samples use the new prior; the October 28 season blend above replaces the earlier game-5 switch. Turning off
 opponent adjustments still returns the individual baseline. Manual archetypes,
 approved minutes, player baseline rates, and team-level PTS/AST/3PM/REB adjustments
 are unchanged. The historical-effect cache includes the calculation source hash,

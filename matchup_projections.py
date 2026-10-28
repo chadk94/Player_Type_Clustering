@@ -9,7 +9,10 @@ from archetype_model import assign_named_roles, validate_named_roles
 OFF_STATS = ['PTS','AST','OREB','FGM','FGA','FG3M','FG3A','FTM','FTA','TOV']
 DEF_STATS = ['DREB','STL','BLK','PF']
 HEAT_STATS = ['PTS','AST','DREB','OREB','FG3M','FG3A','STL','BLK']
-START_GAME = 5
+MATCHUP_PRIOR_GAMES = 10.
+MATCHUP_POLICY_VERSION = 'archetype-season-blend-10-games-v1'
+MATCHUP_METADATA = ['Matchup prior games', 'Off prior samples', 'Off current samples',
+                    'Def prior samples', 'Def current samples', 'Off current games', 'Def current games']
 
 
 def assign_game_archetypes(logs, roster):
@@ -65,9 +68,11 @@ def matchup_effects(logs):
             rates = group.reindex(columns=stats).div(group.MIN,axis=0)*36
             means = rates.mean()
             for opponent, opponent_rows in group.groupby('Opponent'):
-                result = {'samples':len(opponent_rows)}
+                result = {'samples':len(opponent_rows), 'games':opponent_rows.GAME_ID.nunique(),
+                          'stat_games':{}}
                 for stat in stats:
                     values = rates.loc[opponent_rows.index,stat]
+                    result['stat_games'][stat] = opponent_rows.loc[np.isfinite(values), 'GAME_ID'].nunique()
                     if not np.isfinite(means[stat]) or means[stat] <= 0:
                         result[stat] = np.nan
                         continue
@@ -81,12 +86,35 @@ def matchup_effects(logs):
                     result[stat] = float(np.dot(differences,weights)/(neutral_samples+weights.sum()))
                 if kind == 'Off':
                     result['FG3M'] = result['FG3A']  # Preserve player's own 3P conversion rate.
+                    result['stat_games']['FG3M'] = result['stat_games']['FG3A']
                 effects[(kind,int(cluster),opponent)] = result
     return effects
 
 
+def blend_matchup_effect(prior, current, stat, completed_games, prior_games=MATCHUP_PRIOR_GAMES):
+    """Blend independently smoothed season effects by relevant distinct games.
+
+    Ten prior game-equivalents are a policy assumption, not ten fabricated
+    observations. Existing neutral shrinkage (including 20 for STL/BLK) stays
+    inside each season estimate. Missing current evidence never erases a prior.
+    With no historical effect, a supported current effect approaches from zero.
+    """
+    if not np.isfinite(prior_games) or prior_games <= 0:
+        raise ValueError('Matchup prior games must be positive')
+    old, new = prior.get(stat, np.nan), current.get(stat, np.nan)
+    completed = float(completed_games) if pd.notna(completed_games) else 0.
+    games = current.get('stat_games', {}).get(stat, current.get('games', 0))
+    games = max(0., min(float(games), completed)) if np.isfinite(completed) and np.isfinite(games) else 0.
+    weight = games / (games + prior_games) if np.isfinite(new) and games > 0 else 0.
+    if np.isfinite(old):
+        return ((1-weight)*old + weight*new, weight, 'blend') if weight else (old, 0., 'prior')
+    if weight:
+        return weight*new, weight, 'current'
+    return np.nan, 0., 'none'
+
+
 def apply_matchup(baselines, roster, teams, prior_effects, current_effects, opponent=None):
-    """Switch history after four opponent games; keep baselines for absent effects.
+    """Gradually blend matchup seasons; keep baselines for absent effects.
 
     Missing matchup evidence is not missing player production. Preserve the
     baseline only for affected stats, retaining unavailable percentages and
@@ -99,20 +127,24 @@ def apply_matchup(baselines, roster, teams, prior_effects, current_effects, oppo
         row = base.to_dict()
         target = opponent or row.get('Opponent','')
         row['Opponent'] = target
-        current = counts.get(target,0) >= START_GAME-1
-        effects = current_effects if current else prior_effects
-        row['Matchup data'] = '2026–27' if current else '2025–26'
+        row['Matchup prior games'] = MATCHUP_PRIOR_GAMES
         player = clusters.loc[row['PLAYER_ID']]
         missing_role = False
         fallback_stats = []
+        sources = set()
         for kind,stats in [('Off',OFF_STATS),('Def',DEF_STATS)]:
             cluster = player[f'{kind}Cluster']
             unclassified = pd.isna(cluster)
             missing_role = missing_role or unclassified
-            effect = effects.get((kind,int(cluster),target),{}) if pd.notna(cluster) else {}
-            row[f'{kind} samples'] = effect.get('samples',0)
+            key = (kind,int(cluster),target) if pd.notna(cluster) else None
+            prior, current = prior_effects.get(key,{}), current_effects.get(key,{})
+            side_sources = set()
             for stat in stats:
-                pct = effect.get(stat,np.nan)
+                pct, weight, source = blend_matchup_effect(prior,current,stat,counts.get(target,0))
+                side_sources.add(source)
+                row[f'{stat} matchup current weight'] = weight
+                row[f'Prior {stat} %'] = prior.get(stat,np.nan)
+                row[f'Current {stat} %'] = current.get(stat,np.nan)
                 row[f'{stat} %'] = pct
                 row[f'Baseline {stat}'] = base.get(stat,np.nan)
                 base_value = base.get(stat,np.nan)
@@ -124,6 +156,14 @@ def apply_matchup(baselines, roster, teams, prior_effects, current_effects, oppo
                         fallback_stats.append(stat)
                 else:
                     row[stat] = max(0,base_value*(1+pct/100)) if np.isfinite(pct) and np.isfinite(base_value) else np.nan
+            sources.update(side_sources)
+            row[f'{kind} prior samples'] = prior.get('samples',0) if side_sources & {'prior','blend'} else 0
+            row[f'{kind} current samples'] = current.get('samples',0) if side_sources & {'current','blend'} else 0
+            row[f'{kind} samples'] = row[f'{kind} prior samples'] + row[f'{kind} current samples']
+            row[f'{kind} current games'] = current.get('games',0) if side_sources & {'current','blend'} else 0
+        row['Matchup data'] = ('2025–26 + 2026–27 blend' if 'blend' in sources or {'prior','current'} <= sources
+                               else '2025–26' if 'prior' in sources else
+                               '2026–27 (shrunk toward neutral)' if 'current' in sources else 'Unavailable')
         row['Baseline REB'] = base.get('REB',np.nan)
         row['REB'] = row['OREB'] + row['DREB']
         row['PRA'] = row['PTS'] + row['REB'] + row['AST']

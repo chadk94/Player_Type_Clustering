@@ -13,7 +13,8 @@ from live_projections import (ESPN, build_projections, fetch_json, load_live_sta
 from archetype_fallback import build_archetype_priors
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import load_game_logs
-from matchup_projections import assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS, prior_season_profiles
+from matchup_projections import (assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS,
+                                 prior_season_profiles, MATCHUP_PRIOR_GAMES, MATCHUP_POLICY_VERSION)
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
 from market_points import market_targets, apply_market_points
@@ -257,7 +258,7 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
     game = by_key[selected]
     if project_for_game is not None:
         projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
-    snapshot_key = (selected, BOOKS[book_name], POLICY_VERSION)
+    snapshot_key = (selected, BOOKS[book_name], POLICY_VERSION, MATCHUP_POLICY_VERSION)
     order = [game['Away'], game['Home']]
     base = projections[projections.Team.isin(order)].copy()
     ui.caption(game_minutes_caption(base, order))
@@ -440,7 +441,7 @@ def render_live_dashboard(ui, roster):
         with ui.spinner('Refreshing current-season team rates and matchup history…'):
             try:
                 logs, details = current_matchup_logs(int(SEASON[:4])+1, tuple(teams.ESPN_TEAM_ID))
-                if teams.GAMES_PLAYED.ge(4).any():
+                if not logs.empty:
                     current_effects = matchup_effects(assign_game_archetypes(logs,roster))
                 if details['errors']:
                     ui.warning('Some current-season matchup games could not be loaded. Sample counts may be incomplete.')
@@ -448,6 +449,7 @@ def render_live_dashboard(ui, roster):
                 ui.warning(f'Current-season matchup data unavailable: {exc}')
     team_rates = blend_team_rates(prior_team_rates(), logs, teams)
     ui.caption(f'Progressive team rates: current season gets games ÷ (games + {PRIOR_GAMES:g}); last season counts as {PRIOR_GAMES:g} games. Threes use attempts and preserve individual shooting percentages. PRA uses final points + rebounds + assists.')
+    ui.caption(f'Archetype matchup effects blend both seasons from the first usable game. Last season counts as {MATCHUP_PRIOR_GAMES:g} matchup games; each category uses its own relevant game count. Steals and blocks retain their stronger smoothing.')
     with ui.expander('Team rate weights and data coverage'):
         coverage = team_rates['coverage'].reset_index()
         ui.dataframe(coverage.style.format({'Current weight':'{:.1%}', 'Completed games':'{:.0f}',
@@ -458,7 +460,7 @@ def render_live_dashboard(ui, roster):
     # and cannot trigger league-wide ESPN refreshes or hidden-tab calculations.
     # Imports and Refresh live data rerun the parent and rebuild every tab.
     projection_tab, best_tab, edges_tab, team_tab, archetype_tab = ui.tabs(['Player vs Opponent', "🔥 Today's Best Matchups", '💰 Top Sportsbook Edges', '🏀 Team Projections', 'Archetypes'])
-    ui.caption('Rookies and players using estimated profiles switch to actual stat rates from their first regular-season appearance. Players with historical baselines blend in current rates from game 5. Opponent tendencies switch to this season after that opponent completes four games. Matchup samples are player-games with at least 5 minutes.')
+    ui.caption('Rookies and players using estimated profiles switch to actual stat rates from their first regular-season appearance. Players with historical baselines blend in current rates from game 5. Archetype matchup effects gradually blend both seasons with a 10-game prior. Matchup samples are player-games with at least 5 minutes; blend weights count distinct relevant games.')
     @st.fragment
     def render_player_page():
         team_col, player_col, opponent_col = ui.columns(3)
@@ -517,7 +519,15 @@ def render_live_dashboard(ui, roster):
             row = adjusted.iloc[0]
             ui.subheader(f'{player_name} vs {opponent}')
             ui.caption(f"{row['Offensive archetype']} · {row['Defensive archetype']} · {row['Projected minutes']:.1f} projected minutes ({row['Minutes source']})")
-            ui.caption(f"Stat baseline: {row['Stat baseline']} · Opponent history: {row['Matchup data']} · Offensive samples: {row['Off samples']} · Defensive samples: {row['Def samples']}")
+            ui.caption(f"Stat baseline: {row['Stat baseline']} · Opponent history: {row['Matchup data']} · Offensive samples: {row['Off prior samples']} prior / {row['Off current samples']} current · Defensive samples: {row['Def prior samples']} prior / {row['Def current samples']} current")
+            with ui.expander('Archetype matchup blend details'):
+                blend_stats = [('PTS','PTS'),('AST','AST'),('OREB','OREB'),('DREB','DREB'),('3PA / 3PM','FG3A'),('STL','STL'),('BLK','BLK'),('TOV','TOV'),('PF','PF')]
+                detail = pd.DataFrame([{'Stat':label,'Last-season effect %':row[f'Prior {stat} %'],
+                    'Current-season effect %':row[f'Current {stat} %'],'Current-season weight':row[f'{stat} matchup current weight'],
+                    'Blended effect %':row[f'{stat} %']} for label,stat in blend_stats])
+                ui.dataframe(detail.style.format({'Last-season effect %':'{:+.2f}%', 'Current-season effect %':'{:+.2f}%',
+                    'Current-season weight':'{:.1%}', 'Blended effect %':'{:+.2f}%'},na_rep='—'),hide_index=True,width='stretch')
+                ui.caption('Weights count distinct games with usable observations for this archetype and opponent. Samples above count player appearances. Missing current history retains last season; missing both seasons retains the player baseline. Without a historical effect, current evidence is shrunk toward an average matchup. Team adjustments then normalize player shares as before.')
             if str(row['Stat baseline']).startswith('Current season'):
                 ui.caption(f"Actual stat sample: {row['Season appearances']:g} regular-season appearances · "
                            f"{row['Actual sample minutes']:.1f} minutes. Per-minute rates scale to your projected minutes.")
@@ -607,7 +617,7 @@ def render_live_dashboard(ui, roster):
             with ui.expander('How matchup projections work'):
                 ui.write('Steals and blocks use stronger smoothing toward an average matchup, reducing the impact of small or noisy samples while retaining archetype differences.')
                 ui.write('Each archetype’s per-36 production against the selected opponent is compared with its league-wide per-36 average. Percent changes are weighted toward recent player-games and shrunk toward zero with 20 neutral samples for steals and blocks, and three for other stats. Offensive archetypes drive points, assists, offensive rebounds and shooting; defensive archetypes drive defensive rebounds, steals and blocks. Projected rebounds equal offensive plus defensive rebounds. Three-point makes use the attempts adjustment to preserve the player’s own shooting rate.')
-                ui.write('Minutes use your workbook for team games 1–3, then observed season minutes per appearance from game 4. Approved game minutes take priority. Rookies and other players using estimates switch to actual per-minute rates after their first verified regular-season appearance, without blending in synthetic estimates. Missing actual categories can still use a labeled estimate. Players with historical baselines stay on last season through game 4; from game 5, current rates blend with the prior using a 200-minute prior weight. Opponent matchup history uses last season until that opponent has completed four games, then only this season. Samples count player-games, not unique team games.')
+                ui.write('Minutes use your workbook for team games 1–3, then observed season minutes per appearance from game 4. Approved game minutes take priority. Rookies and other players using estimates switch to actual per-minute rates after their first verified regular-season appearance, without blending in synthetic estimates. Missing actual categories can still use a labeled estimate. Players with historical baselines stay on last season through game 4; from game 5, current rates blend with the prior using a 200-minute prior weight. Archetype matchup effects blend last season with this season from the first usable game, using relevant games / (relevant games + 10). Missing current evidence keeps last season. Samples count player-games; season blend weights count distinct games.')
                 ui.write('Team assists blend season rates using a 10-game prior, then equally combine the team assist-to-made-field-goal rate with the opponent’s allowed rate. Expected field goals come from market team points divided by the equally blended historical total-points-to-field-goals ratios. The team assist total is allocated in proportion to existing archetype-adjusted player assists, so shared defensive penalties cancel while relative archetype differences remain. No second assist multiplier is applied. PRA combines the final points, rebounds and assists.')
                 ui.write('Team threes use expected FGA times a 50/50 mix of progressively blended team and opponent 3PA/FGA. Team attempts are allocated using normalized archetype-adjusted player attempt shares. Makes scale equally to preserve each player’s expected shooting percentage. Points and PRA already include the threes; no extra points are added. The player slider recalculates this preview, while game edges use the saved automatic team minutes. Changes to an external workbook must be imported and published before the app can use them.')
                 ui.write('Team rebounds use both teams’ expected misses, derived from market team points and progressively blended own/opponent rates with a 10-game prior. Historical credited-player-rebound fractions account approximately for dead-ball/team rebounds and non-reboundable free throws. Each pool splits into offensive rebounds and opposing defensive rebounds. The two components are allocated separately using normalized archetype shares, then added for REB. PRA includes the updated rebounds. Player matchup ratings retain the original archetype effect.')

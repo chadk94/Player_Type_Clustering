@@ -300,6 +300,11 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         selected = 'Kingston Flemings'
         self.app.session_state['projection_player'] = selected
         self.app.session_state['edges_plays_only'] = False
+        prior = dashboard.prior_matchup_effects(self.roster, 'season-blend-integration')
+        self.mock('prior_matchup_effects', return_value=prior)
+        calculate = self.effects._mock_wraps
+        self.effects.side_effect = lambda logs: {key:{**value,'PTS':value.get('PTS',0.)+10.}
+            if key[0]=='Off' else value for key,value in calculate(logs).items()}
         # Full historical fixture serves as a synthetic complete current season.
         # Change rates so an accidental all-prior path cannot pass unnoticed.
         current = self.logs.return_value[0].copy()
@@ -337,6 +342,13 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.app.run()
         self.assert_no_errors()
         frames = [d.value for d in self.app.dataframe]
+        blend = next(f for f in frames if 'Blended effect %' in f).set_index('Stat').loc['PTS']
+        weight = blend['Current-season weight']
+        self.assertGreater(weight,0.)
+        self.assertLess(weight,1.)
+        self.assertNotAlmostEqual(blend['Current-season effect %'],blend['Last-season effect %'])
+        self.assertAlmostEqual(blend['Blended effect %'],
+            (1-weight)*blend['Last-season effect %']+weight*blend['Current-season effect %'])
         player = next(f for f in frames if 'Stat' in f and 'Book line (Over)' in f).set_index('Stat')
         edges = next(f for f in frames if 'Rank' in f and 'Projected' in f).set_index('Stat')
         best = next(f for f in frames if 'Player' in f and 'Team rate status' in f and '3PM' in f).set_index('Player')
@@ -358,6 +370,8 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
 
     def test_missing_matchup_history_keeps_player_and_team_stats_visible(self):
         original = dashboard.matchup_effects._mock_wraps
+        prior = dashboard.prior_matchup_effects(self.roster, 'both-seasons-missing')
+        self.mock('prior_matchup_effects',return_value={key:value for key,value in prior.items() if key[0]!='Def'})
         self.effects.side_effect = lambda logs: {
             key:value for key,value in original(logs).items() if key[0] != 'Def'}
         start = (datetime.now(timezone.utc)+timedelta(days=1)).isoformat()

@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from matchup_data import parse_boxscore
 from matchup_projections import (matchup_effects, apply_matchup, assign_game_archetypes,
-                                 prior_season_profiles, OFF_STATS, DEF_STATS)
+                                 prior_season_profiles, OFF_STATS, DEF_STATS, blend_matchup_effect)
 from season_pipeline import ROOT
 
 
@@ -33,19 +33,20 @@ class MatchupTests(unittest.TestCase):
         self.assertEqual(a.iloc[0]['Off samples'],1)
         self.assertEqual(a.iloc[0]['FG3M %'],a.iloc[0]['FG3A %'])
 
-    def test_opponent_game_five_boundary_and_missing_current_history(self):
+    def test_missing_current_history_keeps_prior_after_game_five(self):
         effects = matchup_effects(self.logs)
         early = apply_matchup(self.base,self.roster,self.teams,effects,{})
         self.assertEqual(early.iloc[0]['Matchup data'],'2025–26')
         self.teams.GAMES_PLAYED = 4
         late = apply_matchup(self.base,self.roster,self.teams,effects,{})
-        self.assertEqual(late.iloc[0]['Matchup data'],'2026–27')
-        self.assertEqual(late.iloc[0].PTS,10.)
-        self.assertEqual(late.iloc[0]['Off samples'],0)
-        self.assertTrue(pd.isna(late.iloc[0]['PTS %']))
-        self.assertEqual(late.iloc[0]['Matchup status'],'Baseline fallback — missing matchup history')
+        self.assertEqual(late.iloc[0]['Matchup data'],'2025–26')
+        self.assertEqual(late.iloc[0].PTS,8.75)
+        self.assertEqual(late.iloc[0]['Off prior samples'],1)
+        self.assertEqual(late.iloc[0]['Off current samples'],0)
+        self.assertEqual(late.iloc[0]['Matchup status'],'Available')
         current = {key:{**value,'PTS':20.} for key,value in effects.items()}
-        self.assertEqual(apply_matchup(self.base,self.roster,self.teams,effects,current).iloc[0].PTS,12.)
+        self.assertAlmostEqual(apply_matchup(self.base,self.roster,self.teams,effects,current).iloc[0].PTS,
+                               10*(1+(-12.5*10/11+20/11)/100))
 
     def test_missing_defensive_history_preserves_team_coverage_and_real_offense(self):
         from team_projection_view import team_projection_tables
@@ -58,14 +59,15 @@ class MatchupTests(unittest.TestCase):
         result = apply_matchup(base,self.roster,teams,prior,current)
         row = result.iloc[0]
         self.assertEqual(row.PTS,8.75)  # Existing current offense still applies.
-        self.assertEqual(row.DREB,10.)  # No old-season effect substituted.
-        self.assertEqual(row.STL,10.)
-        self.assertEqual(row.BLK,10.)
-        self.assertEqual(row.REB,18.75)
+        self.assertEqual(row.DREB,8.75)  # Missing current evidence retains history.
+        self.assertAlmostEqual(row.STL,10*(1-.5/21))
+        self.assertAlmostEqual(row.BLK,10*(1-.5/21))
+        self.assertEqual(row.REB,17.5)
         self.assertEqual(row.PRA,row.PTS+row.REB+row.AST)
-        self.assertEqual(row['Def samples'],0)
-        self.assertEqual(row['Matchup fallback stats'],'DREB, STL, BLK, PF')
-        self.assertTrue(pd.isna(row['DREB %']))
+        self.assertEqual(row['Def prior samples'],1)
+        self.assertEqual(row['Def current samples'],0)
+        self.assertEqual(row['Matchup fallback stats'],'')
+        self.assertEqual(row['DREB %'],-12.5)
         adjusted,_ = match_points(result,{'ATL':110.})
         totals,_,issues = team_projection_tables(base,result,adjusted,['ATL'])
         self.assertEqual(totals.iloc[0]['Stat coverage'],'Complete')
@@ -108,13 +110,45 @@ class MatchupTests(unittest.TestCase):
         current_logs = self.logs.copy()
         current_logs[['STL','BLK']] = [[30.,30.],[10.,10.]]
         current = matchup_effects(current_logs)
-        for completed, expected in [(3,10*(1-.5/21)),(4,10*(1+.5/21))]:
+        for completed in (1,3,4):
             with self.subTest(completed=completed):
                 teams = self.teams.assign(GAMES_PLAYED=completed)
                 row = apply_matchup(self.base,self.roster,teams,prior,current).iloc[0]
+                expected=10*(1+(-.5/21*10/11+.5/21/11))
                 self.assertAlmostEqual(row.STL,expected)
                 self.assertAlmostEqual(row.BLK,expected)
-                self.assertEqual(row['Def samples'],1)  # The prior is not real coverage.
+                self.assertEqual(row['Def samples'],2)  # Two real player-games, never the ten prior equivalents.
+                self.assertEqual(row['Def prior samples'],1)
+                self.assertEqual(row['Def current samples'],1)
+
+    def test_progressive_weight_has_no_four_game_cliff_and_no_duplicate_game_inflation(self):
+        old={'PTS':10.}
+        for games in (0,1,3,4,5,10,40):
+            new={'PTS':-30.,'games':games,'stat_games':{'PTS':games},'samples':games*5}
+            effect,weight,source=blend_matchup_effect(old,new,'PTS',games)
+            self.assertAlmostEqual(weight,games/(games+10))
+            self.assertAlmostEqual(effect,10*(1-weight)-30*weight)
+        duplicates=pd.concat([self.logs.assign(ESPN_PLAYER_ID=str(i)) for i in range(10)],ignore_index=True)
+        effects=matchup_effects(duplicates)
+        self.assertEqual(effects['Off',6,'BOS']['samples'],10)
+        self.assertEqual(effects['Off',6,'BOS']['stat_games']['PTS'],1)
+        self.assertAlmostEqual(blend_matchup_effect(old,effects['Off',6,'BOS'],'PTS',4)[1],1/11)
+
+    def test_blend_missing_categories_and_unverified_games(self):
+        old={'PTS':10.,'AST':5.}
+        new={'PTS':30.,'AST':np.nan,'games':4,'stat_games':{'PTS':4,'AST':0}}
+        self.assertEqual(blend_matchup_effect(old,new,'AST',4),(5.,0.,'prior'))
+        self.assertEqual(blend_matchup_effect(old,new,'PTS',0),(10.,0.,'prior'))
+        self.assertEqual(blend_matchup_effect(old,new,'PTS',np.nan),(10.,0.,'prior'))
+        effect,weight,source=blend_matchup_effect({},new,'PTS',4)
+        self.assertAlmostEqual(effect,30*4/14)
+        self.assertAlmostEqual(weight,4/14)
+        self.assertEqual(source,'current')
+        self.assertTrue(np.isnan(blend_matchup_effect({},new,'AST',4)[0]))
+        # A valid observed zero effect is evidence, not missing history.
+        self.assertAlmostEqual(blend_matchup_effect(old,{'PTS':0.,'games':4},'PTS',4)[0],10*10/14)
+        # Only verified completed opponent games may enter the blend.
+        self.assertAlmostEqual(blend_matchup_effect(old,new,'PTS',2)[1],2/12)
 
     def test_missing_block_observations_are_not_neutral_prior_events(self):
         self.logs.loc[0,'BLK'] = np.nan
