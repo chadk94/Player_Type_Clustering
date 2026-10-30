@@ -549,6 +549,51 @@ applied after allocation. Custom minutes update the selected player's production
 and share in the full roster; the edges page retains automatic minutes. With the
 opponent-adjustment toggle off, the allocation uses unadjusted player shares.
 
+### Player three-point accuracy: career prior with a permanent 50% floor
+
+All projection pages use the same career accuracy rule in `build_projections`,
+including Player vs Opponent (automatic or manual minutes), Today's Best Matchups,
+Top Sportsbook Edges, Team Projections and the all-game player rankings:
+
+`career_weight = max(0.50, 200 / (200 + current_season_3PA))`
+
+`expected_3P% = career_weight × prior_career_3P% + (1 − career_weight) × season_3P%`
+
+`projected_3PM = projected_3PA × expected_3P%`
+
+The 200-attempt prior and 50% floor were approved October 30, 2026. They are
+explicit model settings, not backtest-fitted values. Career weight is 100% with
+no current attempts, 84.75% at 36 attempts, and 50% from 200 attempts onward.
+Career percentage uses pooled NBA regular-season makes/attempts from completed
+seasons through 2025–26, excluding this season to avoid counting it twice.
+Preseason, playoffs and college/international totals are excluded. Traded-player
+combined season totals are counted once and reconciled with their team stints.
+
+`data/career_three_point_totals.json` is a public, season-scoped snapshot from
+ESPN career totals, with individual source URLs, season totals and a retrieval
+timestamp. `build_career_shooting.py` rebuilds it offline from verified NBA/ESPN
+identities; the live app performs no extra career-history network requests.
+The snapshot includes 455 players with prior NBA attempts and 58 with verified
+zero prior attempts. Unavailable career histories retain the existing baseline
+and are labeled accordingly; no percentage is invented. All roster players with
+positive attempts in the historical player baseline have career coverage.
+Rebuild the snapshot when advancing the configured season or adding veterans.
+
+Current-season totals refresh with the existing live-stat snapshot. Exact
+reported makes/attempts are preferred; older snapshots can use full-precision
+per-game values times appearances. Missing/invalid current shooting data retains
+career accuracy at 100%, with its source labeled. Players with no prior NBA
+attempts retain the approved actual-rookie/RotoWire/archetype fallback policy.
+
+Only makes-to-attempts conversion changes. Minutes, 3PA volume, normalized
+archetype attempt shares, market team-attempt targets, PTS and PRA are unchanged.
+The conversion is applied before archetype adjustments, which multiply makes
+and attempts equally; team normalization preserves that percentage. Team 3PM
+totals sum the newly converted player makes. Player details and projection CSVs
+expose career/season percentages, career weight and the current attempt sample.
+Pregame snapshot keys include the shooting-policy version to prevent old-policy
+results being reused after deployment.
+
 ### Progressive team rates: last season is a 10-game prior
 
 All four projection views—Player vs Opponent, Today's Best Matchups stat lines,

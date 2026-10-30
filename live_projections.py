@@ -2,6 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
 import re
 import unicodedata
@@ -12,6 +13,7 @@ import requests
 
 from import_minutes import TEAM_IDS
 from archetype_fallback import ARCHETYPE_BASELINE
+from career_shooting import apply_accuracy, load_career_profiles
 
 ESPN = 'https://site.api.espn.com/apis'
 ALIASES = {'NY': 'NYK', 'GS': 'GSW', 'SA': 'SAS', 'NO': 'NOP', 'UTAH': 'UTA', 'WSH': 'WAS', 'PHO': 'PHX'}
@@ -83,6 +85,10 @@ def parse_player_summary(payload, season_year):
                    'GP': float(gp), 'MIN': float(mpg)}
             for key, source in STAT_NAMES.items():
                 row[key] = values.get(source, np.nan)
+            for key, source in [('Season FG3M total', 'threePointFieldGoalsMade'),
+                                ('Season FG3A total', 'threePointFieldGoalsAttempted')]:
+                if source in values:
+                    row[key] = values[source]
             rows.append(row)
     if not rows:
         return pd.DataFrame(columns=['ESPN_PLAYER_ID', 'PLAYER_NAME', 'GP', 'MIN', *STAT_NAMES])
@@ -154,13 +160,15 @@ def match_player_stats(roster, current):
     return matches
 
 
-def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None, archetype_priors=None):
+def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None, archetype_priors=None, career_profiles=None):
     """Prefer actual rookie rates to estimates; retain veteran historical blends."""
     if opening_games < 0 or prior_minutes < 0:
         raise ValueError('Projection settings must be nonnegative')
     minutes_overrides = minutes_overrides or {}
     approved_minutes = approved_minutes or {}
     archetype_priors = archetype_priors or {}
+    if career_profiles is None:
+        career_profiles = load_career_profiles(os.environ.get('NBA_SEASON', '2026-27'))
     if any(not np.isfinite(value) or not 0 <= value <= 48 for value in approved_minutes.values()):
         raise ValueError('Approved minutes must be between 0 and 48')
     if any(not np.isfinite(value) or not 0 <= value <= 48 for value in minutes_overrides.values()):
@@ -258,6 +266,11 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
             row[stat] = rate * minutes if np.isfinite(rate) and np.isfinite(minutes) else np.nan
             if stat in CORE_STATS and pd.isna(row[stat]):
                 missing.append(stat)
+        # Accuracy has its own attempt-based prior, independent of the minutes
+        # prior for volume. Apply before archetypes so the same attempt modifier
+        # and normalized team allocation preserve the new conversion rate.
+        apply_accuracy(row, career_profiles.get(player.PLAYER_ID), observed if observed_ok else None)
+        missing = [stat for stat in CORE_STATS if pd.isna(row[stat])]
         if actual_first and estimated_stats:
             baseline_source += ' + ' + ('RotoWire fallback' if fallback_used else
                                        'archetype fallback' if archetype_used else 'historical fallback')

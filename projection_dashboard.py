@@ -20,6 +20,7 @@ from FanduelScrape import get_odds_api_key
 from market_points import market_targets, apply_market_points
 from team_assists import apply_team_assists
 from team_threes import apply_team_threes
+from career_shooting import SHOOTING_POLICY_VERSION
 from team_rebounds import apply_team_rebounds, REBOUND_METADATA
 from team_rate_blend import season_rates, blend_team_rates, PRIOR_GAMES, POLICY_VERSION
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
@@ -227,7 +228,7 @@ def set_edge_stats(selected):
 def team_game_projection(ui, game, book_name, schedule, now, snapshots, projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle=None):
     if project_for_game is not None:
         projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
-    snapshot_key = (game['key'], BOOKS[book_name], POLICY_VERSION, MATCHUP_POLICY_VERSION)
+    snapshot_key = (game['key'], BOOKS[book_name], POLICY_VERSION, MATCHUP_POLICY_VERSION, SHOOTING_POLICY_VERSION)
     order = [game['Away'], game['Home']]
     base = projections[projections.Team.isin(order)].copy()
     ui.caption(game_minutes_caption(base, order))
@@ -576,6 +577,7 @@ def render_live_dashboard(ui, roster):
                 ui.warning(f'Current-season matchup data unavailable: {exc}')
     team_rates = blend_team_rates(prior_team_rates(), logs, teams)
     ui.caption(f'Progressive team rates: current season gets games ÷ (games + {PRIOR_GAMES:g}); last season counts as {PRIOR_GAMES:g} games. Threes use attempts and preserve individual shooting percentages. PRA uses final points + rebounds + assists.')
+    ui.caption('Three-point accuracy blends prior-career NBA shooting with this season using a 200-attempt prior. Career weight never falls below 50%. Minutes and normalized archetype attempt shares still determine volume. Players without prior NBA attempts retain their existing baseline.')
     ui.caption(f'Archetype matchup effects blend both seasons from the first usable game. Last season counts as {MATCHUP_PRIOR_GAMES:g} matchup games; each category uses its own relevant game count. Steals and blocks retain their stronger smoothing.')
     with ui.expander('Team rate weights and data coverage'):
         coverage = team_rates['coverage'].reset_index()
@@ -652,6 +654,15 @@ def render_live_dashboard(ui, roster):
             ui.subheader(f'{player_name} vs {opponent}', anchor='selected-player-projection')
             ui.caption(f"{row['Offensive archetype']} · {row['Defensive archetype']} · {row['Projected minutes']:.1f} projected minutes ({row['Minutes source']})")
             ui.caption(f"Stat baseline: {row['Stat baseline']} · Opponent history: {row['Matchup data']} · Offensive samples: {row['Off prior samples']} prior / {row['Off current samples']} current · Defensive samples: {row['Def prior samples']} prior / {row['Def current samples']} current")
+            if pd.notna(row.get('Career 3P weight')):
+                shooting = (f"3P accuracy: {row['Expected 3P%']:.1%} · "
+                            f"Career {row['Career 3P%']:.1%} at {row['Career 3P weight']:.1%} weight")
+                if pd.notna(row['Season 3P%']):
+                    shooting += (f" · This season {row['Season 3P%']:.1%} on "
+                                 f"{row['Season 3PA sample']:g} attempts")
+                ui.caption(shooting + '. Career excludes the current season; 200-attempt prior, 50% career minimum.')
+            else:
+                ui.caption('3P accuracy: ' + row.get('3P accuracy source', 'Existing baseline'))
             with ui.expander('Archetype matchup blend details'):
                 blend_stats = [('PTS','PTS'),('AST','AST'),('OREB','OREB'),('DREB','DREB'),('3PA / 3PM','FG3A'),('STL','STL'),('BLK','BLK'),('TOV','TOV'),('PF','PF')]
                 detail = pd.DataFrame([{'Stat':label,'Last-season effect %':row[f'Prior {stat} %'],
