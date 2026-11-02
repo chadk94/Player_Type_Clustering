@@ -9,7 +9,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from live_projections import (ESPN, build_projections, fetch_json, load_live_state, next_regular_season_game, round_projected_minutes)
+from live_projections import (ESPN, build_projections, fetch_json, load_live_state, name_key, next_regular_season_game, round_projected_minutes)
 from archetype_fallback import build_archetype_priors
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import load_game_logs
@@ -283,9 +283,12 @@ class ProjectionNotes:
 
 @st.fragment
 def render_slate_player_table(ui, frame, by_key, book_name, date, notes):
-    # Sorting and row clicks reuse this captured frame. They never fetch odds,
+    # Searching, sorting and row clicks reuse this captured frame. They never fetch odds,
     # rebuild the slate, or rerun any other dashboard tab.
     ui.subheader('All player projections')
+    player_search = ui.text_input(
+        'Filter by player', key='team_players_search', placeholder='Type a player’s name…',
+        help='Search any part of a name across all games, then press Enter. Clear the field to show all players. Sorting and the zero-minute filter still apply.')
     sort_col, zero_col = ui.columns([2, 1])
     with sort_col:
         sort_label = ui.selectbox('Rank players by', list(PLAYER_SORTS), key='team_players_sort')
@@ -295,6 +298,13 @@ def render_slate_player_table(ui, frame, by_key, book_name, date, notes):
     if ranked.empty:
         ui.info('No players remain in the selected games. Games stay available until one hour after tip-off.')
         return
+    if player_search.strip():
+        query = name_key(player_search)
+        ranked = ranked.loc[ranked['Player'].map(name_key).str.contains(query, regex=False) if query
+                            else pd.Series(False, index=ranked.index)].reset_index(drop=True)
+        if ranked.empty:
+            ui.info('No players match your search. Try another name or clear the search to show all players.')
+            return
     count = ranked['Game key'].nunique()
     ui.caption(f'{len(ranked)} players across {count} games · {date:%b %d, %Y} · {book_name}. '
                'Highest projections first. You can also click any stat column to sort. '
@@ -320,8 +330,8 @@ def render_slate_player_table(ui, frame, by_key, book_name, date, notes):
     send_player_navigation()
     ui.caption('Uses each game’s saved minutes and the same team adjustments as the single-game view. '
                'Unknown stats stay blank; zero-minute players are hidden unless included above. '
-               'Rank uses unrounded values. Refresh live data updates projections and sportsbook targets.')
-    ui.download_button('Download all player projections', display.to_csv(index=False),
+               'Rank uses unrounded values and keeps each player’s place across the slate when searching. Refresh live data updates projections and sportsbook targets.')
+    ui.download_button('Download filtered player projections' if player_search.strip() else 'Download all player projections', display.to_csv(index=False),
                        f'all_player_projections_{date.isoformat()}.csv', 'text/csv', key='all_player_projections_download')
     with ui.expander('Projection coverage and sources'):
         ui.dataframe(pd.DataFrame(notes), hide_index=True, width='stretch')
