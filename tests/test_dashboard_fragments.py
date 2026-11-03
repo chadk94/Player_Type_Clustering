@@ -53,6 +53,7 @@ class DashboardFragmentTests(unittest.TestCase):
         # Browser navigation is exercised separately; keep real widget state.
         self.mock('render_player_navigation')
         self.mock('send_player_navigation')
+        self.probability_tracking = self.mock('render_probability_tracking')
         self.schedule = self.mock('today_schedule', return_value=pd.DataFrame())
         self.schedule_memory = ScheduleMemory()
         self.mock('verified_schedules', return_value=self.schedule_memory)
@@ -151,6 +152,52 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.live.clear.assert_called_once()
         self.logs.clear.assert_called_once()
         self.assertEqual(len(self.app.tabs), 5)
+
+    def test_experimental_points_display_and_tracking_keep_original_comparisons(self):
+        now = datetime.now(timezone.utc)
+        start = (now + timedelta(hours=4)).isoformat()
+        event = dict(id='test-points', home_team='Houston Rockets', away_team='Atlanta Hawks', commence_time=start)
+        target = self.app.selectbox(key='projection_player').value
+        self.mock('get_odds_api_key', return_value='test-key')
+        self.mock('next_team_game', return_value={'Opponent':'HOU','GameTimeUTC':start})
+        self.mock('sportsbook_events', return_value=[event])
+        self.mock('team_projection_preview', side_effect=lambda ui, rows, *args: rows)
+        payload = {**event, 'bookmakers':[{'key':'fanduel','markets':[{
+            'key':'player_points','last_update':now.isoformat(),'outcomes':[
+                dict(description=name,name=side,point=20.5,price=-110)
+                for name in self.roster.loc[self.roster.TEAM_ABBREVIATION.isin(['ATL','HOU']),'PLAYER_NAME']
+                for side in ['Over','Under']]}]}]}
+        self.mock('sportsbook_props', return_value=payload)
+        self.schedule.return_value = pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
+            for side,opp,venue in [('HOU','ATL','home'),('ATL','HOU','away')]])
+        self.app.run()
+        self.assert_no_errors()
+        frame = next(d.value for d in self.app.dataframe if 'Stat' in d.value and 'Projected' in d.value and 'Baseline' in d.value)
+        point = frame.loc[frame.Stat.eq('PTS')].iloc[0]
+        self.assertTrue(pd.notna(point['Exp. P(over)']))
+        self.assertAlmostEqual(point['Exp. P(over)']+point['Exp. P(under)']+point['Exp. P(push)'],1.)
+        self.assertTrue(frame.loc[frame.Stat.ne('PTS'),'Exp. P(over)'].isna().all())
+        self.assertAlmostEqual(point['Edge %'],abs(round((point.Projected/point['Book implied total']-1)*100,2)))
+        rows = next(call.args[1] for call in reversed(self.probability_tracking.call_args_list)
+                    if call.args[3]=='player')
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0]['mean'],point.Projected)
+        self.assertEqual(rows[0]['mode'],'Standard')
+        edge_observations = next(call.args[1] for call in reversed(self.probability_tracking.call_args_list)
+                                 if call.args[3]=='edges')
+        self.assertGreater(len(edge_observations),0)
+        self.assertTrue(all(r['captured_at'] < r['start'] for r in edge_observations))
+        same_player = next(r for r in edge_observations if r['player_id']==rows[0]['player_id'])
+        self.assertEqual(same_player['id'],rows[0]['id'])
+        counts = [m.call_count for m in (self.live,self.logs,self.effects,self.imported,self.schedule)]
+        self.fragment_id = self.fragment_for(self.app.selectbox(key='projection_player'))
+        self.app.slider[0].set_value(12.).run()
+        self.assert_no_errors()
+        row = self.probability_tracking.call_args.args[1][0]
+        self.assertEqual(row['mode'],'Manual minutes')
+        self.assertEqual(row['minutes'],12.)
+        self.assertEqual([m.call_count for m in (self.live,self.logs,self.effects,self.imported,self.schedule)],counts)
 
     def test_team_player_navigation_selects_player_and_exact_matchup(self):
         self.fragment_id = self.fragment_for(self.app.selectbox(key='projection_player'))

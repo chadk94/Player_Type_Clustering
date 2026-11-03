@@ -27,6 +27,8 @@ from team_projection_view import upcoming_team_games, team_projection_tables, TE
 from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from projection_presentation import over_line_label, matchup_rating
+from points_probability import (scoring_context, points_quote, game_points_probabilities, PROBABILITY_COLUMNS)
+from points_tracking import snapshot as probability_snapshot, render_probability_tracking
 from opponent_selection import render_opponent_selector
 from player_navigation import (apply_pending_navigation, selected_game_context,
                                render_player_navigation, queue_player_selection, send_player_navigation)
@@ -586,6 +588,7 @@ def render_live_dashboard(ui, roster):
             except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
                 ui.warning(f'Current-season matchup data unavailable: {exc}')
     team_rates = blend_team_rates(prior_team_rates(), logs, teams)
+    probability_context = scoring_context(roster, players)
     ui.caption(f'Progressive team rates: current season gets games ÷ (games + {PRIOR_GAMES:g}); last season counts as {PRIOR_GAMES:g} games. Threes use attempts and preserve individual shooting percentages. PRA uses final points + rebounds + assists.')
     ui.caption('Three-point accuracy blends prior-career NBA shooting with this season using a 200-attempt prior. Career weight never falls below 50%. Minutes and normalized archetype attempt shares still determine volume. Players without prior NBA attempts retain their existing baseline.')
     ui.caption(f'Archetype matchup effects blend both seasons from the first usable game. Last season counts as {MATCHUP_PRIOR_GAMES:g} matchup games; each category uses its own relevant game count. Steals and blocks retain their stronger smoothing.')
@@ -602,6 +605,7 @@ def render_live_dashboard(ui, roster):
     ui.caption('Rookies and players using estimated profiles switch to actual stat rates from their first regular-season appearance. Players with historical baselines blend in current rates from game 5. Archetype matchup effects gradually blend both seasons with a 10-game prior. Matchup samples are player-games with at least 5 minutes; blend weights count distinct relevant games.')
     @st.fragment
     def render_player_page():
+        probability_observations = []
         render_player_navigation()
         apply_pending_navigation(st.session_state, roster)
         team_col, player_col, opponent_col = ui.columns(3)
@@ -706,6 +710,7 @@ def render_live_dashboard(ui, roster):
             book_name = ui.selectbox('Sportsbook',list(BOOKS),key='projection_sportsbook')
             book_key = BOOKS[book_name]
             quotes = player_quotes({},player_name,book_key)
+            event = None
             try:
                 api_key = get_odds_api_key()
                 if not api_key:
@@ -748,12 +753,32 @@ def render_live_dashboard(ui, roster):
                 ui.caption(str(exc))
             preview['Change'] = preview.Projected - preview.Baseline
             comparison = compare_with_book(preview,quotes)
+            final_player = (adjusted if adjusted_on else baseline).iloc[0].copy()
+            final_player['PTS'] = float(preview.loc[preview.Stat.eq('PTS'), 'Projected'].iloc[0])
+            final_player['Opponent'] = opponent
+            points_line = comparison.loc[comparison.Stat.eq('PTS')].iloc[0]
+            probability = points_quote(final_player, points_line, probability_context.get(player_id))
+            for column in PROBABILITY_COLUMNS:
+                comparison[column] = float('nan')
+                comparison.loc[comparison.Stat.eq('PTS'), column] = probability[column]
+            if event is not None:
+                mode = ('Manual minutes + opponent adjustment off' if flag_key in st.session_state and not adjusted_on
+                        else 'Manual minutes' if flag_key in st.session_state
+                        else 'Opponent adjustment off' if not adjusted_on else 'Standard')
+                saved = probability_snapshot({**final_player.to_dict(), **points_line.to_dict(), **probability},
+                    event, book_key, probability_context, 'Player vs Opponent', mode)
+                if saved:
+                    probability_observations.append(saved)
             comparison['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(comparison['Book line'],comparison['Over odds'])]
-            display_columns = ['Stat','Baseline','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Play']
+            display_columns = ['Stat','Baseline','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Play', *PROBABILITY_COLUMNS]
             display = comparison[display_columns]
             ui.caption('Edge % shows the size of the gap from the book-implied total, positive for both Overs and Unders. Play identifies the direction: Over when the projection is higher, Under when lower. Only gaps greater than 5% qualify as plays and receive shading, from light to dark as the edge grows. The 5% buffer is your extra projection margin; the implied total already removes bookmaker margin.')
             ui.dataframe(display.style.apply(comparison_style,axis=1).format(
-                {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %','Matchup rating','Book line (Over)']},'Edge %':'{:+.2f}%'},na_rep='—'),hide_index=True,width='stretch')
+                {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %','Matchup rating','Book line (Over)']},
+                 **{column:'{:.1%}' for column in PROBABILITY_COLUMNS},'Edge %':'{:+.2f}%'},na_rep='—'),hide_index=True,width='stretch')
+            ui.caption('Exp. probabilities are experimental and available for points only. They do not affect projected averages or the 5% edge rule. Extreme probabilities and low-minute players are less reliable; integer lines include a push.')
+            if probability['Probability status'] != 'Experimental':
+                ui.caption('Points probability: ' + probability['Probability status'] + '.')
             ui.caption('Matchup rating: 1 ⬇️⬇️ poor (−10% or worse), 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent (+10% or better). Based on opponent lift versus baseline, not sportsbook edge; fewer turnovers or fouls rate higher. Ratings are blank when adjustments are off or data is unavailable. Book line (Over) includes the Over price.')
             ui.caption('PF = personal fouls committed. Uses your projected minutes and the defensive-archetype matchup effect. Missing foul rates stay blank; no sportsbook foul line is connected.')
             unavailable = comparison.loc[comparison['Book implied total'].isna(),'Stat'].tolist()
@@ -775,6 +800,7 @@ def render_live_dashboard(ui, roster):
                 ui.write('Team threes use expected FGA times a 50/50 mix of progressively blended team and opponent 3PA/FGA. Team attempts are allocated using normalized archetype-adjusted player attempt shares. Makes scale equally to preserve each player’s expected shooting percentage. Points and PRA already include the threes; no extra points are added. The player slider recalculates this preview, while game edges use the saved automatic team minutes. Changes to an external workbook must be imported and published before the app can use them.')
                 ui.write('Team rebounds use both teams’ expected misses, derived from market team points and progressively blended own/opponent rates with a 10-game prior. Historical credited-player-rebound fractions account approximately for dead-ball/team rebounds and non-reboundable free throws. Each pool splits into offensive rebounds and opposing defensive rebounds. The two components are allocated separately using normalized archetype shares, then added for REB. PRA includes the updated rebounds. Player matchup ratings retain the original archetype effect.')
                 ui.write('These are matchup estimates, not confirmed lineups or availability. The model does not adjust for pace, injuries, starters or home court. Last season’s box scores are assigned the approved current archetypes, preserving manual overrides. Only players with matched archetype labels contribute to the matchup samples; sample counts show that coverage.')
+        render_probability_tracking(ui, probability_observations, logs, 'player')
     with projection_tab:
         render_player_page()
 
@@ -855,6 +881,7 @@ def render_live_dashboard(ui, roster):
 
     @st.fragment
     def render_edges_page():
+        probability_observations = []
         ui.subheader('💰 Top 20 Sportsbook Edges per Game')
         ui.caption('Ranked by absolute percent edge versus the juice-adjusted book total, including Overs and Unders. Each row is one player/stat. Uses approved game minutes when imported, otherwise workbook/season-average minutes, plus opponent adjustments.')
         # Only fetch props for the selected game, never the full slate.
@@ -928,6 +955,15 @@ def render_live_dashboard(ui, roster):
                         market_event = {**game,'commence_time':game['GameTimeUTC'].isoformat()}
                         combined = team_projection_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key,team_rates)
                     ranked,total_edges = game_edges(combined,payload,game,BOOKS[edge_book_name],now=now,plays_only=plays_only,direction=edge_direction,stats=selected_stats,player_search=player_search)
+                    if not combined.empty:
+                        probabilities = game_points_probabilities(combined, payload, BOOKS[edge_book_name], probability_context, now=now)
+                        ranked = ranked.merge(probabilities[['Player', 'Team', 'Stat', *PROBABILITY_COLUMNS]],
+                                              on=['Player', 'Team', 'Stat'], how='left', validate='many_to_one', sort=False)
+                        for _, probability_row in probabilities.iterrows():
+                            saved = probability_snapshot(probability_row, market_event, BOOKS[edge_book_name],
+                                probability_context, 'Top Sportsbook Edges')
+                            if saved:
+                                probability_observations.append(saved)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
                     ui.caption('Snapshot of paired Over/Under prices; quotes older than 15 minutes are excluded when loaded. Use Refresh live data to update. Edge % is a projection gap, not a win probability or expected betting return.')
                     if not selected_stats:
@@ -940,12 +976,13 @@ def render_live_dashboard(ui, roster):
                     else:
                         ui.success(f'Showing {len(ranked)} of {total_edges} eligible player-stat edges')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
-                        display_columns = ['Rank','Player','Team','Stat','Play','Projected minutes','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds']
+                        display_columns = ['Rank','Player','Team','Stat','Play','Projected minutes','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
                         edge_display = ranked[display_columns]
                         ui.dataframe(edge_display.style.apply(comparison_style,axis=1).format(
                             {'Projected minutes':'{:.1f}','Projected':'{:.2f}',
                              'Book implied total':'{:.2f}','Edge %':'{:+.2f}%',
-                             'Over odds':'{:+.0f}','Under odds':'{:+.0f}'},na_rep='—'),hide_index=True,width='stretch')
+                             'Over odds':'{:+.0f}','Under odds':'{:+.0f}', **{column:'{:.1%}' for column in PROBABILITY_COLUMNS}},na_rep='—'),hide_index=True,width='stretch')
+                        ui.caption('Exp. probabilities are experimental, points only, and do not change rankings or the 5% rule. Extreme probabilities and low-minute players are less reliable. Over + Under + Push = 100%.')
                         ui.caption('Matchup rating: 1 ⬇️⬇️ poor, 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent. Ratings measure opponent lift versus baseline, independent of the sportsbook edge or Over/Under play.')
                         ui.caption('Edge % is positive for both Overs and Unders; Play identifies the direction. Only edges greater than 5% are marked as plays. Color intensity grows with edge magnitude. Multiple stats for the same player may be correlated.')
                         ui.download_button('Download this game’s top edges',ranked.to_csv(index=False),f"{game['Away']}_{game['Home']}_top_edges.csv",'text/csv',key='edges_download')
@@ -957,6 +994,7 @@ def render_live_dashboard(ui, roster):
             ui.info(str(exc))
         except (requests.RequestException,ValueError,KeyError,TypeError):
             ui.warning('Game edge rankings are temporarily unavailable. Refresh live data to retry.')
+        render_probability_tracking(ui, probability_observations, logs, 'edges')
     with edges_tab:
         render_edges_page()
 

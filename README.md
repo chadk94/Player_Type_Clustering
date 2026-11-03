@@ -75,6 +75,71 @@ the ten prior equivalents are never added to observed sample counts.
 
 Rebuild the historical snapshot with `python matchup_data.py --year 2026 --cache /path/to/local/boxscore-cache`. The cache holds raw source JSON outside the repository. Current-season schedules/box scores refresh every five minutes once a team reaches the matchup boundary; completed box scores are cached locally to avoid downloading them again. Every box score must match the requested season, type and completed status. Partial feed failures produce a visible warning.
 
+### Experimental points probabilities (November 3, 2026)
+
+**Player vs Opponent** and **Top Sportsbook Edges** show experimental P(over),
+P(under), and P(push) for points at the current paired sportsbook line. Other
+categories remain blank. These columns do **not** change any projected average,
+PRA, archetype adjustment, book-implied total, edge percentage, ranking, or the
+existing strictly-greater-than-5% play rule. They are probabilities of scoring
+above/below/exactly on the line, not additional betting-edge measurements.
+Integer lines have a separate push probability; all three outcomes sum to 100%.
+
+`points_probability.py` implements the offline calibration candidate
+`mixture_0.5_0.05_0.25`: made free throws, twos and threes share a gamma volume
+factor, with player dispersion halved, a 5% low-volume state at 0.25, and the
+remaining state scaled to preserve mean volume exactly. The profile freezes
+2025–26 player variability, shrunk toward shooting-style pools using 40 game
+equivalents. Players without a fitted dispersion use their style pool. The
+individual scoring mix uses historical/current per-minute scoring components
+and a 30-minute style prior. The app's final PTS and 3PM means are held fixed;
+the remaining expected points are split into twos/free throws using that mix.
+Inconsistent PTS/3PM means, missing individual scoring history, nonpositive
+minutes and unavailable/stale lines produce blank probabilities, never a changed
+projection. Temporary archetype-average profiles are excluded.
+
+`data/points_probability_profile.json` contains the frozen fit, scoring totals,
+peer rates, ESPN IDs and source hashes. Its source is the verified 2025–26
+regular-season archive and the October 31 calibration study's saved forward
+fit. The selected model modestly improved near-average calibration in the
+retrospective test. That test reused a historical evaluation season and synthetic
+lines; extremes and low-minute cases remain unreliable. The later experimental
+tail modifications failed validation and are **not** included.
+
+**Prospective tracking:** a small separate Streamlit fragment saves immutable
+pregame snapshots into IndexedDB in the user's browser on this app's origin.
+Snapshots include model/profile version, book/event, quoted line and both odds,
+quote/capture/tip times, player NBA and ESPN IDs, projected points/minutes, scoring
+components and all three probabilities. Changes to inputs or quotes create a
+new record. Identical views (including on both pages) deduplicate; the first
+capture timestamp is never overwritten. Saves are acknowledged after a database
+transaction; failures are shown in the tracking panel. Nothing is uploaded to a
+shared repository or server database. Browser/site-data removal loses this
+history; the downloadable CSV is the backup. Different browsers have separate
+histories. This is **not** a background, league-wide collection service.
+
+The edges page records available points comparisons for the loaded game before
+the top-20, stat, direction, search and 5% filters. The player page records its
+loaded comparison. Manual-minute and opponent-adjustment-off previews have
+separate labels and are excluded from standard evaluation. On a new visit or
+**Refresh live data**, validated completed ESPN box scores match by player ESPN
+ID, teams and unique start time within 15 minutes. Missing appearances, ambiguous
+games and mismatched dates stay ungraded, never zero points. Results include
+actual points/minutes, Over/Under/Push and the ESPN game ID. Feed gaps leave
+previously saved results available; corrections from verified boxes replace
+grades without overwriting forecasts.
+
+The tracking panel and downloads retain every snapshot. Its evaluation sample
+selects the latest captured standard pregame snapshot per player/game/book/model
+without looking at outcomes, then grades it. Repeated quotes are not independent
+trials. Brier error and observed over rates use non-push results and conditional
+P(over | no push); pushes remain in the downloadable record. Different books
+for one player are correlated, and early summary statistics are descriptive.
+Storage acknowledgements rerun only the history fragment; they do not refetch
+odds, rebuild projections or reorder edges. The test suite covers unchanged
+means/rankings, scoring support, push accounting, stale/post-tip rejection,
+duplicate snapshots, manual variants and exact result matching.
+
 ### Sportsbook comparison and juice-adjusted totals
 
 Player vs Opponent also includes **PF (personal fouls committed)** with a baseline,
