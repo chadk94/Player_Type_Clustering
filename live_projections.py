@@ -14,7 +14,7 @@ import requests
 from import_minutes import TEAM_IDS
 from archetype_fallback import ARCHETYPE_BASELINE
 from career_shooting import apply_accuracy, load_career_profiles
-from player_rate_priors import load_prior_season_minutes, stocks_prior_minutes
+from player_rate_priors import load_prior_season_minutes, stocks_prior_minutes, effective_player_prior
 
 ESPN = 'https://site.api.espn.com/apis'
 ALIASES = {'NY': 'NYK', 'GS': 'GSW', 'SA': 'SAS', 'NO': 'NOP', 'UTAH': 'UTA', 'WSH': 'WAS', 'PHO': 'PHX'}
@@ -162,7 +162,7 @@ def match_player_stats(roster, current):
 
 
 def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None, archetype_priors=None, career_profiles=None, prior_season_minutes=None):
-    """Actual rookie rates; veteran STL/BLK use the approved exposure-based prior."""
+    """Actual rookie rates; veteran historical priors phase out by 20 appearances."""
     if opening_games < 0 or prior_minutes < 0:
         raise ValueError('Projection settings must be nonnegative')
     minutes_overrides = minutes_overrides or {}
@@ -224,6 +224,8 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
                            and player.PLAYER_ID in actual_ids)
         actual_first = observed_ok and (approved_actual or not prior_ok or fallback_used)
         current_ok = observed_ok and (actual_first or played >= stats_start_game - 1)
+        appearances = observed.GP if observed_ok else 0.
+        effective_prior = effective_player_prior(prior_minutes, appearances)
         archetype_used = False
         if not prior_ok and player.PLAYER_ID in archetype_priors:
             profile = pd.Series(archetype_priors[player.PLAYER_ID])
@@ -235,8 +237,9 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
         if actual_first:
             weight, baseline_source = 1., 'Current season'
         elif prior_ok and current_ok:
-            weight = total_current_minutes / (total_current_minutes + prior_minutes)
-            baseline_source = 'RotoWire projection + current season' if fallback_used else 'Prior season + current season'
+            weight = total_current_minutes / (total_current_minutes + effective_prior)
+            baseline_source = ('Current season' if effective_prior == 0 else
+                               'RotoWire projection + current season' if fallback_used else 'Prior season + current season')
         elif current_ok:
             weight, baseline_source = 1., 'Current season'
         elif prior_ok:
@@ -250,11 +253,15 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
         stock_prior = stocks_prior_minutes(last_season_minutes, prior_minutes)
         if fallback_used or archetype_used:
             stock_prior = prior_minutes
+        effective_stock_prior = effective_player_prior(stock_prior, appearances)
         stock_weight = weight
         if prior_ok and current_ok and not actual_first:
-            stock_weight = total_current_minutes / (total_current_minutes + stock_prior)
+            stock_weight = total_current_minutes / (total_current_minutes + effective_stock_prior)
         row['Prior season minutes'] = last_season_minutes
+        row['Player effective prior minutes'] = effective_prior if prior_ok and not actual_first else 0.
+        row['Player current weight'] = weight
         row['STL/BLK prior minutes'] = stock_prior if prior_ok and not actual_first else 0.
+        row['STL/BLK effective prior minutes'] = effective_stock_prior if prior_ok and not actual_first else 0.
         row['STL/BLK current weight'] = stock_weight
         row['Actual sample minutes'] = total_current_minutes if current_ok else 0.
         missing = []
@@ -262,7 +269,10 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
         for stat in STAT_NAMES:
             prior_rate = profile.get(stat, np.nan) / profile.MIN if prior_ok else np.nan
             new_rate = observed.get(stat, np.nan) / observed.MIN if current_ok else np.nan
-            if actual_first:
+            stat_weight = stock_weight if stat in ('STL', 'BLK') else weight
+            if actual_first or (current_ok and stat_weight == 1.):
+                # Direct assignment avoids 0 * NaN historical contamination at
+                # the cutoff. Missing actuals still need a labeled fallback.
                 if np.isfinite(new_rate) and new_rate >= 0:
                     rate = new_rate  # Observed zero is a real result, not missing data.
                 elif np.isfinite(prior_rate) and prior_rate >= 0:
@@ -276,7 +286,6 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
                 elif stat == 'PF' and not np.isfinite(new_rate):
                     rate = prior_rate
                 else:
-                    stat_weight = stock_weight if stat in ('STL', 'BLK') else weight
                     rate = (1-stat_weight)*prior_rate + stat_weight*new_rate
             else:
                 rate = new_rate if current_ok else prior_rate
@@ -288,7 +297,7 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
         # and normalized team allocation preserve the new conversion rate.
         apply_accuracy(row, career_profiles.get(player.PLAYER_ID), observed if observed_ok else None)
         missing = [stat for stat in CORE_STATS if pd.isna(row[stat])]
-        if actual_first and estimated_stats:
+        if estimated_stats:
             baseline_source += ' + ' + ('RotoWire fallback' if fallback_used else
                                        'archetype fallback' if archetype_used else 'historical fallback')
         row['Stat baseline'] = baseline_source

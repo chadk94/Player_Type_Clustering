@@ -5,9 +5,24 @@ from pathlib import Path
 
 import numpy as np
 
-PLAYER_RATE_POLICY_VERSION = 'stocks-1000-prior-if-500-last-season-v1'
+PLAYER_RATE_POLICY_VERSION = 'player-priors-taper8-current20-appearances-v1'
 STOCKS_MIN_PRIOR_SEASON_MINUTES = 500.
 STOCKS_PRIOR_MINUTES = 1000.
+PLAYER_TAPER_START = 8.
+PLAYER_FULL_CURRENT_APPEARANCES = 20.
+
+
+def effective_player_prior(prior_minutes, appearances):
+    """Keep early exposure weights; remove historical evidence by appearance 20.
+
+    These are completed player appearances, never team games or projected
+    minutes. Missing observations are handled by the caller's existing fallback.
+    """
+    if not np.isfinite([prior_minutes, appearances]).all() or min(prior_minutes, appearances) < 0:
+        raise ValueError('Player prior and appearances must be finite and nonnegative')
+    fraction = np.clip((PLAYER_FULL_CURRENT_APPEARANCES - appearances) /
+                       (PLAYER_FULL_CURRENT_APPEARANCES - PLAYER_TAPER_START), 0., 1.)
+    return float(prior_minutes * fraction)
 
 
 @lru_cache(maxsize=2)

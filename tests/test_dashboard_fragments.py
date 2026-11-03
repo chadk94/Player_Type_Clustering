@@ -331,6 +331,17 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertAlmostEqual(after.loc['PTS', 'Baseline'], before.loc['PTS', 'Baseline'] * 34.9 / 39.9)
 
     def test_player_and_top_edges_share_stronger_steals_blocks_projections(self):
+        self.assert_shared_player_prior(4,1000.)
+
+    def test_player_edges_and_team_views_share_tapered_player_prior(self):
+        self.assert_shared_player_prior(15,1000.*5/12)
+
+    def test_player_edges_and_team_views_use_current_rates_after_twenty_appearances(self):
+        self.assert_shared_player_prior(20,0.)
+
+    def assert_shared_player_prior(self, appearances, effective_prior):
+        self.live.return_value['players']['GP'] = appearances
+        self.live.return_value['teams']['GAMES_PLAYED'] = appearances
         selected = 'Jalen Johnson'  # Veteran eligible for the new 1,000-minute baseline prior.
         self.app.session_state['projection_player'] = selected
         now = datetime.now(timezone.utc)
@@ -365,7 +376,9 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         cluster = self.roster.set_index('PLAYER_NAME').loc[selected,'DefCluster']
         group = logs[logs.MIN.ge(5) & logs.DefCluster.eq(cluster)].sort_values(['GAME_DATE','GAME_ID','ESPN_PLAYER_ID'])
         for stat in ['STL','BLK']:
-            baseline = (1000/(96+1000)*history[stat]/history.MIN + 96/(96+1000)*3/24)*24
+            exposure = appearances*24
+            baseline = (effective_prior/(exposure+effective_prior)*history[stat]/history.MIN +
+                        exposure/(exposure+effective_prior)*3/24)*24
             self.assertAlmostEqual(preview.loc[stat,'Baseline'],baseline)
             rates = group[stat]/group.MIN*36
             deviations = (rates[group.Opponent.eq('HOU')]/rates.mean()-1).dropna()

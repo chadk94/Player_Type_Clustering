@@ -27,9 +27,13 @@ blank otherwise complete team totals.
 
 Per-game stat estimates use full 2025–26 regular-season per-minute rates multiplied by
 the selected minutes. These stay on the prior through team game 4. From game 5, current-season
-per-minute rates receive weight `current minutes / (current minutes + prior minutes)`.
-For STL/BLK, the prior is 1,000 minutes when the player logged at least 500 actual
-minutes last season, otherwise 200; other stat rates keep 200. This is separate from
+per-minute rates receive weight `current minutes / (current minutes + effective prior minutes)`.
+For STL/BLK, the starting prior is 1,000 minutes when the player logged at least 500 actual
+minutes last season, otherwise 200; other stat rates start at 200. Priors stay intact
+through eight player appearances, then taper linearly to zero at 20 appearances.
+Usable player rates are therefore 100% current-season after 20 appearances; missed
+team games do not advance the cutoff. Career 3P% retains its separate 200-attempt
+prior and minimum 50% career weight. This is separate from
 the user’s three-game minutes rule. Players without a prior profile use verified
 current-season rates from their first appearance; a manual archetype alone cannot
 create individual observed rates. Counts, minutes sources, statistical baselines and missing-data
@@ -1264,12 +1268,14 @@ alter minutes selection or automatically carry injury decisions forward.
 
 ## Hybrid player-baseline prior for steals and blocks (November 3, 2026)
 
-The approved October 30 study rule now applies in the shared projection builder:
+The approved October 30 study rule supplies the starting priors in the shared
+projection builder (the appearance-based phaseout below supersedes constant priors):
 
 - Players with **at least 500 actual NBA regular-season minutes in 2025–26** use
   a **1,000-minute prior** for STL and BLK.
 - Players below 500, or without verified prior-season exposure, keep **200**.
-- Current-season weight is `actual current minutes / (actual current minutes + prior)`.
+- Before the appearance-based phaseout, current-season weight is
+  `actual current minutes / (actual current minutes + prior)`.
   At 200 current minutes, an eligible veteran receives 16.7% current-season weight,
   versus 50% under the previous rule. The cutoff is inclusive and never rounded.
 
@@ -1305,3 +1311,45 @@ increased slightly. The cutoff was selected using the same historical sample; th
 results are not independent validation or a profitability claim. Regression checks
 cover exact cutoff boundaries, missing exposure, rookie/current-only precedence,
 minute overrides, unchanged non-STL/BLK outputs and agreement across app pages.
+
+## Player baselines reach current-season-only after 20 appearances (November 3, 2026)
+
+The user selected **20 completed player appearances**, not completed team games,
+and explicitly retained the career 3P% policy. For a player with `g` appearances:
+
+`effective prior minutes = starting prior × clip((20 − g) / 12, 0, 1)`
+
+`current weight = actual season minutes / (actual season minutes + effective prior minutes)`
+
+Starting priors remain 200 minutes for ordinary stat rates and 1,000 for STL/BLK
+when prior-season exposure is at least 500 minutes (otherwise 200). The taper
+keeps the existing early-season weights through eight appearances, then removes
+historical influence continuously by 20. At 30 minutes per appearance:
+
+| Appearances | Ordinary stats: this season | Eligible STL/BLK: this season |
+|---|---:|---:|
+| 8 | 54.5% | 19.4% |
+| 10 | 64.3% | 26.5% |
+| 15 | 84.4% | 51.9% |
+| 19 | 97.2% | 87.2% |
+| 20+ | 100% | 100% |
+
+Weights use actual season minutes, independently of projected/approved minutes.
+Veteran blending still starts after four completed team games; rookie and approved
+actual-first policies remain intact. At the cutoff, valid actual rates are assigned
+directly, so missing historical categories cannot contaminate them. Missing actual
+categories retain a labeled existing fallback; missing appearances do not trigger
+the phaseout. No rates or appearances are invented.
+
+Three-point attempt volume follows this transition, while conversion accuracy
+continues using the 200-attempt prior and at least 50% career weight all season.
+Opponent smoothing, normalized archetype allocation, team-rate weights, minutes,
+manual archetype overrides, probability methodology and 5% edge ranking rules are
+unchanged. Changed player rates can change projected averages, probabilities and
+edges; PRA is recomputed from final PTS + REB + AST.
+
+All projection views share this builder. The policy version invalidates saved
+pregame projection snapshots. Player diagnostics show appearances, ordinary and
+STL/BLK current weights, and remaining prior minutes. Regression checks cover
+every appearance count from 1–82, injury absences, the career shooting exception,
+missing-category fallbacks, zero observations, approved minutes and shared page outputs.
