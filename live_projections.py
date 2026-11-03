@@ -14,6 +14,7 @@ import requests
 from import_minutes import TEAM_IDS
 from archetype_fallback import ARCHETYPE_BASELINE
 from career_shooting import apply_accuracy, load_career_profiles
+from player_rate_priors import load_prior_season_minutes, stocks_prior_minutes
 
 ESPN = 'https://site.api.espn.com/apis'
 ALIASES = {'NY': 'NYK', 'GS': 'GSW', 'SA': 'SAS', 'NO': 'NOP', 'UTAH': 'UTA', 'WSH': 'WAS', 'PHO': 'PHX'}
@@ -160,8 +161,8 @@ def match_player_stats(roster, current):
     return matches
 
 
-def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None, archetype_priors=None, career_profiles=None):
-    """Prefer actual rookie rates to estimates; retain veteran historical blends."""
+def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None, archetype_priors=None, career_profiles=None, prior_season_minutes=None):
+    """Actual rookie rates; veteran STL/BLK use the approved exposure-based prior."""
     if opening_games < 0 or prior_minutes < 0:
         raise ValueError('Projection settings must be nonnegative')
     minutes_overrides = minutes_overrides or {}
@@ -169,6 +170,8 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
     archetype_priors = archetype_priors or {}
     if career_profiles is None:
         career_profiles = load_career_profiles(os.environ.get('NBA_SEASON', '2026-27'))
+    if prior_season_minutes is None:
+        prior_season_minutes = load_prior_season_minutes(os.environ.get('NBA_SEASON', '2026-27'))
     if any(not np.isfinite(value) or not 0 <= value <= 48 for value in approved_minutes.values()):
         raise ValueError('Approved minutes must be between 0 and 48')
     if any(not np.isfinite(value) or not 0 <= value <= 48 for value in minutes_overrides.values()):
@@ -240,6 +243,19 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
             weight, baseline_source = 0., ('RotoWire 2026–27 projection' if fallback_used else prior_label)
         else:
             weight, baseline_source = 0., 'Unavailable — no statistical profile'
+        last_season_minutes = prior_season_minutes.get(player.PLAYER_ID, np.nan)
+        # Eligibility comes from exact, verified previous-season NBA exposure.
+        # Estimated profiles and approved actual-first players retain their
+        # existing behavior, even if an older NBA exposure total is available.
+        stock_prior = stocks_prior_minutes(last_season_minutes, prior_minutes)
+        if fallback_used or archetype_used:
+            stock_prior = prior_minutes
+        stock_weight = weight
+        if prior_ok and current_ok and not actual_first:
+            stock_weight = total_current_minutes / (total_current_minutes + stock_prior)
+        row['Prior season minutes'] = last_season_minutes
+        row['STL/BLK prior minutes'] = stock_prior if prior_ok and not actual_first else 0.
+        row['STL/BLK current weight'] = stock_weight
         row['Actual sample minutes'] = total_current_minutes if current_ok else 0.
         missing = []
         estimated_stats = []
@@ -260,7 +276,8 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
                 elif stat == 'PF' and not np.isfinite(new_rate):
                     rate = prior_rate
                 else:
-                    rate = (1-weight)*prior_rate + weight*new_rate
+                    stat_weight = stock_weight if stat in ('STL', 'BLK') else weight
+                    rate = (1-stat_weight)*prior_rate + stat_weight*new_rate
             else:
                 rate = new_rate if current_ok else prior_rate
             row[stat] = rate * minutes if np.isfinite(rate) and np.isfinite(minutes) else np.nan

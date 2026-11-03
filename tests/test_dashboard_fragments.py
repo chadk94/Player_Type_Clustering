@@ -331,7 +331,8 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertAlmostEqual(after.loc['PTS', 'Baseline'], before.loc['PTS', 'Baseline'] * 34.9 / 39.9)
 
     def test_player_and_top_edges_share_stronger_steals_blocks_projections(self):
-        selected = self.app.selectbox(key='projection_player').value
+        selected = 'Jalen Johnson'  # Veteran eligible for the new 1,000-minute baseline prior.
+        self.app.session_state['projection_player'] = selected
         now = datetime.now(timezone.utc)
         start = (now+timedelta(days=1)).isoformat()
         event = dict(id='test_game', home_team='Houston Rockets', away_team='Atlanta Hawks', commence_time=start)
@@ -353,12 +354,19 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         frames = [d.value for d in self.app.dataframe]
         preview = next(f for f in frames if 'Stat' in f and 'Baseline' in f and 'Book line (Over)' in f).set_index('Stat')
         edges = next(f for f in frames if 'Rank' in f and 'Projected' in f).set_index('Stat')
+        contributions = next(f for f in frames if 'Player' in f and 'Stat baseline' in f and 'PRA' in f).set_index('Player')
         self.assertEqual(set(edges.index), {'STL','BLK'})
-        from matchup_projections import assign_game_archetypes
+        from matchup_projections import assign_game_archetypes, prior_season_profiles
+        from player_rate_priors import load_prior_season_minutes
+        player_id = self.roster.set_index('PLAYER_NAME').loc[selected,'PLAYER_ID']
+        self.assertGreaterEqual(load_prior_season_minutes('2026-27')[player_id],500.)
+        history = prior_season_profiles(self.logs.return_value[0],self.roster).set_index('PLAYER_ID').loc[player_id]
         logs = assign_game_archetypes(self.logs.return_value[0],self.roster)
         cluster = self.roster.set_index('PLAYER_NAME').loc[selected,'DefCluster']
         group = logs[logs.MIN.ge(5) & logs.DefCluster.eq(cluster)].sort_values(['GAME_DATE','GAME_ID','ESPN_PLAYER_ID'])
         for stat in ['STL','BLK']:
+            baseline = (1000/(96+1000)*history[stat]/history.MIN + 96/(96+1000)*3/24)*24
+            self.assertAlmostEqual(preview.loc[stat,'Baseline'],baseline)
             rates = group[stat]/group.MIN*36
             deviations = (rates[group.Opponent.eq('HOU')]/rates.mean()-1).dropna()
             weights = 2 ** (-np.arange(len(deviations)-1,-1,-1)/10.)
@@ -366,6 +374,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
             expected = preview.loc[stat,'Baseline']*(1+lift)
             self.assertAlmostEqual(preview.loc[stat,'Projected'],expected)
             self.assertAlmostEqual(edges.loc[stat,'Projected'],expected)
+            self.assertEqual(contributions.loc[selected,stat],round(expected,2))
             self.assertEqual(edges.loc[stat,'Matchup rating'],preview.loc[stat,'Matchup rating'])
 
     def test_disabling_matchups_keeps_steals_blocks_at_baseline(self):

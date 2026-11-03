@@ -27,11 +27,12 @@ blank otherwise complete team totals.
 
 Per-game stat estimates use full 2025–26 regular-season per-minute rates multiplied by
 the selected minutes. These stay on the prior through team game 4. From game 5, current-season
-per-minute rates receive weight `current minutes / (current minutes + 200)`; the
-200-minute prior weight is an explicit smoothing assumption, separate from the
-user’s three-game minutes rule. Players without a prior profile can receive estimates
-from observed current-season stats from team game 5; a manual archetype alone cannot
-create numeric rates. Counts, minutes sources, statistical baselines and missing-data
+per-minute rates receive weight `current minutes / (current minutes + prior minutes)`.
+For STL/BLK, the prior is 1,000 minutes when the player logged at least 500 actual
+minutes last season, otherwise 200; other stat rates keep 200. This is separate from
+the user’s three-game minutes rule. Players without a prior profile use verified
+current-season rates from their first appearance; a manual archetype alone cannot
+create individual observed rates. Counts, minutes sources, statistical baselines and missing-data
 statuses are shown per player. Retained reserve zeroes are labeled “Saved zero minutes.”
 
 Selecting a player team defaults the opponent to its next verified regular-season fixture from the ESPN team schedule, retaining a current matchup until one hour after scheduled tip-off (the same window as Team Projections). Completed, postponed, canceled and wrong-season games are excluded. The opponent dropdown remains editable; changing players, minutes or sportsbook preserves a manual opponent choice, while choosing another team loads that team’s current/next opponent. If no fixture can be verified, the opponent starts blank for manual selection.
@@ -404,7 +405,7 @@ per-minute statistical rates still scale to the user's selected minutes. RotoWir
 minutes never override workbook minutes in games 1–3 or season MPG from game 4.
 As of October 27, verified current-season rates replace these estimates from the
 first regular-season appearance; only missing actual categories retain a labeled
-estimate. The 200-minute blend is reserved for actual historical baselines.
+estimate. Historical-baseline blending uses the stat-specific priors described above.
 Rows identify any remaining RotoWire contribution as a forecast source.
 
 An existing authorized RotoWire export was found in the user's Downloads directory:
@@ -1057,7 +1058,7 @@ temporary-archetype flag; any remaining archetype-estimated categories retain
 that flag and the existing edge-ranking exclusion.
 
 Players using actual historical baselines keep the original game-five switch
-and 200-minute prior blend. Manual archetypes, approved-minute priority, opponent
+and historical prior blend (with the November 3 STL/BLK exception below). Manual archetypes, approved-minute priority, opponent
 archetype adjustments (including STL/BLK shrinkage), and team PTS/AST/3PM/REB
 calibration are unchanged. The new rates flow through Player vs Opponent,
 Today's Best Matchups, Top Sportsbook Edges and Team Projections; PRA continues
@@ -1223,3 +1224,47 @@ October 27 injury rotation cannot silently apply to October 28. Reusing a rotati
 for another fixture requires an explicit approval/import for that fixture; the
 original workbook and manual archetypes are unchanged. These notices do not
 alter minutes selection or automatically carry injury decisions forward.
+
+## Hybrid player-baseline prior for steals and blocks (November 3, 2026)
+
+The approved October 30 study rule now applies in the shared projection builder:
+
+- Players with **at least 500 actual NBA regular-season minutes in 2025–26** use
+  a **1,000-minute prior** for STL and BLK.
+- Players below 500, or without verified prior-season exposure, keep **200**.
+- Current-season weight is `actual current minutes / (actual current minutes + prior)`.
+  At 200 current minutes, an eligible veteran receives 16.7% current-season weight,
+  versus 50% under the previous rule. The cutoff is inclusive and never rounded.
+
+`data/player_rate_prior_minutes.json` contains exact prior-season minutes for 582
+players, keyed by stable NBA player ID. It is generated from the same verified NBA
+regular-season box-score archive as the approved study: 1,230 games, all 30 teams
+with 82 games, unique player/game rows, all team stints combined. Whole seconds are
+summed before converting to minutes. The file records source season, target season,
+source URL and archive/manifest hashes; a mismatched season is rejected. Rounded
+ESPN game minutes would incorrectly qualify Asa Newell (499:55 actual minutes) and
+Ariel Hukporti (498:00); both correctly retain 200. Of the current 541 roster players,
+356 meet the exposure cutoff; eligibility alone does not override baseline policy.
+
+Rookies, estimated profiles and explicitly approved current-only players retain
+first-appearance actual-rate priority. Historical baselines retain the game-five
+transition. Before that transition, or without current observations, the prior rate
+remains unchanged. Approved/manual minutes and all manual archetype overrides are
+preserved. Projections carry prior-season exposure, selected STL/BLK prior minutes
+and current-season weight for inspection. A zero prior in these diagnostic fields
+means the actual-only policy is in effect or no historical profile is available.
+
+Player vs Opponent, Today's Best Matchups, Top Sportsbook Edges, Team Projections
+and the all-games player view share this calculation. The team snapshot key includes
+this policy version so older saved pregame projections cannot silently undo it.
+Opponent smoothing is unchanged: 20 neutral STL/BLK samples, 10-appearance recency
+half-life, and the existing 10-game cross-season matchup blend. PTS, AST, REB, 3PM,
+PRA, experimental points probabilities and the 5% edge/ranking rules are unchanged;
+STL/BLK edges can move because their projected averages change.
+
+The historical hybrid study reduced Poisson deviance by 0.42% for steals and 0.38%
+for blocks, with improvement in both evaluated seasons. Blocks' mean absolute error
+increased slightly. The cutoff was selected using the same historical sample; these
+results are not independent validation or a profitability claim. Regression checks
+cover exact cutoff boundaries, missing exposure, rookie/current-only precedence,
+minute overrides, unchanged non-STL/BLK outputs and agreement across app pages.
