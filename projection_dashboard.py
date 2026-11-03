@@ -23,7 +23,8 @@ from team_threes import apply_team_threes
 from career_shooting import SHOOTING_POLICY_VERSION
 from player_rate_priors import PLAYER_RATE_POLICY_VERSION
 from team_rebounds import apply_team_rebounds, REBOUND_METADATA
-from team_rate_blend import season_rates, blend_team_rates, PRIOR_GAMES, POLICY_VERSION
+from team_rate_blend import (season_rates, blend_team_rates, PRIOR_GAMES, POLICY_VERSION,
+                            DEFENSIVE_PRIOR_GAMES, DEFENSIVE_FULL_CURRENT_GAMES)
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
 from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
@@ -163,6 +164,8 @@ def team_projection_preview(ui, frame, event, book, api_key, team_rates):
         return frame
     adjusted,summary,issues = apply_market_points(frame,targets)
     coverage = team_rates['coverage']
+    home,away = TEAM_NAMES[event['home_team']],TEAM_NAMES[event['away_team']]
+    opponents = {home:away,away:home}
     details = []
     for team in adjusted.Team.unique():
         if team not in coverage.index:
@@ -172,8 +175,16 @@ def team_projection_preview(ui, frame, event, book, api_key, team_rates):
         for field, source in [('Team rate current weight','Current weight'),('Team rate games','Verified games'),
                               ('Team rate prior games','Prior games'),('Team rate status','Status')]:
             adjusted.loc[mask,field] = row[source]
-        details.append(f"{team}: {row['Current weight']:.1%} this season ({row['Verified games']:g} verified games); {row['Status']}")
-    ui.caption(f'Progressive team rates · last season = {PRIOR_GAMES:g} prior games · ' + '; '.join(details) + '.')
+        opponent = opponents[team]
+        allowed = coverage.loc[opponent]
+        for field,source in [('Opponent allowed current weight','Defensive current weight'),
+                             ('Opponent allowed prior games','Defensive prior games'),
+                             ('Opponent allowed rate status','Defensive status')]:
+            adjusted.loc[mask,field] = allowed[source]
+        details.append(f"{team} own/conversion rates: {row['Current weight']:.1%} this season; "
+                       f"{opponent} allowed AST/3PA/OREB rates: {allowed['Defensive current weight']:.1%} "
+                       f"({allowed['Verified games']:g} verified games; {allowed['Defensive status']})")
+    ui.caption('Season weights · ' + '; '.join(details) + '.')
     if not summary.empty:
         details = [f"{r.Team}: {r['Original PTS']:.2f} → {r['Market team total']:.2f} points ({(r.Factor-1)*100:+.2f}%)" for _,r in summary.iterrows()]
         ui.caption('Full market points adjustment · '+'; '.join(details)+'.')
@@ -451,7 +462,7 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
                                         'Team target': '{:.2f}', 'Final projection': '{:.2f}',
                                         'Team adjustment %': '{:+.2f}%'}, na_rep='—'),
                  hide_index=True, width='stretch')
-    ui.caption('PTS targets come from the selected sportsbook’s spread and total. AST, 3PA and REB targets use progressive team/opponent rates with a 10-game prior; 3PM uses the roster’s shooting percentages. Steals, blocks and turnovers retain their player matchup projections. PRA = final PTS + REB + AST.')
+    ui.caption('PTS targets come from the selected sportsbook’s spread and total. Allowed assist, three-attempt and offensive-rebound shares use a 5-game prior that phases out by 20 completed games; other team rates keep a 10-game prior. 3PM uses the roster’s shooting percentages. Steals, blocks and turnovers retain their player matchup projections. PRA = final PTS + REB + AST.')
     with ui.expander('Player contributions and minutes'):
         active = final['Projected minutes'].gt(0) | final['Projected minutes'].isna()
         columns = ['Player', 'Team', 'Projected minutes', *TEAM_STATS.values(), 'OREB', 'DREB', 'Minutes source', 'Stat baseline', 'Fallback details', 'Status', 'Matchup status', 'Matchup fallback stats']
@@ -590,15 +601,19 @@ def render_live_dashboard(ui, roster):
                 ui.warning(f'Current-season matchup data unavailable: {exc}')
     team_rates = blend_team_rates(prior_team_rates(), logs, teams)
     probability_context = scoring_context(roster, players)
-    ui.caption(f'Progressive team rates: current season gets games ÷ (games + {PRIOR_GAMES:g}); last season counts as {PRIOR_GAMES:g} games. Threes use attempts and preserve individual shooting percentages. PRA uses final points + rebounds + assists.')
+    ui.caption(f'Allowed assist, three-attempt and offensive-rebound shares use a {DEFENSIVE_PRIOR_GAMES:g}-game prior through eight completed games, then phase out last season by {DEFENSIVE_FULL_CURRENT_GAMES:g}. Other team rates keep a {PRIOR_GAMES:g}-game prior. Threes preserve individual shooting percentages; PRA uses final points + rebounds + assists.')
     ui.caption('Three-point accuracy blends prior-career NBA shooting with this season using a 200-attempt prior. Career weight never falls below 50%. Minutes and normalized archetype attempt shares still determine volume. Players without prior NBA attempts retain their existing baseline.')
     ui.caption(f'Archetype matchup effects blend both seasons from the first usable game. Last season counts as {MATCHUP_PRIOR_GAMES:g} matchup games; each category uses its own relevant game count. Steals and blocks retain their stronger smoothing.')
     with ui.expander('Team rate weights and data coverage'):
-        coverage = team_rates['coverage'].reset_index()
-        ui.dataframe(coverage.style.format({'Current weight':'{:.1%}', 'Completed games':'{:.0f}',
-                                            'Verified games':'{:.0f}', 'Prior games':'{:.0f}'},na_rep='—'),
+        coverage = team_rates['coverage'].reset_index().rename(columns={
+            'Current weight':'Other rates: this season', 'Prior games':'Other prior games',
+            'Defensive current weight':'Allowed rates: this season',
+            'Defensive prior games':'Allowed prior games','Defensive status':'Allowed rate status'})
+        ui.dataframe(coverage.style.format({'Other rates: this season':'{:.1%}', 'Completed games':'{:.0f}',
+                                            'Verified games':'{:.0f}', 'Other prior games':'{:.1f}',
+                                            'Allowed rates: this season':'{:.1%}','Allowed prior games':'{:.2f}'},na_rep='—'),
                      hide_index=True,width='stretch')
-        ui.caption('Each team uses its own completed regular-season game count. Incomplete current box scores retain last-season team rates. All projection pages share this snapshot; Refresh live data updates it.')
+        ui.caption('Allowed rates means assisted baskets, three-point attempt share and offensive-rebound share allowed. Each team uses its own completed regular-season game count. Incomplete current box scores retain last-season team rates, even after game 20; no missing games are invented. All projection pages share this snapshot; Refresh live data updates it.')
     # Each tab owns its reruns. Player/slider changes reuse this shared snapshot
     # and cannot trigger league-wide ESPN refreshes or hidden-tab calculations.
     # Imports and Refresh live data rerun the parent and rebuild every tab.
@@ -741,7 +756,8 @@ def render_live_dashboard(ui, roster):
                     for column in ['Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total',
                                    'Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share',
                                    'Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team 3PA target','Expected team FGA','Team three attempt rate','Three-point share',
-                                   'Team rate current weight','Team rate games','Team rate prior games','Team rate status',*REBOUND_METADATA]:
+                                   'Team rate current weight','Team rate games','Team rate prior games','Team rate status',
+                                   'Opponent allowed current weight','Opponent allowed prior games','Opponent allowed rate status',*REBOUND_METADATA]:
                         if column in market_player:
                             destination.loc[destination.PLAYER_ID.eq(player_id),column] = market_player[column]
                     payload = sportsbook_props(event['id'],book_key,api_key)
@@ -797,9 +813,9 @@ def render_live_dashboard(ui, roster):
                 ui.write('Steals and blocks use stronger smoothing toward an average matchup, reducing the impact of small or noisy samples while retaining archetype differences.')
                 ui.write('Each archetype’s per-36 production against the selected opponent is compared with its league-wide per-36 average. Percent changes are weighted toward recent player-games and shrunk toward zero with 20 neutral samples for steals and blocks, and three for other stats. Offensive archetypes drive points, assists, offensive rebounds and shooting; defensive archetypes drive defensive rebounds, steals and blocks. Projected rebounds equal offensive plus defensive rebounds. Three-point makes use the attempts adjustment to preserve the player’s own shooting rate.')
                 ui.write('Minutes use your workbook for team games 1–3, then observed season minutes per appearance from game 4. Approved game minutes take priority. Rookies and other players using estimates switch to actual per-minute rates after their first verified regular-season appearance, without blending in synthetic estimates. Missing actual categories can still use a labeled estimate. Players with historical baselines stay on last season through game 4; from game 5, current rates blend with the prior. Steals and blocks use a 1,000-minute prior for players with at least 500 actual minutes last season; everyone else keeps 200. Other stat rates keep the 200-minute prior. Archetype matchup effects blend last season with this season from the first usable game, using relevant games / (relevant games + 10). Missing current evidence keeps last season. Samples count player-games; season blend weights count distinct games.')
-                ui.write('Team assists blend season rates using a 10-game prior, then equally combine the team assist-to-made-field-goal rate with the opponent’s allowed rate. Expected field goals come from market team points divided by the equally blended historical total-points-to-field-goals ratios. The team assist total is allocated in proportion to existing archetype-adjusted player assists, so shared defensive penalties cancel while relative archetype differences remain. No second assist multiplier is applied. PRA combines the final points, rebounds and assists.')
+                ui.write('Team assists keep a 10-game prior for own rates and points-to-field-goals conversion. The opponent’s assisted-basket rate uses a 5-game prior through eight completed games, then tapers to zero prior games at 20. Team and opponent rates still combine equally. The team assist total is allocated in proportion to existing archetype-adjusted player assists, so shared defensive penalties cancel while relative archetype differences remain. No second assist multiplier is applied. PRA combines the final points, rebounds and assists.')
                 ui.write('Team threes use expected FGA times a 50/50 mix of progressively blended team and opponent 3PA/FGA. Team attempts are allocated using normalized archetype-adjusted player attempt shares. Makes scale equally to preserve each player’s expected shooting percentage. Points and PRA already include the threes; no extra points are added. The player slider recalculates this preview, while game edges use the saved automatic team minutes. Changes to an external workbook must be imported and published before the app can use them.')
-                ui.write('Team rebounds use both teams’ expected misses, derived from market team points and progressively blended own/opponent rates with a 10-game prior. Historical credited-player-rebound fractions account approximately for dead-ball/team rebounds and non-reboundable free throws. Each pool splits into offensive rebounds and opposing defensive rebounds. The two components are allocated separately using normalized archetype shares, then added for REB. PRA includes the updated rebounds. Player matchup ratings retain the original archetype effect.')
+                ui.write('Team rebounds use both teams’ expected misses, derived from market points and conversion rates with a 10-game prior. The opponent’s allowed offensive-rebound share uses the faster 5-game prior, phased out by 20 completed games; own rebound shares retain 10. Credited-player-rebound fractions account approximately for dead-ball/team rebounds and non-reboundable free throws. Each pool splits into offensive rebounds and opposing defensive rebounds. The two components are allocated separately using normalized archetype shares, then added for REB. PRA includes updated rebounds. Player matchup ratings retain the original archetype effect.')
                 ui.write('These are matchup estimates, not confirmed lineups or availability. The model does not adjust for pace, injuries, starters or home court. Last season’s box scores are assigned the approved current archetypes, preserving manual overrides. Only players with matched archetype labels contribute to the matchup samples; sample counts show that coverage.')
         render_probability_tracking(ui, probability_observations, logs, 'player')
     with projection_tab:

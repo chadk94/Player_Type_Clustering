@@ -660,12 +660,12 @@ expose career/season percentages, career weight and the current attempt sample.
 Pregame snapshot keys include the shooting-policy version to prevent old-policy
 results being reused after deployment.
 
-### Progressive team rates: last season is a 10-game prior
+### Progressive team rates and faster defensive tendencies
 
 All four projection views—Player vs Opponent, Today's Best Matchups stat lines,
 Top Sportsbook Edges and Team Projections—share one team-rate snapshot. Every
-team's own and opponent-allowed assist, three-attempt and rebound ratios use
-**game-equivalent Bayesian-style shrinkage**:
+team's own rates and supporting conversion/opportunity ratios use
+**game-equivalent Bayesian-style shrinkage** with a 10-game prior:
 
 `blended rate = (10 × 2025–26 rate + g × 2026–27 rate) / (10 + g)`
 
@@ -679,16 +679,52 @@ seasons independently for both teams, the matchup still uses a 50/50 own/allowed
 mix. Supporting PTS/FGM, PTS/FGA, missed-shot and credited-rebound ratios use the
 same seasonal weights. The `PRIOR_GAMES = 10` policy lives in `team_rate_blend.py`.
 
+As approved November 3, **only these three defensive tendencies use a faster rule**:
+opponent AST/FGM (`Allowed assist rate`), opponent 3PA/FGA
+(`Allowed three attempt rate`), and opponent OREB / (opponent OREB + own DREB)
+(`rebounds_allowed.Offensive rebound share`, based on credited player rebounds).
+They use a **5-game prior through eight completed games**, preserving the approved
+preview for all teams at five to eight games. After eight, the effective prior
+tapers linearly to zero at 20 completed games:
+
+`effective prior = 5 × clamp((20 − g) / 12, 0, 1)`
+
+`defensive current weight = g / (g + effective prior)` (zero at zero games).
+
+| Completed team games | Selected allowed rates: this season | Other team rates: this season |
+| --- | ---: | ---: |
+| 5 | 50.0% | 33.3% |
+| 6 | 54.5% | 37.5% |
+| 7 | 58.3% | 41.2% |
+| 8 | 61.5% | 44.4% |
+| 10 | 70.6% | 50.0% |
+| 15 | 87.8% | 60.0% |
+| 19 | 97.9% | 65.5% |
+| 20+ | 100.0% | g / (g + 10) |
+
+The 100% endpoint applies after 20 **completed regular-season team games**, not
+20 player appearances or the upcoming game's ordinal number. At and after that
+point the three rates are read directly from current-season ratios. Own offense,
+own rebounding, PTS/FGM, PTS/FGA, missed-shot ratios and credited-rebound fractions
+retain the 10-game prior. Player baselines, career shooting percentages, approved
+minutes, overrides and archetype matchup history keep their separate policies.
+The five-game prior and subsequent taper are explicit policy choices, not a
+backtest-optimized weighting schedule.
+
 The current feed is fetched from the first completed game and cached in the
 shared dashboard snapshot. Every game reconciles player shooting, assists,
 rebounds and points to ESPN's published team box. Rounded-zero-minute appearances
 with real attempts are included in team rates. Completed-game counts must match
 standings for each team; a missing game or invalid rates retain that team's
-prior-season rates with a visible coverage status. An unaffected team can still
+prior-season rates with a visible coverage status, even after 20 completed games.
+The app never labels incomplete current data as 100% current. An unaffected team can still
 blend. Manual overrides and the existing player-rate/archetype-history policies
 are unchanged. This changes team targets, not the player's individual baseline
 shooting percentage. Refresh live data updates weights; widget reruns reuse the
-snapshot without another league fetch.
+snapshot without another league fetch. The coverage table separates allowed-rate
+weights from other team-rate weights. Player projection exports record the
+opponent's allowed-rate weight, effective prior and coverage status. Team snapshots
+include the new policy version, preventing reuse of pre-change pregame values.
 
 The 50/50 matchup mix and ten-game prior are explicit modeling assumptions,
 not sportsbook-published totals or backtest-optimized weights. Normalized
@@ -706,8 +742,9 @@ AST, team target, allocation factor, expected FGM and player share for auditing.
 ### Team threes with normalized archetype effects
 
 All projection pages apply the attempt-based team model after points and
-assists. Complete 2025–26 regular-season ratios provide the ten-game prior;
-verified current-season ratios progressively update it as described above.
+assists. Complete 2025–26 regular-season ratios provide the historical prior;
+verified current-season ratios update own/conversion rates with ten prior games
+and the allowed attempt share with the faster defensive schedule above.
 
 * Expected team FGA = market team points / [50% × blended team PTS/FGA +
   50% × blended opponent PTS allowed/FGA allowed].
