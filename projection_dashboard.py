@@ -900,8 +900,8 @@ def render_live_dashboard(ui, roster):
     @st.fragment
     def render_edges_page():
         probability_observations = []
-        ui.subheader('💰 Top 20 Sportsbook Edges per Game')
-        ui.caption('Ranked by absolute percent edge versus the juice-adjusted book total, including Overs and Unders. Each row is one player/stat. Uses approved game minutes when imported, otherwise workbook/season-average minutes, plus opponent adjustments.')
+        ui.subheader('💰 Sportsbook Edges by Team')
+        ui.caption('All qualifying edges, ranked within each team by absolute percent edge versus the juice-adjusted book total, including Overs and Unders. Each row is one player/stat. Uses approved game minutes when imported, otherwise workbook/season-average minutes, plus opponent adjustments.')
         # Only fetch props for the selected game, never the full slate.
         try:
             edge_key = get_odds_api_key()
@@ -992,18 +992,27 @@ def render_live_dashboard(ui, roster):
                         else:
                             ui.info('No eligible edges meet these filters. Props may not be posted yet, quotes may be stale, or projections may lack matchup history. Try another game/book or turn off the 5% filter.')
                     else:
-                        ui.success(f'Showing {len(ranked)} of {total_edges} eligible player-stat edges')
+                        ui.success(f'Showing all {total_edges} eligible player-stat edges, grouped by team')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
-                        display_columns = ['Rank','Player','Team','Stat','Play','Projected minutes','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
-                        edge_display = ranked[display_columns]
-                        ui.dataframe(edge_display.style.apply(comparison_style,axis=1).format(
-                            {'Projected minutes':'{:.1f}','Projected':'{:.2f}',
-                             'Book implied total':'{:.2f}','Edge %':'{:+.2f}%',
-                             'Over odds':'{:+.0f}','Under odds':'{:+.0f}', **{column:'{:.1%}' for column in PROBABILITY_COLUMNS}},na_rep='—'),hide_index=True,width='stretch')
+                        display_columns = ['Rank','Player','Stat','Play','Projected minutes','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
+                        team_exports = []
+                        for team in [game['Away'], game['Home']]:
+                            team_edges = ranked.loc[ranked.Team.eq(team)].copy()
+                            ui.subheader(f"{team} — {len(team_edges)} edges")
+                            if team_edges.empty:
+                                ui.info('No eligible edges for this team match the current filters.')
+                                continue
+                            team_edges['Rank'] = range(1, len(team_edges) + 1)
+                            team_exports.append(team_edges)
+                            edge_display = team_edges[display_columns]
+                            ui.dataframe(edge_display.style.apply(comparison_style,axis=1).format(
+                                {'Projected minutes':'{:.1f}','Projected':'{:.2f}',
+                                 'Book implied total':'{:.2f}','Edge %':'{:+.2f}%',
+                                 'Over odds':'{:+.0f}','Under odds':'{:+.0f}', **{column:'{:.1%}' for column in PROBABILITY_COLUMNS}},na_rep='—'),hide_index=True,width='stretch')
                         ui.caption('Exp. probabilities are experimental, points only, and do not change rankings or the 5% rule. Extreme probabilities and low-minute players are less reliable. Over + Under + Push = 100%.')
                         ui.caption('Matchup rating: 1 ⬇️⬇️ poor, 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent. Ratings measure opponent lift versus baseline, independent of the sportsbook edge or Over/Under play.')
                         ui.caption('Edge % is positive for both Overs and Unders; Play identifies the direction. Only edges greater than 5% are marked as plays. Color intensity grows with edge magnitude. Multiple stats for the same player may be correlated.')
-                        ui.download_button('Download this game’s top edges',ranked.to_csv(index=False),f"{game['Away']}_{game['Home']}_top_edges.csv",'text/csv',key='edges_download')
+                        ui.download_button('Download all edges for this game',pd.concat(team_exports,ignore_index=True).to_csv(index=False),f"{game['Away']}_{game['Home']}_edges.csv",'text/csv',key='edges_download')
                     with ui.expander('Game projection coverage'):
                         if not combined.empty:
                             ui.dataframe(combined[['Player','Team','Opponent','Projected minutes','Minutes source','Off samples','Def samples','Stat baseline','Matchup data','Status','Matchup status']],hide_index=True,width='stretch')

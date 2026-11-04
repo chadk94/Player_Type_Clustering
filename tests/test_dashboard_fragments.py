@@ -188,6 +188,15 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
                                  if call.args[3]=='edges')
         self.assertGreater(len(edge_observations),0)
         self.assertTrue(all(r['captured_at'] < r['start'] for r in edge_observations))
+        edge_tables = [d.value for d in self.app.dataframe if 'Rank' in d.value and 'Edge %' in d.value]
+        self.assertEqual(len(edge_tables), 2)
+        player_teams = self.roster.set_index('PLAYER_NAME').TEAM_ABBREVIATION
+        for team, table in zip(['ATL', 'HOU'], edge_tables):
+            self.assertEqual(set(table.Player.map(player_teams)), {team})
+            self.assertEqual(table.Rank.tolist(), list(range(1, len(table) + 1)))
+            self.assertTrue(table['Edge %'].is_monotonic_decreasing)
+            self.assertTrue(table['Edge %'].gt(5).all())
+            self.assertIn(f'{team} — {len(table)} edges', [h.value for h in self.app.subheader])
         same_player = next(r for r in edge_observations if r['player_id']==rows[0]['player_id'])
         self.assertEqual(same_player['id'],rows[0]['id'])
         counts = [m.call_count for m in (self.live,self.logs,self.effects,self.imported,self.schedule)]

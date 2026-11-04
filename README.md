@@ -124,7 +124,7 @@ history; the downloadable CSV is the backup. Different browsers have separate
 histories. This is **not** a background, league-wide collection service.
 
 The edges page records available points comparisons for the loaded game before
-the top-20, stat, direction, search and 5% filters. The player page records its
+the stat, direction, search and 5% filters. The player page records its
 loaded comparison. Manual-minute and opponent-adjustment-off previews have
 separate labels and are excluded from standard evaluation. On a new visit or
 **Refresh live data**, validated completed ESPN box scores match by player ESPN
@@ -140,8 +140,12 @@ without looking at outcomes, then grades it. Repeated quotes are not independent
 trials. Brier error and observed over rates use non-push results and conditional
 P(over | no push); pushes remain in the downloadable record. Different books
 for one player are correlated, and early summary statistics are descriptive.
-Storage acknowledgements rerun only the history fragment; they do not refetch
-odds, rebuild projections or reorder edges. The test suite covers unchanged
+Storage acknowledgements restore history in the component callback before its
+normal fragment rerun. They never request an extra nested fragment rerun, which
+Streamlit rejects during a parent or full-app render. Restored records are then
+graded and persisted without refetching odds, rebuilding projections or
+reordering edges. Regression tests exercise parent/full reruns, isolated storage
+callbacks, restored-result persistence and stale/invalid replies. The test suite covers unchanged
 means/rankings, scoring support, push accounting, stale/post-tip rejection,
 duplicate snapshots, manual variants and exact result matching.
 
@@ -485,28 +489,29 @@ never reapplies a stale candidate. The refreshed screen has 204 flagged players 
 The earlier 209-player counts above describe the initial pre-approval screen.
 
 
-### Top 20 sportsbook edges per game
+### Sportsbook edges by team
 
 The **💰 Top Sportsbook Edges** tab provides one-click game buttons plus date,
 sportsbook (FanDuel/DraftKings/BetMGM), and Over/Under filters. It defaults to the
-next date offered by the sportsbook feed and shows both teams' top 20 distinct
-player/stat comparisons, ranked by the magnitude of the percent gap between the
+next date offered by the sportsbook feed and shows all qualifying distinct
+player/stat comparisons in separate away-team and home-team tables, with no row
+cap. Each team is ranked by the magnitude of the percent gap between the
 opponent-adjusted projection and the no-vig, Poisson-implied book total. This is
 not a probability edge or expected return. Both sides' American prices and the
 posted line remain visible. Multiple props for one player can be correlated.
 
 **Filter by player** accepts a full or partial name (case and accents are ignored).
 Press Enter to apply it; clear it to restore all players in the selected game.
-Search applies before the top-20 limit, so it can find players outside the
-unfiltered top 20. Stat, direction and 5% filters still apply, and the CSV matches
-the filtered results. Team adjustments always use the full roster before search;
+Stat, direction and 5% filters still apply, and the CSV contains every filtered
+result, grouped and ranked within each team like the tables. Team adjustments
+always use the full roster before search;
 filtering does not change anyone's projections.
 
 Edge % is positive for both Overs and Unders; the Play label gives the direction.
 The >5% play filter is on by default; exactly 5% does not qualify. Disable it to
-view the strongest remaining comparisons without marking them as plays. Existing
-continuous edge colors apply. If fewer than 20 props qualify, only real eligible
-rows appear. CSV downloads include quote timestamps and matchup sample coverage.
+view all remaining comparisons without marking them as plays. Existing
+continuous edge colors apply. Only real eligible rows appear.
+CSV downloads include quote timestamps and matchup sample coverage.
 Game buttons include future sportsbook events that match the selected date's
 ESPN regular-season schedule on home/away teams and tip time (within 15
 minutes). The tolerance handles the difference between an advertised start and
@@ -539,8 +544,8 @@ validation still excludes prices older than 15 minutes at comparison load time.
 
 
 The Top Sportsbook Edges page includes persistent checkboxes for PTS, REB, AST,
-3PM, STL, BLK, TOV and PRA (all enabled initially). Stat selection applies before
-ranking and the 20-row limit, so the table and CSV contain the strongest edges
+3PM, STL, BLK and PRA (all enabled initially). Stat selection applies before
+ranking, so the tables and CSV contain all eligible edges
 within the checked categories. Unchecking every category shows a selection prompt.
 
 

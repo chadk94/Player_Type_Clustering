@@ -53,7 +53,7 @@ def scheduled_book_games(events, schedule, now=None):
 
 
 def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, direction='Both', stats=None, player_search=''):
-    """Top 20 distinct player-stat edges in one event/book, strongest absolute % first.
+    """All eligible distinct player-stat edges in one event/book, strongest % first.
 
     Both over and under display the magnitude of the projection/implied-mean gap.
     The signed gap determines direction and is retained in exports. This
@@ -69,7 +69,7 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
     query = name_key(player_search)
     rows = []
     for _,player in matchups.iterrows():
-        # Filter after team calibration, but before ranking/limiting to 20.
+        # Filter after team calibration, but before ranking.
         if player_search.strip() and (not query or query not in name_key(player.Player)):
             continue
         expected = event['Away'] if player.Team == event['Home'] else event['Home'] if player.Team == event['Away'] else None
@@ -100,6 +100,5 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
     ranked['_magnitude'] = ranked['Edge %'].abs()
     ranked = ranked.sort_values(['_magnitude','Player','Stat'],ascending=[False,True,True],kind='stable')
     count = len(ranked)
-    ranked = ranked.head(20).copy()
     ranked['Rank'] = range(1,len(ranked)+1)
     return ranked[EDGE_COLUMNS],count

@@ -173,6 +173,18 @@ def tracking_component():
     return _component
 
 
+def accept_tracking_reply(state, key, request, reply):
+    """Validate the browser acknowledgement before the normal fragment rerun."""
+    if not isinstance(reply, dict) or reply.get('request') != request:
+        return
+    if reply.get('status') == 'ok' and isinstance(reply.get('records'), list):
+        records = decode_records(reply['records'])
+        state[key] = {'records': records, 'results': reply.get('results', []),
+                      'status': 'ok', 'invalid_records': len(reply['records']) - len(records)}
+    elif reply.get('status') == 'unavailable':
+        state[key]['status'] = 'unavailable'
+
+
 @st.fragment
 def render_probability_tracking(ui, observations, logs, page):
     """Storage acknowledgements only rerun this small panel, never refresh feeds."""
@@ -182,21 +194,19 @@ def render_probability_tracking(ui, observations, logs, page):
     results = grade_records(records, logs)
     request = sha256(json.dumps({'ids': [r['id'] for r in observations], 'results': results,
                                 'revision': st.session_state.get(key+'_revision', 0)}, sort_keys=True).encode()).hexdigest()
+    def on_reply_change():
+        # Component callbacks run before the automatically scheduled fragment.
+        # Restore first so that this rerun can grade and persist restored history.
+        # An explicit nested st.rerun(scope='fragment') fails on parent/app reruns.
+        reply = st.session_state.get(key+'_component', {}).get('reply')
+        accept_tracking_reply(st.session_state, key, request, reply)
+
     reply = tracking_component()(data={'request': request, 'season': model_profile()['season'],
         'records': [{'id': r['id'], 'season': r['season'], 'body': json.dumps(r, allow_nan=False)}
                     for r in observations], 'results': results}, key=key+'_component', height=0,
-        default={'reply': None}, on_reply_change=lambda: None).reply
-    if isinstance(reply, dict) and reply.get('request') == request and reply.get('status') in ['ok', 'unavailable']:
-        if reply.get('status') == 'ok' and isinstance(reply.get('records'), list):
-            saved = {'records': decode_records(reply['records']),
-                     'results': reply.get('results', []), 'status': 'ok'}
-            saved['invalid_records'] = len(reply['records']) - len(saved['records'])
-            st.session_state[key] = saved
-            if st.session_state.get(key+'_accepted') != request:
-                st.session_state[key+'_accepted'] = request
-                st.rerun(scope='fragment')
-        elif reply.get('status') == 'unavailable':
-            saved['status'] = 'unavailable'
+        default={'reply': None}, on_reply_change=on_reply_change).reply
+    accept_tracking_reply(st.session_state, key, request, reply)
+    saved = st.session_state[key]
     if saved['status'] == 'unavailable':
         ui.warning('Points probability tracking could not save to this browser. Open the tracking panel to retry; the projection itself is unaffected.')
     with ui.expander('Experimental points probability tracking'):

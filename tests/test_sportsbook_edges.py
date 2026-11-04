@@ -26,11 +26,11 @@ class GameEdgeTests(unittest.TestCase):
             'Status':'Available','Matchup status':'Available','Off samples':50,'Def samples':60,
             'Stat baseline':'2025–26','Matchup data':'2025–26'} for i in range(25)])
 
-    def test_top_twenty_absolute_edge_both_teams_no_duplicates(self):
+    def test_all_qualifying_edges_both_teams_no_duplicates(self):
         ranked,total=game_edges(pd.concat([self.players,self.players]),self.payload,self.event,'fanduel',now=self.now)
         self.assertEqual(total,24)  # One player is within the 5% buffer.
-        self.assertEqual(len(ranked),20)
-        self.assertEqual(ranked.Rank.tolist(),list(range(1,21)))
+        self.assertEqual(len(ranked),24)
+        self.assertEqual(ranked.Rank.tolist(),list(range(1,25)))
         self.assertTrue(ranked['Edge %'].abs().is_monotonic_decreasing)
         self.assertTrue(ranked['Edge %'].abs().gt(5).all())
         self.assertEqual(set(ranked.Team),{'NYK','PHI'})
@@ -96,11 +96,12 @@ class GameEdgeTests(unittest.TestCase):
         self.assertTrue(under.Play.eq('Under').all())
         all_edges,total=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,plays_only=False)
         self.assertEqual(total,25)
+        self.assertEqual(len(all_edges),25)
 
-    def test_player_search_finds_edges_outside_top_twenty_without_changing_projections(self):
+    def test_player_search_finds_low_ranked_edges_without_changing_projections(self):
         original = self.players.copy(deep=True)
         top,_ = game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,plays_only=False)
-        player = self.players[~self.players.Player.isin(top.Player)].iloc[0]
+        player = self.players[self.players.Player.eq(top.iloc[-1].Player)].iloc[0]
         found,count = game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,
                                  plays_only=False,player_search=f'  {player.Player.upper()}  ')
         self.assertEqual(count,1)
@@ -141,7 +142,7 @@ class GameEdgeTests(unittest.TestCase):
         self.assertTrue(ranked.loc[ranked.Stat.eq('PRA'), 'Projected'].eq(23.).all())
         self.assertTrue(ranked['Pre-team REB'].eq(5.).all())
 
-    def test_stat_selection_filters_before_top_twenty_and_download_rows(self):
+    def test_stat_selection_filters_all_ranking_and_download_rows(self):
         import copy
         points=copy.deepcopy(self.payload['bookmakers'][0]['markets'][0])
         points['key']='player_points'
@@ -149,7 +150,7 @@ class GameEdgeTests(unittest.TestCase):
         self.players['PTS']=50.
         ranked,total=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,stats=['3PM'])
         self.assertEqual(total,24)
-        self.assertEqual(len(ranked),20)
+        self.assertEqual(len(ranked),24)
         self.assertEqual(set(ranked.Stat),{'3PM'})
         empty,count=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,stats=[])
         self.assertTrue(empty.empty)
