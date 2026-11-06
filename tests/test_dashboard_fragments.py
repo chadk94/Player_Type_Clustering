@@ -137,6 +137,22 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assert_no_errors()
         self.assertEqual(self.app.slider[0].value, 24.)
 
+    def test_recent_role_toggle_preserves_player_model_and_reuses_snapshot(self):
+        main = next(d.value for d in self.app.dataframe if 'Book implied total' in d.value and 'Projected' in d.value)
+        counts = [m.call_count for m in (self.live,self.logs,self.effects,self.imported)]
+        toggle = self.app.toggle(key='player_recent_role')
+        self.fragment_id = self.fragment_for(toggle)
+        toggle.set_value(True).run()
+        self.assert_no_errors()
+        shown = next(d.value for d in self.app.dataframe if 'Recent role' in d.value)
+        pd.testing.assert_frame_equal(shown[main.columns],main)
+        self.assertTrue(shown.loc[shown.Stat.isin(['PTS','AST','3PM','PRA']),'Recent role status'].str.startswith('Not active yet').all())
+        self.assertEqual([m.call_count for m in (self.live,self.logs,self.effects,self.imported)],counts)
+        self.app.toggle(key='player_recent_role').set_value(False).run()
+        self.assert_no_errors()
+        hidden = next(d.value for d in self.app.dataframe if 'Book implied total' in d.value and 'Projected' in d.value)
+        pd.testing.assert_frame_equal(hidden,main)
+
     def test_other_tabs_have_distinct_reruns_and_refresh_rebuilds_snapshot(self):
         keys = ['projection_team', 'team_projection_book', 'archetype_team']
         ids = [self.fragment_for(self.app.selectbox(key=key)) for key in keys]
@@ -199,6 +215,21 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
             self.assertIn(f'{team} — {len(table)} edges', [h.value for h in self.app.subheader])
         same_player = next(r for r in edge_observations if r['player_id']==rows[0]['player_id'])
         self.assertEqual(same_player['id'],rows[0]['id'])
+        feeds = [m.call_count for m in (self.live,self.logs,self.effects,self.imported)]
+        toggle = self.app.toggle(key='edges_recent_role')
+        self.fragment_id = self.fragment_for(toggle)
+        toggle.set_value(True).run()
+        self.assert_no_errors()
+        shown_edges = [d.value for d in self.app.dataframe if 'Rank' in d.value and 'Recent role' in d.value]
+        self.assertEqual(len(shown_edges),2)
+        for original, shown in zip(edge_tables,shown_edges):
+            pd.testing.assert_frame_equal(shown[original.columns],original)
+        self.assertEqual([m.call_count for m in (self.live,self.logs,self.effects,self.imported)],feeds)
+        # AppTest exposes only the most recently rerun fragment's elements.
+        # Restore the full test tree before the separate player-slider check.
+        self.fragment_id = None
+        self.app.run()
+        self.assert_no_errors()
         counts = [m.call_count for m in (self.live,self.logs,self.effects,self.imported,self.schedule)]
         self.fragment_id = self.fragment_for(self.app.selectbox(key='projection_player'))
         self.app.slider[0].set_value(12.).run()

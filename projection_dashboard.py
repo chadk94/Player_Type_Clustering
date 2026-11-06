@@ -29,6 +29,7 @@ from team_projection_view import upcoming_team_games, team_projection_tables, TE
 from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from projection_presentation import over_line_label, matchup_rating
+from recent_role import recent_role_comparison, add_recent_columns, DISPLAY_COLUMNS as RECENT_COLUMNS, CAPTION as RECENT_CAPTION
 from points_probability import (scoring_context, points_quote, game_points_probabilities, PROBABILITY_COLUMNS)
 from points_tracking import snapshot as probability_snapshot, render_probability_tracking
 from opponent_selection import render_opponent_selector
@@ -725,6 +726,9 @@ def render_live_dashboard(ui, roster):
             preview['Matchup rating'] = [matchup_rating(base,projected,stat,adjusted_on and row['Matchup status'] == 'Available') for base,projected,stat in zip(preview.Baseline,preview.Projected,preview.Stat)]
             preview['Change'] = preview.Projected - preview.Baseline
             book_name = ui.selectbox('Sportsbook',list(BOOKS),key='projection_sportsbook')
+            show_recent = ui.toggle('Show recent-role comparison', value=False, key='player_recent_role',
+                                    help='Optional 10-appearance shot-volume/assist model. The current projection still drives edges and probabilities.')
+            recent_source = None
             book_key = BOOKS[book_name]
             quotes = player_quotes({},player_name,book_key)
             event = None
@@ -745,6 +749,7 @@ def render_live_dashboard(ui, roster):
                                 team_baselines.loc[team_baselines.PLAYER_ID.eq(player_id),column] = baseline.iloc[0][column]
                     full_team = apply_matchup(team_baselines,roster,teams,prior_effects,current_effects,opponent) if adjusted_on else team_baselines
                     market_team = team_projection_preview(ui,full_team,event,book_key,api_key,team_rates)
+                    recent_source = market_team
                     market_player = market_team[market_team.PLAYER_ID.eq(player_id)].iloc[0]
                     for stat in ['PTS','AST','FG3M','FG3A','OREB','DREB','REB','PRA']:
                         display_stat = '3PM' if stat == 'FG3M' else stat
@@ -789,11 +794,23 @@ def render_live_dashboard(ui, roster):
                     probability_observations.append(saved)
             comparison['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(comparison['Book line'],comparison['Over odds'])]
             display_columns = ['Stat','Baseline','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Play', *PROBABILITY_COLUMNS]
+            if show_recent:
+                if recent_source is None:
+                    recent_source = team_players.copy()
+                    for column in baseline.columns:
+                        if column in recent_source:
+                            recent_source.loc[recent_source.PLAYER_ID.eq(player_id),column] = baseline.iloc[0][column]
+                    if adjusted_on:
+                        recent_source = apply_matchup(recent_source,roster,teams,prior_effects,current_effects,opponent)
+                recent = recent_role_comparison(recent_source, roster, players, logs, SEASON)
+                comparison = add_recent_columns(comparison, recent, player_id)
+                display_columns[4:4] = RECENT_COLUMNS
+                ui.caption(RECENT_CAPTION)
             display = comparison[display_columns]
             ui.caption('Edge % shows the size of the gap from the book-implied total, positive for both Overs and Unders. Play identifies the direction: Over when the projection is higher, Under when lower. Only gaps greater than 5% qualify as plays and receive shading, from light to dark as the edge grows. The 5% buffer is your extra projection margin; the implied total already removes bookmaker margin.')
             ui.dataframe(display.style.apply(comparison_style,axis=1).format(
-                {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %','Matchup rating','Book line (Over)']},
-                 **{column:'{:.1%}' for column in PROBABILITY_COLUMNS},'Edge %':'{:+.2f}%'},na_rep='—'),hide_index=True,width='stretch')
+                {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %','Matchup rating','Book line (Over)','Recent role status']},
+                 **{column:'{:.1%}' for column in PROBABILITY_COLUMNS},'Edge %':'{:+.2f}%', 'Recent change %':'{:+.1f}%'},na_rep='—'),hide_index=True,width='stretch')
             ui.caption('Exp. probabilities are experimental and available for points only. They do not affect projected averages or the 5% edge rule. Extreme probabilities and low-minute players are less reliable; integer lines include a push.')
             if probability['Probability status'] != 'Experimental':
                 ui.caption('Points probability: ' + probability['Probability status'] + '.')
@@ -939,6 +956,8 @@ def render_live_dashboard(ui, roster):
                     if ui.checkbox(stat,value=True,key=f'edges_stat_{stat}'):
                         selected_stats.append(stat)
             plays_only = ui.checkbox('Only show plays above 5% edge',value=True,key='edges_plays_only')
+            show_recent = ui.toggle('Show recent-role comparison', value=False, key='edges_recent_role',
+                                    help='Compare recent shot volume and assists beside the current model. Rankings and the 5% rule stay unchanged.')
             edge_schedule = schedule_for_view(ui, edge_date, 'edges_schedule_reload')
             if edge_schedule is None:
                 return
@@ -995,6 +1014,11 @@ def render_live_dashboard(ui, roster):
                         ui.success(f'Showing all {total_edges} eligible player-stat edges, grouped by team')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
                         display_columns = ['Rank','Player','Stat','Play','Projected minutes','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
+                        if show_recent:
+                            recent = recent_role_comparison(combined, roster, players, logs, SEASON)
+                            ranked = add_recent_columns(ranked, recent)
+                            display_columns[7:7] = RECENT_COLUMNS
+                            ui.caption(RECENT_CAPTION)
                         team_exports = []
                         for team in [game['Away'], game['Home']]:
                             team_edges = ranked.loc[ranked.Team.eq(team)].copy()
@@ -1006,7 +1030,7 @@ def render_live_dashboard(ui, roster):
                             team_exports.append(team_edges)
                             edge_display = team_edges[display_columns]
                             ui.dataframe(edge_display.style.apply(comparison_style,axis=1).format(
-                                {'Projected minutes':'{:.1f}','Projected':'{:.2f}',
+                                {'Projected minutes':'{:.1f}','Projected':'{:.2f}', 'Recent role':'{:.2f}', 'Recent change %':'{:+.1f}%',
                                  'Book implied total':'{:.2f}','Edge %':'{:+.2f}%',
                                  'Over odds':'{:+.0f}','Under odds':'{:+.0f}', **{column:'{:.1%}' for column in PROBABILITY_COLUMNS}},na_rep='—'),hide_index=True,width='stretch')
                         ui.caption('Exp. probabilities are experimental, points only, and do not change rankings or the 5% rule. Extreme probabilities and low-minute players are less reliable. Over + Under + Push = 100%.')

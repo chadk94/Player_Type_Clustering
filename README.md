@@ -1358,3 +1358,37 @@ pregame projection snapshots. Player diagnostics show appearances, ordinary and
 STL/BLK current weights, and remaining prior minutes. Regression checks cover
 every appearance count from 1–82, injury absences, the career shooting exception,
 missing-category fallbacks, zero observations, approved minutes and shared page outputs.
+
+## Optional recent-role comparison (November 5, 2026)
+
+Player vs Opponent and Sportsbook Edges offer **Show recent-role comparison**,
+off by default. It appends a recent projection, percentage change versus the
+current model, and data/eligibility status for PTS, AST, 3PM and PRA. The existing
+Projected column still drives sportsbook edges, 5% filters, rankings, experimental
+points probabilities and prediction tracking. No comparison value replaces it.
+
+The comparison uses the ten-appearance shot-volume/assist method from the offline
+recency studies, after 20 positive-minute regular-season player appearances.
+Exponential rates are weighted stat totals divided by weighted minutes; shooting
+opportunity uses 2PA/3PA/FTA with unchanged conversion rates, including the
+200-attempt career 3P% prior and at least 50% career weight. Only shot volume and
+assist rates vary. REB/STL/BLK and other categories retain the current values;
+PRA combines recent points/assists with current rebounds. The trial did not show
+a clear overall accuracy gain and remains a comparison, not a recommended bet.
+
+The whole active roster is reallocated before any player/stat filter. Current
+team PTS, AST and 3PA totals stay fixed and existing normalized archetype effects
+remain in the shares. Team expected makes can change with the shooter mix.
+Teammates below the appearance cutoff retain their current rates but can have a
+different final share when eligible teammates change. If no teammate qualifies,
+the comparison is blank and labeled not active yet. Incomplete eligible-player
+logs disable that team's comparison without changing its normal projections.
+Threes stay blank when the comparison would exceed the player's points total.
+
+Uses the already-loaded current-season box scores and player summaries. It makes
+no new feed requests, stores no changes, and has no recurring refresh. Summary
+appearance counts and stat totals must agree with the logs (allowing source
+rounding); wrong-season, future and duplicate observations cannot enter the rate.
+Manual/approved minutes and all manual archetypes remain unchanged. Tests cover
+normalized allocation, fixed team targets, career accuracy, partial/early samples,
+future data, zero-minute players, original edge/ranking values and fragment reruns.
