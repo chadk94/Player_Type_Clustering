@@ -15,7 +15,7 @@ EDGE_STATS = [stat for stat in STAT_ORDER if stat != 'TOV']
 # Books can move from the advertised start to the expected actual tip near game time.
 EVENT_TIME_TOLERANCE = pd.Timedelta(minutes=15)
 
-EDGE_COLUMNS = ['Rank','Player','Team','Opponent','Stat','Play','Projected minutes',
+EDGE_COLUMNS = ['Rank','Player','PLAYER_ID','Team','Opponent','Stat','Play','Projected minutes',
                 'Baseline','Matchup rating','Projected','Book line','Book implied total','Edge %','Signed edge %','Over odds',
                 'Under odds','Updated UTC','Off samples','Def samples','Stat baseline','Matchup data',*MATCHUP_METADATA,'Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]
 
@@ -91,7 +91,7 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
             comparison = comparison[comparison['Signed edge %'].gt(0)]
         elif direction == 'Under':
             comparison = comparison[comparison['Signed edge %'].lt(0)]
-        for field in ['Player','Team','Opponent','Projected minutes','Off samples','Def samples','Stat baseline','Matchup data',*MATCHUP_METADATA,'Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]:
+        for field in ['Player','PLAYER_ID','Team','Opponent','Projected minutes','Off samples','Def samples','Stat baseline','Matchup data',*MATCHUP_METADATA,'Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]:
             comparison[field] = player.get(field,np.nan)
         rows.append(comparison)
     if not rows:

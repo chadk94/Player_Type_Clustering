@@ -12,7 +12,7 @@ class MatchupCacheTests(unittest.TestCase):
         logs = pd.DataFrame({'PTS': [10.]})
         roster = pd.DataFrame({'OffCluster': [1.]})
         with patch.object(dashboard, 'assign_game_archetypes', side_effect=lambda l,r:l), \
-             patch.object(dashboard, 'matchup_effects', side_effect=lambda l:{'points':float(l.PTS.sum())}) as calculate:
+             patch.object(dashboard, 'matchup_effects', side_effect=lambda l, **kw:{'points':float(l.PTS.sum())}) as calculate:
             first = dashboard.current_matchup_effects(logs, roster, 'rules-v1')
             first['points'] = 999.  # Cached return values must be independent copies.
             self.assertEqual(dashboard.current_matchup_effects(logs, roster, 'rules-v1')['points'], 10.)

@@ -54,7 +54,10 @@ def assign_game_archetypes(logs, roster):
     return frame.merge(lookup,on='_key',how='left',validate='many_to_one').drop(columns='_key')
 
 
-def matchup_effects(logs):
+RECENT_OPPONENT_GAMES = 5
+
+
+def matchup_effects(logs, *, include_recent=False):
     """Mean player-game per-36 deviations shrunk toward an average matchup.
 
     STL/BLK use 20 neutral prior samples; all other stats retain three.
@@ -62,6 +65,10 @@ def matchup_effects(logs):
     Missing or zero cluster baselines produce unavailable effects, never invented zeroes.
     """
     effects = {}
+    if include_recent:
+        games = (logs[['Opponent', 'GAME_DATE', 'GAME_ID']].drop_duplicates()
+                 .sort_values(['GAME_DATE', 'GAME_ID']).groupby('Opponent').tail(RECENT_OPPONENT_GAMES))
+        recent_ids = games.groupby('Opponent').GAME_ID.agg(set).to_dict()
     valid = logs[logs.MIN.ge(5)].sort_values(['GAME_DATE','GAME_ID','ESPN_PLAYER_ID'])
     for kind,stats in [('Off',OFF_STATS),('Def',DEF_STATS)]:
         for cluster, group in valid.dropna(subset=[f'{kind}Cluster']).groupby(f'{kind}Cluster'):
@@ -70,6 +77,13 @@ def matchup_effects(logs):
             for opponent, opponent_rows in group.groupby('Opponent'):
                 result = {'samples':len(opponent_rows), 'games':opponent_rows.GAME_ID.nunique(),
                           'stat_games':{}}
+                if include_recent:
+                    ids = recent_ids[opponent]
+                    appearances = opponent_rows.index[opponent_rows.GAME_ID.isin(ids)]
+                    observed = rates.loc[appearances].replace([np.inf, -np.inf], np.nan)
+                    averages, counts = observed.mean(), observed.count()
+                    result['recent'] = dict(games=len(ids), stats={
+                        stat: (float(averages[stat]), int(counts[stat])) for stat in stats if counts[stat]})
                 for stat in stats:
                     values = rates.loc[opponent_rows.index,stat]
                     result['stat_games'][stat] = opponent_rows.loc[np.isfinite(values), 'GAME_ID'].nunique()

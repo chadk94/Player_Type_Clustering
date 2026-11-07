@@ -3,9 +3,12 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 import unittest
+import json
 
 import numpy as np
 import pandas as pd
+from streamlit.components.v2.component_manager import BidiComponentManager
+from streamlit.runtime import Runtime
 from streamlit.testing.v1 import AppTest
 from streamlit.testing.v1.local_script_runner import LocalScriptRunner
 from streamlit.testing.v1.element_tree import ButtonGroup
@@ -19,6 +22,15 @@ from schedule_feed import ScheduleUnavailable, ScheduleMemory
 
 
 class DashboardFragmentTests(unittest.TestCase):
+    def edge_frames(self):
+        tables = []
+        for element in self.app.get('bidi_component'):
+            if 'sportsbook_edge_table' in element.proto.component_name:
+                data = json.loads(element.proto.json)
+                tables.append(pd.DataFrame([r['values'] for r in data['rows']], columns=data['columns']))
+                self.assertTrue(all('Average per 36 minutes' in r['detail'] for r in data['rows']))
+        return tables
+
     def setUp(self):
         dashboard.current_matchup_effects.clear()
         # AppTest 1.53 treats a single-select pills value as a character list.
@@ -75,8 +87,11 @@ class DashboardFragmentTests(unittest.TestCase):
         self.storage = None
         self.fragment_id = None
 
+        component_manager = BidiComponentManager()
+
         class FragmentRunner(LocalScriptRunner):
             def __init__(runner, *args, **kwargs):
+                Runtime.instance().bidi_component_registry = component_manager
                 super().__init__(*args, **kwargs)
                 if owner.storage is None:
                     owner.storage = runner._fragment_storage
@@ -204,7 +219,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
                                  if call.args[3]=='edges')
         self.assertGreater(len(edge_observations),0)
         self.assertTrue(all(r['captured_at'] < r['start'] for r in edge_observations))
-        edge_tables = [d.value for d in self.app.dataframe if 'Rank' in d.value and 'Edge %' in d.value]
+        edge_tables = self.edge_frames()
         self.assertEqual(len(edge_tables), 2)
         player_teams = self.roster.set_index('PLAYER_NAME').TEAM_ABBREVIATION
         for team, table in zip(['ATL', 'HOU'], edge_tables):
@@ -220,7 +235,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.fragment_id = self.fragment_for(toggle)
         toggle.set_value(True).run()
         self.assert_no_errors()
-        shown_edges = [d.value for d in self.app.dataframe if 'Rank' in d.value and 'Recent role' in d.value]
+        shown_edges = self.edge_frames()
         self.assertEqual(len(shown_edges),2)
         for original, shown in zip(edge_tables,shown_edges):
             pd.testing.assert_frame_equal(shown[original.columns],original)
@@ -404,7 +419,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assert_no_errors()
         frames = [d.value for d in self.app.dataframe]
         preview = next(f for f in frames if 'Stat' in f and 'Baseline' in f and 'Book line (Over)' in f).set_index('Stat')
-        edges = next(f for f in frames if 'Rank' in f and 'Projected' in f).set_index('Stat')
+        edges = self.edge_frames()[0].set_index('Stat')
         contributions = next(f for f in frames if 'Player' in f and 'Stat baseline' in f and 'PRA' in f).set_index('Player')
         self.assertEqual(set(edges.index), {'STL','BLK'})
         from matchup_projections import assign_game_archetypes, prior_season_profiles
@@ -463,7 +478,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assert_no_errors()
         frames = [d.value for d in self.app.dataframe]
         preview = next(f for f in frames if 'Stat' in f and 'Book line (Over)' in f).set_index('Stat')
-        edges = next(f for f in frames if 'Rank' in f and 'Projected' in f).set_index('Stat')
+        edges = self.edge_frames()[0].set_index('Stat')
         contributions = next(f for f in frames if 'Player' in f and 'Stat baseline' in f and 'PRA' in f).set_index('Player')
         for stat in ['PTS','AST','REB','3PM']:
             self.assertEqual(preview.loc[stat,'Baseline'],3.)  # 3/24 actual rate × 24 projected minutes.
@@ -479,8 +494,8 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         prior = dashboard.prior_matchup_effects(self.roster, 'season-blend-integration')
         self.mock('prior_matchup_effects', return_value=prior)
         calculate = self.effects._mock_wraps
-        self.effects.side_effect = lambda logs: {key:{**value,'PTS':value.get('PTS',0.)+10.}
-            if key[0]=='Off' else value for key,value in calculate(logs).items()}
+        self.effects.side_effect = lambda logs, **kw: {key:{**value,'PTS':value.get('PTS',0.)+10.}
+            if key[0]=='Off' else value for key,value in calculate(logs, **kw).items()}
         # Full historical fixture serves as a synthetic complete current season.
         # Change rates so an accidental all-prior path cannot pass unnoticed.
         current = self.logs.return_value[0].copy()
@@ -526,7 +541,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertAlmostEqual(blend['Blended effect %'],
             (1-weight)*blend['Last-season effect %']+weight*blend['Current-season effect %'])
         player = next(f for f in frames if 'Stat' in f and 'Book line (Over)' in f).set_index('Stat')
-        edges = next(f for f in frames if 'Rank' in f and 'Projected' in f).set_index('Stat')
+        edges = self.edge_frames()[0].set_index('Stat')
         best = next(f for f in frames if 'Player' in f and 'Team rate status' in f and '3PM' in f).set_index('Player')
         contributions = next(f for f in frames if 'Player' in f and 'Minutes source' in f and '3PM' in f).set_index('Player')
         for stat in ['PTS','AST','REB','3PM','PRA']:
@@ -558,8 +573,8 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         original = dashboard.matchup_effects._mock_wraps
         prior = dashboard.prior_matchup_effects(self.roster, 'both-seasons-missing')
         self.mock('prior_matchup_effects',return_value={key:value for key,value in prior.items() if key[0]!='Def'})
-        self.effects.side_effect = lambda logs: {
-            key:value for key,value in original(logs).items() if key[0] != 'Def'}
+        self.effects.side_effect = lambda logs, **kw: {
+            key:value for key,value in original(logs, **kw).items() if key[0] != 'Def'}
         dashboard.current_matchup_effects.clear()  # The mocked calculation changed.
         start = (datetime.now(timezone.utc)+timedelta(days=1)).isoformat()
         self.schedule.return_value = pd.DataFrame([

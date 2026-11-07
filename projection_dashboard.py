@@ -28,6 +28,7 @@ from team_rate_blend import (season_rates, blend_team_rates, PRIOR_GAMES, POLICY
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
 from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
+from edge_rating_table import render_edge_table
 from projection_presentation import over_line_label, matchup_rating
 from recent_role import recent_role_comparison, add_recent_columns, DISPLAY_COLUMNS as RECENT_COLUMNS, CAPTION as RECENT_CAPTION
 from points_probability import (scoring_context, points_quote, game_points_probabilities, PROBABILITY_COLUMNS)
@@ -116,8 +117,8 @@ def prior_matchup_effects(roster, role_policy_version):
 
 @st.cache_data(max_entries=4, show_spinner=False)
 def current_matchup_effects(logs, roster, role_policy_version):
-    """Reuse the same public matchup calculation until inputs or rules change."""
-    return matchup_effects(assign_game_archetypes(logs, roster))
+    """Reuse matchup effects and recent peer averages across all edge filters."""
+    return matchup_effects(assign_game_archetypes(logs, roster), include_recent=True)
 
 
 def heat_color(value):
@@ -1027,14 +1028,10 @@ def render_live_dashboard(ui, roster):
                                 ui.info('No eligible edges for this team match the current filters.')
                                 continue
                             team_edges['Rank'] = range(1, len(team_edges) + 1)
-                            team_exports.append(team_edges)
-                            edge_display = team_edges[display_columns]
-                            ui.dataframe(edge_display.style.apply(comparison_style,axis=1).format(
-                                {'Projected minutes':'{:.1f}','Projected':'{:.2f}', 'Recent role':'{:.2f}', 'Recent change %':'{:+.1f}%',
-                                 'Book implied total':'{:.2f}','Edge %':'{:+.2f}%',
-                                 'Over odds':'{:+.0f}','Under odds':'{:+.0f}', **{column:'{:.1%}' for column in PROBABILITY_COLUMNS}},na_rep='—'),hide_index=True,width='stretch')
+                            team_exports.append(team_edges.drop(columns='PLAYER_ID'))
+                            render_edge_table(team_edges, display_columns, roster, current_effects, team)
                         ui.caption('Exp. probabilities are experimental, points only, and do not change rankings or the 5% rule. Extreme probabilities and low-minute players are less reliable. Over + Under + Push = 100%.')
-                        ui.caption('Matchup rating: 1 ⬇️⬇️ poor, 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent. Ratings measure opponent lift versus baseline, independent of the sportsbook edge or Over/Under play.')
+                        ui.caption('Hover or tap a matchup rating for recent results by archetype. Ratings measure opponent lift on a scale from 1 (poor) to 5 (excellent).')
                         ui.caption('Edge % is positive for both Overs and Unders; Play identifies the direction. Only edges greater than 5% are marked as plays. Color intensity grows with edge magnitude. Multiple stats for the same player may be correlated.')
                         ui.download_button('Download all edges for this game',pd.concat(team_exports,ignore_index=True).to_csv(index=False),f"{game['Away']}_{game['Home']}_edges.csv",'text/csv',key='edges_download')
                     with ui.expander('Game projection coverage'):
