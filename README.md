@@ -593,6 +593,11 @@ thresholds are an interpretive scale, not calibrated outcome probabilities or
 sportsbook edges. Ratings remain blank when matchup adjustments are disabled,
 baseline is zero/nonfinite or projected data is unavailable.
 
+Both pages grade the 3PM matchup using the change in three-point attempts before
+team adjustments. The hover detail shows recent 3PA per 36 for that offensive
+archetype. The prop projection still converts allocated attempts to expected
+makes using the player's shooting percentage.
+
 
 Top Sportsbook Edges excludes turnovers (TOV) from both its category checkboxes
 and rankings. Select all selects the seven remaining categories. Player vs

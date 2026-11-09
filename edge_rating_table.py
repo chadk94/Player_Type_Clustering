@@ -15,7 +15,7 @@ from sportsbook_lines import comparison_style
 # effect on made threes. Keep the two rebound populations separate.
 ROLE_STATS = {
     'PTS': {'Off': ('PTS',)}, 'AST': {'Off': ('AST',)},
-    '3PM': {'Off': ('FG3M', 'FG3A')}, 'STL': {'Def': ('STL',)}, 'BLK': {'Def': ('BLK',)},
+    '3PM': {'Off': ('FG3A',)}, 'STL': {'Def': ('STL',)}, 'BLK': {'Def': ('BLK',)},
     'REB': {'Off': ('OREB',), 'Def': ('DREB',)},
     'PRA': {'Off': ('PTS', 'AST', 'OREB'), 'Def': ('DREB',)},
 }
@@ -41,7 +41,7 @@ def rating_detail(stat, player, opponent, effects):
             value = recent.get('stats', {}).get(key)
             if value is not None:
                 average, n = value
-                label = {'FG3M': '3PM', 'FG3A': '3PA'}.get(key, key)
+                label = '3PA' if key == 'FG3A' else key
                 by_count[n].append(f'{average:.1f} {label}')
         for n, values in by_count.items():
             lines.append(' · '.join(values) + f" ({n} player appearance{'s' if n != 1 else ''})")
@@ -53,7 +53,8 @@ def rating_detail(stat, player, opponent, effects):
                 lines.append('No recent sample for ' + ', '.join(missing) + '.')
         sections.append('\n'.join(lines))
     period = f"last {window} available game{'s' if window != 1 else ''}" if window else f'up to {RECENT_OPPONENT_GAMES} recent games'
-    return f'vs {opponent} · {period} this season\nAverage per 36 minutes · 5+ minutes played\n\n' + '\n\n'.join(sections)
+    basis = 'Rating uses 3PA per 36 versus the archetype’s usual rate.\n\n' if stat == '3PM' else ''
+    return basis + f'vs {opponent} · {period} this season\nAverage per 36 minutes · 5+ minutes played\n\n' + '\n\n'.join(sections)
 
 
 def table_payload(edges, columns, roster, effects, team):

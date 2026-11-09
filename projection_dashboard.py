@@ -31,7 +31,7 @@ from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from sportsbook_injuries import KEY_MINUTES, latest_report, slate_questionables
 from edge_rating_table import render_edge_table
-from projection_presentation import over_line_label, matchup_rating
+from projection_presentation import over_line_label, player_matchup_rating
 from recent_role import recent_role_comparison, add_recent_columns, DISPLAY_COLUMNS as RECENT_COLUMNS, CAPTION as RECENT_CAPTION
 from points_probability import (scoring_context, points_quote, game_points_probabilities, PROBABILITY_COLUMNS)
 from points_tracking import snapshot as probability_snapshot, render_probability_tracking
@@ -763,7 +763,8 @@ def render_live_dashboard(ui, roster):
             preview = pd.DataFrame({'Stat':['3PM' if x=='FG3M' else x for x in stats],
                 'Baseline':[baseline.iloc[0][x] for x in stats],
                 'Projected':[row[x] if adjusted_on else baseline.iloc[0][x] for x in stats]})
-            preview['Matchup rating'] = [matchup_rating(base,projected,stat,adjusted_on and row['Matchup status'] == 'Available') for base,projected,stat in zip(preview.Baseline,preview.Projected,preview.Stat)]
+            rating_enabled = adjusted_on and row['Matchup status'] == 'Available'
+            preview['Matchup rating'] = [player_matchup_rating(row, stat, rating_enabled) for stat in preview.Stat]
             preview['Change'] = preview.Projected - preview.Baseline
             book_name = ui.selectbox('Sportsbook',list(BOOKS),key='projection_sportsbook')
             show_recent = ui.toggle('Show recent-role comparison', value=False, key='player_recent_role',
@@ -854,7 +855,7 @@ def render_live_dashboard(ui, roster):
             ui.caption('Exp. probabilities are experimental and available for points only. They do not affect projected averages or the 5% edge rule. Extreme probabilities and low-minute players are less reliable; integer lines include a push.')
             if probability['Probability status'] != 'Experimental':
                 ui.caption('Points probability: ' + probability['Probability status'] + '.')
-            ui.caption('Matchup rating: 1 ⬇️⬇️ poor (−10% or worse), 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent (+10% or better). Based on opponent lift versus baseline, not sportsbook edge; fewer turnovers or fouls rate higher. Ratings are blank when adjustments are off or data is unavailable. Book line (Over) includes the Over price.')
+            ui.caption('Matchup ratings measure opponent lift versus baseline. 1 ⬇️⬇️ poor (−10% or worse), 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent (+10% or better). The 3PM rating uses three-point attempts. Fewer turnovers or fouls rate higher. Ratings are blank when adjustments are off or data is unavailable. Book line (Over) includes the Over price.')
             ui.caption('PF = personal fouls committed. Uses your projected minutes and the defensive-archetype matchup effect. Missing foul rates stay blank; no sportsbook foul line is connected.')
             unavailable = comparison.loc[comparison['Book implied total'].isna(),'Stat'].tolist()
             if unavailable:

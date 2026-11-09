@@ -24,3 +24,19 @@ def matchup_rating(baseline, projected, stat, enabled=True):
     if lift > -10:
         return '2 ⬇️'
     return '1 ⬇️⬇️'
+
+
+def player_matchup_rating(player, stat, enabled=True):
+    """Grade the archetype effect before team calibration. Threes use shot volume."""
+    field = 'FG3A' if stat == '3PM' else stat
+    baseline = player.get('Baseline ' + field, math.nan)
+    if stat == 'PRA':
+        baseline = sum(player.get('Baseline ' + part, math.nan) for part in ('PTS', 'REB', 'AST'))
+    adjusted = player.get(field, math.nan)
+    if stat == '3PM':
+        adjusted = player.get('Pre-team 3PA', adjusted)
+    elif stat in ('AST', 'REB'):
+        adjusted = player.get('Pre-team ' + stat, adjusted)
+    elif stat in ('PTS', 'PRA'):
+        adjusted = player.get('Pre-market ' + stat, adjusted)
+    return matchup_rating(baseline, adjusted, stat, enabled)

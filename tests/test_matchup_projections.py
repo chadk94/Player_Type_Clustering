@@ -48,6 +48,16 @@ class MatchupTests(unittest.TestCase):
         self.assertAlmostEqual(apply_matchup(self.base,self.roster,self.teams,effects,current).iloc[0].PTS,
                                10*(1+(-12.5*10/11+20/11)/100))
 
+    def test_threes_matchup_ignores_opponent_makes_in_both_seasons(self):
+        logs = self.logs.assign(FG3A=[8., 4.], FG3M=[0., 4.])
+        cold = matchup_effects(logs)
+        hot = matchup_effects(logs.assign(FG3M=[8., 0.]))
+        for prior, current in [(cold, hot), (hot, cold)]:
+            row = apply_matchup(self.base, self.roster, self.teams, prior, current).iloc[0]
+            self.assertGreater(row['FG3A %'], 0.)
+            self.assertAlmostEqual(row['Prior FG3M %'], row['Current FG3M %'])
+            self.assertAlmostEqual(row['FG3M %'], row['FG3A %'])
+
     def test_missing_defensive_history_preserves_team_coverage_and_real_offense(self):
         from team_projection_view import team_projection_tables
         from market_points import match_points

@@ -6,7 +6,7 @@ import pandas as pd
 
 from import_minutes import TEAM_IDS
 from live_projections import name_key
-from projection_presentation import matchup_rating
+from projection_presentation import player_matchup_rating
 from team_rebounds import REBOUND_METADATA
 from matchup_projections import MATCHUP_METADATA
 from sportsbook_lines import TEAM_NAMES, STAT_ORDER, OddsFeedError, player_quotes, compare_with_book
@@ -82,7 +82,7 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
         preview = pd.DataFrame({'Stat':STAT_ORDER,
             'Projected':[player.get('FG3M' if stat=='3PM' else stat,np.nan) for stat in STAT_ORDER]})
         preview['Baseline'] = [sum(player.get(f'Baseline {part}',np.nan) for part in ['PTS','REB','AST']) if stat=='PRA' else player.get('Baseline '+('FG3M' if stat=='3PM' else stat),np.nan) for stat in STAT_ORDER]
-        preview['Matchup rating'] = [matchup_rating(base,player.get('Pre-market '+stat,projected) if stat in ['PTS','PRA'] else player.get('Pre-team '+stat,projected) if stat in ['AST','REB','3PM'] else projected,stat) for base,projected,stat in zip(preview.Baseline,preview.Projected,preview.Stat)]
+        preview['Matchup rating'] = [player_matchup_rating(player, stat) for stat in STAT_ORDER]
         comparison = compare_with_book(preview,player_quotes(payload,player.Player,bookmaker,now=now))
         comparison = comparison[comparison.Stat.isin(selected_stats) & comparison['Market status'].eq('Current') & comparison['Edge %'].notna()]
         if plays_only:
