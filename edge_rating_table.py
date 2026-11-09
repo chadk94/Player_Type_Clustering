@@ -19,7 +19,7 @@ ROLE_STATS = {
     'REB': {'Off': ('OREB',), 'Def': ('DREB',)},
     'PRA': {'Off': ('PTS', 'AST', 'OREB'), 'Def': ('DREB',)},
 }
-FORMATS = {'Projected minutes': '.1f', 'Projected': '.2f', 'Recent role': '.2f',
+FORMATS = {'Projected minutes': '.1f', 'Good-to minutes': 'g', 'Projected': '.2f', 'Recent role': '.2f',
            'Recent change %': '+.1f', 'Book implied total': '.2f', 'Edge %': '+.2f',
            'Over odds': '+.0f', 'Under odds': '+.0f', **{key: '.1%' for key in PROBABILITY_COLUMNS}}
 
@@ -66,9 +66,6 @@ def table_payload(edges, columns, roster, effects, team):
         for col, v in zip(columns, values):
             if v is None:
                 labels.append('—')
-            elif col == 'Good-to minutes':
-                limit = 'Down to' if row.Play == 'Over' else 'Up to'
-                labels.append(f'{limit} {v:g}')
             elif col == 'Minutes cushion':
                 labels.append(f'{v:.2f}'.rstrip('0').rstrip('.'))
             elif col in FORMATS:
