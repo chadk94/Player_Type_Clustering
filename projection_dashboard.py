@@ -29,7 +29,7 @@ from team_rate_blend import (season_rates, blend_team_rates, PRIOR_GAMES, POLICY
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
 from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
-from sportsbook_injuries import KEY_MINUTES, latest_report, slate_questionables
+from sportsbook_injuries import KEY_MINUTES, game_injuries, injury_alert_changes, latest_report
 from edge_rating_table import render_edge_table
 from projection_presentation import over_line_label, player_matchup_rating
 from recent_role import recent_role_comparison, add_recent_columns, DISPLAY_COLUMNS as RECENT_COLUMNS, CAPTION as RECENT_CAPTION
@@ -59,17 +59,51 @@ def edge_injury_report():
 
 
 @st.fragment(run_every='5m')
-def render_edge_injuries(ui, game, roster, projections, bundle):
+def render_edge_injuries(ui, game, games, roster, projections, bundle):
     now = pd.Timestamp.now(tz='UTC')
-    if game['GameTimeUTC'] <= now:
+    upcoming = [g for g in games if g['GameTimeUTC'] > now]
+    if not upcoming:
+        st.session_state.pop('injury_alert_history', None)
         return
-    ui.markdown(f"**Key questionable players** · {game['Away']} @ {game['Home']}")
+    selected = game if game is not None and game['GameTimeUTC'] > now else None
+    if selected:
+        ui.markdown(f"**Key questionable players** · {game['Away']} @ {game['Home']}")
+    scope = ui.radio('Injury alerts', ['Selected game', 'All games on this slate', 'Off'],
+                     key='injury_alert_scope', horizontal=True,
+                     help=f'Top-right pop-ups for NBA status changes to players above {KEY_MINUTES} minutes in either rotation. Checks every five minutes while the dashboard is open.')
+    history = st.session_state.setdefault('injury_alert_history', {})
+    active_ids = {g['id'] for g in upcoming if scope == 'All games on this slate'
+                  or (scope == 'Selected game' and g == selected)}
+    for old_id in history.keys() - active_ids:
+        del history[old_id]
+    if not selected and not active_ids:
+        return
     report = edge_injury_report()
     if report is None:
         ui.caption(f'Current injury status unavailable. [NBA injury reports](https://official.nba.com/nba-injury-report-{SEASON}-season/)')
         return
     stamp, url, teams_reported = report
-    rows, pending, unverified = slate_questionables([game], teams_reported, roster, projections, bundle)
+    automatic = projections.set_index('PLAYER_ID')['Projected minutes'].to_dict()
+    selected_teams = {}
+    for fixture in upcoming:
+        game_id = fixture['id']
+        if game_id not in active_ids and fixture != selected:
+            continue
+        observations = game_injuries(fixture, teams_reported, roster, automatic, bundle)
+        if fixture == selected:
+            selected_teams = observations
+        if game_id in active_ids:
+            history[game_id], changes = injury_alert_changes(history.get(game_id), stamp, observations)
+            if changes:
+                updates = [f"{name} ({team}) · {before + ' → ' if before else 'Reported '}{after}"
+                         for team, name, before, after in changes]
+                title = f"Injury update · {fixture['Away']} @ {fixture['Home']}"
+                ui.toast(title + ' — ' + ' / '.join(updates), icon='🏀', duration='long')
+    if not selected:
+        return
+    rows = [row for info in selected_teams.values() for row in info.questionables]
+    pending = [team for team, info in selected_teams.items() if not info.submitted]
+    unverified = [text for info in selected_teams.values() for text in info.unverified]
     if rows:
         players = sorted(rows, key=lambda r: (-r[4], r[2]))
         names = [f"{name} ({team}, {mins:g} min)" if pd.notna(mins) else f"{name} ({team}, minutes unknown)"
@@ -1012,12 +1046,12 @@ def render_live_dashboard(ui, roster):
                 if st.session_state.get('edges_game') not in by_id:
                     st.session_state['edges_game'] = games[0]['id']
                 game_id = ui.pills('Choose a game',list(by_id),format_func=lambda value:labels[value],selection_mode='single',key='edges_game')
+                with injury_panel:
+                    render_edge_injuries(ui, by_id.get(game_id), games, roster, projections, approved_bundle)
                 if game_id is None:
                     ui.info('Select a game to see its top edges.')
                 else:
                     game = by_id[game_id]
-                    with injury_panel:
-                        render_edge_injuries(ui, game, roster, projections, approved_bundle)
                     game_projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
                     ui.caption(game_minutes_caption(game_projections, [game['Away'], game['Home']]))
                     notice = unmatched_minutes_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])

@@ -1,5 +1,6 @@
 """Game-scoped questionable players from the NBA's quarter-hour injury reports."""
 from bisect import bisect_right
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 import re
@@ -113,40 +114,93 @@ def latest_report(now=None):
     raise ValueError('No recent official report found')
 
 
+@dataclass
+class TeamInjuries:
+    submitted: bool
+    complete: bool
+    statuses: dict = field(default_factory=dict)
+    key_minutes: dict = field(default_factory=dict)
+    questionables: list = field(default_factory=list)
+    unverified: list = field(default_factory=list)
+
+
+def game_injuries(game, reports, roster, automatic, bundle):
+    """Match each official status to this game's roster, approvals and minutes."""
+    away, home, tip = game['Away'], game['Home'], game['GameTimeUTC']
+    day = pd.Timestamp(tip).tz_convert(ET).date()
+    pair = f'{away}@{home}'
+    approved = for_matchup(bundle, roster, away, home, tip)
+    observations = {}
+    for team in (away, home):
+        entry = reports.get((day, pair, team), {})
+        submitted = entry.get('submitted', False)
+        info = TeamInjuries(submitted, submitted and not entry.get('partial', False))
+        observations[team] = info
+        if not submitted:
+            continue
+        if entry['partial']:
+            info.unverified.append(f'{team} report incomplete')
+        names = {}
+        for player in roster[roster.TEAM_ABBREVIATION.eq(team)].itertuples():
+            for alias in (player.PLAYER_NAME, getattr(player, 'WorkbookPlayerName', None)):
+                if pd.notna(alias):
+                    names.setdefault(compact(alias), set()).add(player.PLAYER_NAME)
+            minutes = approved.get(player.PLAYER_ID, automatic.get(player.PLAYER_ID))
+            known = [m for m in (minutes, player.PROJECTED_MIN) if pd.notna(m)]
+            if known and max(known) > KEY_MINUTES:
+                info.key_minutes[player.PLAYER_NAME] = (minutes, max(known))
+            elif len(known) < 2:
+                info.key_minutes[player.PLAYER_NAME] = None
+        for reported, status in entry['players'].items():
+            matches = names.get(compact(reported), set())
+            if len(matches) != 1:
+                info.complete = False  # An unmatched name could be a previously listed player.
+                if status == 'Questionable':
+                    info.unverified.append(f'{reported} ({team})')
+                continue
+            name = next(iter(matches))
+            info.statuses[name] = status
+            if status == 'Questionable' and name in info.key_minutes:
+                if info.key_minutes[name] is None:
+                    info.unverified.append(f'{name} ({team})')
+                else:
+                    info.questionables.append((pair, team, name, *info.key_minutes[name]))
+    return observations
+
+
 def slate_questionables(games, reports, roster, projections, bundle):
-    """Use the larger of saved rotation minutes and minutes for this exact game."""
     rows, pending, unverified = [], [], []
     automatic = projections.set_index('PLAYER_ID')['Projected minutes'].to_dict()
     for game in games:
-        away, home, tip = game['Away'], game['Home'], game['GameTimeUTC']
-        day = pd.Timestamp(tip).tz_convert(ET).date()
-        pair = f'{away}@{home}'
-        approved = for_matchup(bundle, roster, away, home, tip)
-        for team in (away, home):
-            entry = reports.get((day, pair, team))
-            if not entry or not entry['submitted']:
+        for team, info in game_injuries(game, reports, roster, automatic, bundle).items():
+            rows.extend(info.questionables)
+            unverified.extend(info.unverified)
+            if not info.submitted:
                 pending.append(team)
-                continue
-            if entry['partial']:
-                unverified.append(f'{team} report incomplete')
-            team_roster = roster[roster.TEAM_ABBREVIATION.eq(team)]
-            names = {}
-            for player in team_roster.itertuples():
-                for alias in (player.PLAYER_NAME, getattr(player, 'WorkbookPlayerName', None)):
-                    if pd.notna(alias):
-                        names.setdefault(compact(alias), {})[player.PLAYER_ID] = player
-            for reported, status in entry['players'].items():
-                if status != 'Questionable':
-                    continue
-                matches = names.get(compact(reported), {})
-                if len(matches) != 1:
-                    unverified.append(f'{reported} ({team})')
-                    continue
-                player = next(iter(matches.values()))
-                minutes = approved.get(player.PLAYER_ID, automatic.get(player.PLAYER_ID))
-                known = [m for m in (minutes, player.PROJECTED_MIN) if pd.notna(m)]
-                if known and max(known) > KEY_MINUTES:
-                    rows.append((pair, team, player.PLAYER_NAME, minutes, max(known)))
-                elif len(known) < 2:
-                    unverified.append(f'{player.PLAYER_NAME} ({team})')
     return rows, pending, unverified
+
+
+def injury_alert_changes(previous, stamp, observations):
+    """Compare verified editions for one game. First sighting establishes a quiet baseline."""
+    if previous is not None and stamp <= previous[0]:
+        return previous, []
+    old_teams = previous[1] if previous else {}
+    updated, changes = {}, []
+    for team, info in observations.items():
+        old = old_teams.get(team, {})
+        if not info.submitted:
+            updated[team] = old
+            continue
+        current = info.statuses
+        if previous is not None:
+            for name, status in current.items():
+                before = old.get(name)
+                if (info.key_minutes.get(name) is not None and before != status
+                        and (before is not None or status != 'Available')):
+                    changes.append((team, name, before, status))
+            if info.complete:
+                for name in old.keys() - current.keys():
+                    if info.key_minutes.get(name) is not None and old[name] != 'Available':
+                        changes.append((team, name, old[name], 'Off report'))
+        updated[team] = current.copy() if info.complete else {**old, **current}
+    return (stamp, updated), sorted(changes)

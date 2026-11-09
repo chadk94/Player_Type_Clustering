@@ -501,6 +501,14 @@ every five minutes while open and links the timestamped report it used.
 Missing reports and unverified players are flagged. Injury updates are
 informational. Your approved minutes still control the projections.
 
+**Injury alerts** shows a top-right notification in the open dashboard when
+a newer official report changes a key player's status. Choose the selected game,
+every upcoming game on the displayed slate, or Off. The first report for a
+newly watched game starts monitoring quietly. Each alert names the player,
+the game and the reported change. The panel links to the timestamped NBA report.
+An unlisted player is labeled “Off report” only after a complete team report.
+Alerts stop at tip-off.
+
 The **💰 Top Sportsbook Edges** tab provides one-click game buttons plus date,
 sportsbook (FanDuel/DraftKings/BetMGM), and Over/Under filters. It defaults to the
 next date offered by the sportsbook feed and shows all qualifying distinct
