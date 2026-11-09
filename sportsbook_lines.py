@@ -16,6 +16,7 @@ MARKETS = {'player_points':'PTS','player_rebounds':'REB','player_assists':'AST',
            'player_turnovers':'TOV','player_points_rebounds_assists':'PRA'}
 STAT_ORDER = ['PTS','REB','AST','3PM','STL','BLK','TOV','PRA']
 PLAY_THRESHOLD_PCT = 5.
+MIN_STEALS_BLOCKS_UNDER_ODDS = -160
 TEAM_NAMES = {team['full_name']:team['abbreviation'] for team in get_teams()}
 TEAM_NAMES.update({'Los Angeles Clippers':'LAC','LA Clippers':'LAC'})
 
@@ -151,6 +152,10 @@ def compare_with_book(preview, quotes):
     comparison=preview.merge(quotes,on='Stat',how='left',validate='one_to_one')
     implied=comparison['Book implied total']
     valid=implied.gt(0) & np.isfinite(implied) & np.isfinite(comparison.Projected)
+    # An Under uses the selected book's Under price, even when the table
+    # displays the Over price beside the line. Keep the projection and quote.
+    stocks_under = comparison.Stat.isin(['STL', 'BLK']) & comparison.Projected.lt(implied)
+    valid &= ~stocks_under | (comparison.get('Under odds', np.nan) >= MIN_STEALS_BLOCKS_UNDER_ODDS)
     comparison['Signed edge %']=np.nan
     comparison.loc[valid,'Signed edge %']=signed_edge_pct(comparison.loc[valid,'Projected'], implied[valid])
     comparison['Edge %']=comparison['Signed edge %'].abs()

@@ -114,5 +114,21 @@ class SportsbookTests(unittest.TestCase):
         self.assertTrue(unavailable['Edge %'].isna().all())
         self.assertTrue(unavailable.Play.eq('').all())
 
+    def test_steal_and_block_unders_use_the_under_price_inclusively(self):
+        preview = pd.DataFrame({'Stat': ['STL', 'BLK', 'REB'], 'Projected': [1., 1., 1.]})
+        for price in [-250, -200, -161, -160, -150, 110]:
+            quotes = pd.DataFrame({'Stat': preview.Stat, 'Book implied total': 1.5,
+                                   'Under odds': price, 'Over odds': -200})
+            compared = compare_with_book(preview, quotes)
+            for _, row in compared.iloc[:2].iterrows():
+                self.assertEqual(row.Play, 'Under' if price >= -160 else '')
+                self.assertEqual(pd.notna(row['Edge %']), price >= -160)
+                self.assertEqual(any(comparison_style(row)), price >= -160)
+                self.assertEqual(row.Projected, 1.)
+                self.assertEqual(row['Under odds'], price)
+            self.assertEqual(compared.iloc[2].Play, 'Under')
+            overs = compare_with_book(preview.assign(Projected=2.), quotes)
+            self.assertTrue(overs.Play.eq('Over').all())
+
 
 if __name__=='__main__':unittest.main()

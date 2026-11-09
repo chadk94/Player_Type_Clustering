@@ -2,7 +2,7 @@ from datetime import datetime, timezone, timedelta
 import unittest
 import pandas as pd
 from sportsbook_edges import game_edges, scheduled_book_games
-from sportsbook_lines import OddsFeedError
+from sportsbook_lines import OddsFeedError, implied_total
 from import_minutes import TEAM_IDS
 
 
@@ -97,6 +97,28 @@ class GameEdgeTests(unittest.TestCase):
         all_edges,total=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now,plays_only=False)
         self.assertEqual(total,25)
         self.assertEqual(len(all_edges),25)
+
+    def test_price_limit_applies_before_ranking_in_all_edge_views(self):
+        players = self.players.iloc[:3].copy()
+        mean = implied_total(1.5, 150, -200)
+        players['STL'] = [0.4, mean * .99, 3.]
+        players['BLK'] = .4
+        self.payload['bookmakers'][0]['markets'] = [
+            {'key': market, 'last_update': self.now.isoformat(), 'outcomes': [
+                {'description': name, 'name': side, 'point': 1.5, 'price': price}
+                for name in players.Player for side, price in [('Over', 150), ('Under', under)]]}
+            for market, under in [('player_steals', -200), ('player_blocks', -160)]]
+        for plays_only in [True, False]:
+            ranked, count = game_edges(players, self.payload, self.event, 'fanduel',
+                                       now=self.now, plays_only=plays_only)
+            self.assertEqual(count, 4)
+            self.assertEqual(ranked.Rank.tolist(), [1, 2, 3, 4])
+            self.assertEqual(ranked.loc[ranked.Stat.eq('STL'), 'Play'].tolist(), ['Over'])
+            self.assertEqual(ranked.loc[ranked.Stat.eq('BLK'), 'Play'].tolist(), ['Under'] * 3)
+        found, count = game_edges(players, self.payload, self.event, 'fanduel', now=self.now,
+                                  direction='Under', plays_only=False, stats=['STL'], player_search='Player 1')
+        self.assertTrue(found.empty)
+        self.assertEqual(count, 0)
 
     def test_player_search_finds_low_ranked_edges_without_changing_projections(self):
         original = self.players.copy(deep=True)

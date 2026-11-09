@@ -809,7 +809,7 @@ def render_live_dashboard(ui, roster):
                 display_columns[4:4] = RECENT_COLUMNS
                 ui.caption(RECENT_CAPTION)
             display = comparison[display_columns]
-            ui.caption('Edge % shows the size of the gap from the book-implied total, positive for both Overs and Unders. Play identifies the direction: Over when the projection is higher, Under when lower. Only gaps greater than 5% qualify as plays and receive shading, from light to dark as the edge grows. The 5% buffer is your extra projection margin; the implied total already removes bookmaker margin.')
+            ui.caption('Edge % measures the gap from the book-implied total. Plays require a gap above 5%. Steals and blocks Unders also require an Under price of −160 or better. Darker shading indicates a larger edge.')
             ui.dataframe(display.style.apply(comparison_style,axis=1).format(
                 {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %','Matchup rating','Book line (Over)','Recent role status']},
                  **{column:'{:.1%}' for column in PROBABILITY_COLUMNS},'Edge %':'{:+.2f}%', 'Recent change %':'{:+.1f}%'},na_rep='—'),hide_index=True,width='stretch')
@@ -920,7 +920,7 @@ def render_live_dashboard(ui, roster):
     def render_edges_page():
         probability_observations = []
         ui.subheader('💰 Sportsbook Edges by Team')
-        ui.caption('All qualifying edges, ranked within each team by absolute percent edge versus the juice-adjusted book total, including Overs and Unders. Each row is one player/stat. Uses approved game minutes when imported, otherwise workbook/season-average minutes, plus opponent adjustments.')
+        ui.caption('Edges are ranked within each team by the gap from the juice-adjusted book total. Steals and blocks Unders require an Under price of −160 or better.')
         # Only fetch props for the selected game, never the full slate.
         try:
             edge_key = get_odds_api_key()

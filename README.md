@@ -513,6 +513,12 @@ view all remaining comparisons without marking them as plays. Existing
 continuous edge colors apply. Only real eligible rows appear.
 CSV downloads include quote timestamps and matchup sample coverage.
 
+Steals and blocks Unders require American odds of **−160 or better** at the
+selected sportsbook. A price of −160, −150 or +110 qualifies under this rule.
+An Under at −161 or −200 is excluded from the rankings and game CSV even when
+the 5% filter is off. Player vs Opponent retains the underlying stat projection
+and quote and leaves the edge and play blank for these excluded Unders.
+
 **Good-to minutes** shows the lowest minutes an Over can fall to, or the highest
 minutes an Under can rise to, while its displayed edge stays strictly above 5%.
 **Minutes cushion** is the distance from the player's projected minutes. Both
