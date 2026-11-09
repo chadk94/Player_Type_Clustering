@@ -15,6 +15,7 @@ MARKETS = {'player_points':'PTS','player_rebounds':'REB','player_assists':'AST',
            'player_threes':'3PM','player_steals':'STL','player_blocks':'BLK',
            'player_turnovers':'TOV','player_points_rebounds_assists':'PRA'}
 STAT_ORDER = ['PTS','REB','AST','3PM','STL','BLK','TOV','PRA']
+PLAY_THRESHOLD_PCT = 5.
 TEAM_NAMES = {team['full_name']:team['abbreviation'] for team in get_teams()}
 TEAM_NAMES.update({'Los Angeles Clippers':'LAC','LA Clippers':'LAC'})
 
@@ -141,17 +142,20 @@ def player_quotes(payload, player_name, book_key, now=None, max_age_seconds=900)
     return pd.DataFrame(rows.values())
 
 
+def signed_edge_pct(projected, implied):
+    """Use the displayed two-decimal edge for play eligibility."""
+    return np.round((projected / implied - 1) * 100, 2)
+
+
 def compare_with_book(preview, quotes):
     comparison=preview.merge(quotes,on='Stat',how='left',validate='one_to_one')
     implied=comparison['Book implied total']
     valid=implied.gt(0) & np.isfinite(implied) & np.isfinite(comparison.Projected)
     comparison['Signed edge %']=np.nan
-    comparison.loc[valid,'Signed edge %']=(comparison.loc[valid,'Projected']/implied[valid]-1)*100
-    # Round for consistent display and threshold decisions: exactly 5% is not >5%.
-    comparison['Signed edge %']=comparison['Signed edge %'].round(2)
+    comparison.loc[valid,'Signed edge %']=signed_edge_pct(comparison.loc[valid,'Projected'], implied[valid])
     comparison['Edge %']=comparison['Signed edge %'].abs()
     comparison['Play']=comparison['Signed edge %'].map(
-        lambda edge: 'Over' if edge>5 else 'Under' if edge < -5 else '')
+        lambda edge: 'Over' if edge>PLAY_THRESHOLD_PCT else 'Under' if edge < -PLAY_THRESHOLD_PCT else '')
     return comparison
 
 

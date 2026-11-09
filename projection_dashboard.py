@@ -18,6 +18,7 @@ from matchup_projections import (assign_game_archetypes, matchup_effects, apply_
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
 from market_points import market_targets, apply_market_points
+from edge_minutes import add_minutes_cushion
 from team_assists import apply_team_assists
 from team_threes import apply_team_threes
 from career_shooting import SHOOTING_POLICY_VERSION
@@ -1014,11 +1015,14 @@ def render_live_dashboard(ui, roster):
                     else:
                         ui.success(f'Showing all {total_edges} eligible player-stat edges, grouped by team')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
-                        display_columns = ['Rank','Player','Stat','Play','Projected minutes','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
+                        ranked = add_minutes_cushion(ranked, combined)
+                        display_columns = ['Rank','Player','Stat','Play','Projected minutes','Good-to minutes','Minutes cushion','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
+                        ui.caption('Good-to minutes shows how low an Over or how high an Under can go while its edge stays above 5%. Minutes cushion is the room from the projection. Tested in half-minute steps through 48 with the same prices and teammate minutes.')
                         if show_recent:
                             recent = recent_role_comparison(combined, roster, players, logs, SEASON)
                             ranked = add_recent_columns(ranked, recent)
-                            display_columns[7:7] = RECENT_COLUMNS
+                            after_projection = display_columns.index('Projected') + 1
+                            display_columns[after_projection:after_projection] = RECENT_COLUMNS
                             ui.caption(RECENT_CAPTION)
                         team_exports = []
                         for team in [game['Away'], game['Home']]:

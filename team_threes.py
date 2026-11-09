@@ -36,6 +36,10 @@ def three_target(rates, team, opponent, market_points):
     return attempts*rate, rate, attempts
 
 
+def exceeds_projected_points(makes, points):
+    return 3 * makes > points + 1e-9
+
+
 def apply_team_threes(projections, point_targets, rates, opponents):
     """Allocate the team target using current minute/archetype-adjusted shares.
 
@@ -47,7 +51,7 @@ def apply_team_threes(projections, point_targets, rates, opponents):
     result['Pre-team 3PM'] = result.FG3M
     result['Pre-team 3PA'] = result.FG3A
     result['Team 3PM factor'] = 1.
-    for column in ['Team 3PM target', 'Team 3PA target', 'Team three attempt rate', 'Expected team FGA', 'Three-point share']:
+    for column in ['Team 3PM target', 'Team 3PA target', 'Candidate team 3PA', 'Team three attempt rate', 'Expected team FGA', 'Three-point share']:
         result[column] = np.nan
     summaries, issues = [], []
     for team in result.Team.unique():
@@ -72,10 +76,12 @@ def apply_team_threes(projections, point_targets, rates, opponents):
             if original_attempts <= 0:
                 raise ValueError('No positive player three-point attempts to allocate')
             target, rate, field_goals = three_target(rates, team, opponents[team], point_targets[team])
+            # A minutes preview may cross the scoring guard in either direction.
+            result.loc[mask, 'Candidate team 3PA'] = target
             shares = active.FG3A / original_attempts
             factor = target / original_attempts
             makes = active.FG3M * factor
-            if (3 * makes).gt(active.PTS + 1e-9).any():
+            if exceeds_projected_points(makes, active.PTS).any():
                 raise ValueError('Team target would put a player’s three-point scoring above total points')
             result.loc[mask, 'FG3M'] = makes
             result.loc[mask, 'FG3A'] = shares * target

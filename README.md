@@ -512,6 +512,18 @@ The >5% play filter is on by default; exactly 5% does not qualify. Disable it to
 view all remaining comparisons without marking them as plays. Existing
 continuous edge colors apply. Only real eligible rows appear.
 CSV downloads include quote timestamps and matchup sample coverage.
+
+**Good-to minutes** shows the lowest minutes an Over can fall to, or the highest
+minutes an Under can rise to, while its displayed edge stays strictly above 5%.
+**Minutes cushion** is the distance from the player's projected minutes. Both
+columns are sortable and included in the game CSV. A dash means the row has no
+qualifying play or its cutoff could not be verified. Each scenario changes only
+this player's minutes, holding prices, matchup rates and teammate minutes fixed.
+It recalculates team shares, including separate offensive and defensive rebound
+allocations, and adds the recalculated components for PRA. The cutoff uses the
+first loss of the edge on the half-minute grid from 0.5 through 48. Exact saved
+minutes also qualify as a starting point. DNP and overtime are outside the range.
+
 Game buttons include future sportsbook events that match the selected date's
 ESPN regular-season schedule on home/away teams and tip time (within 15
 minutes). The tolerance handles the difference between an advertised start and

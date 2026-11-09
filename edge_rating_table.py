@@ -66,6 +66,11 @@ def table_payload(edges, columns, roster, effects, team):
         for col, v in zip(columns, values):
             if v is None:
                 labels.append('—')
+            elif col == 'Good-to minutes':
+                limit = 'Down to' if row.Play == 'Over' else 'Up to'
+                labels.append(f'{limit} {v:g}')
+            elif col == 'Minutes cushion':
+                labels.append(f'{v:.2f}'.rstrip('0').rstrip('.'))
             elif col in FORMATS:
                 labels.append(format(v, FORMATS[col]) + ('%' if col in ('Edge %', 'Recent change %') else ''))
             else:
