@@ -68,7 +68,7 @@ def render_edge_injuries(ui, game, games, roster, projections, bundle):
     selected = game if game is not None and game['GameTimeUTC'] > now else None
     if selected:
         ui.markdown(f"**Key questionable players** · {game['Away']} @ {game['Home']}")
-    scope = ui.radio('Injury alerts', ['Selected game', 'All games on this slate', 'Off'],
+    scope = ui.radio('Injury alerts', ['All games on this slate', 'Selected game', 'Off'],
                      key='injury_alert_scope', horizontal=True,
                      help=f'Top-right pop-ups for NBA status changes to players above {KEY_MINUTES} minutes in either rotation. Checks every five minutes while the dashboard is open.')
     history = st.session_state.setdefault('injury_alert_history', {})

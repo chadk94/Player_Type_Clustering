@@ -90,6 +90,7 @@ render_edge_injuries(st, games[st.session_state['selection']], games, roster, pr
             app.run()
             self.assertFalse(app.exception)
             self.assertFalse(app.toast)
+            self.assertEqual(app.radio(key='injury_alert_scope').value, 'All games on this slate')
             app.radio(key='injury_alert_scope').set_value('Selected game').run()
             feed.return_value = edition(15, 'Out', 'Available')
             app.run()
