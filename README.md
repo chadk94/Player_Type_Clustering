@@ -491,8 +491,8 @@ The earlier 209-player counts above describe the initial pre-approval screen.
 
 ### Sportsbook edges by team
 
-**Key questionable players** lists officially Questionable players across the
-selected date's upcoming sportsbook games, with the selected game first.
+**Key questionable players** lists officially Questionable players from the two
+teams in the selected sportsbook game.
 The NBA model's key-player cutoff is strictly above 20 minutes in either the
 saved workbook rotation or the game projection. The list shows game minutes,
 including a projected zero for a regular who is being held out. The panel

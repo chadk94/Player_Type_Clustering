@@ -59,31 +59,24 @@ def edge_injury_report():
 
 
 @st.fragment(run_every='5m')
-def render_edge_injuries(ui, games, selected_id, date, roster, projections, bundle):
+def render_edge_injuries(ui, game, roster, projections, bundle):
     now = pd.Timestamp.now(tz='UTC')
-    upcoming = [g for g in games if g['GameTimeUTC'] > now]
-    if not upcoming:
+    if game['GameTimeUTC'] <= now:
         return
-    ui.markdown(f'**Key questionable players** · {date:%b %d}')
+    ui.markdown(f"**Key questionable players** · {game['Away']} @ {game['Home']}")
     report = edge_injury_report()
     if report is None:
         ui.caption(f'Current injury status unavailable. [NBA injury reports](https://official.nba.com/nba-injury-report-{SEASON}-season/)')
         return
     stamp, url, teams_reported = report
-    upcoming.sort(key=lambda g: g['id'] != selected_id)
-    rows, pending, unverified = slate_questionables(upcoming, teams_reported, roster, projections, bundle)
-    lines = []
-    for game in upcoming:
-        pair = f"{game['Away']}@{game['Home']}"
-        players = sorted((r for r in rows if r[0] == pair), key=lambda r: (-r[4], r[2]))
-        if players:
-            names = [f"{name} ({team}, {mins:g} min)" if pd.notna(mins) else f"{name} ({team}, minutes unknown)"
-                     for _, team, name, mins, _ in players]
-            lines.append(f"**{game['Away']} @ {game['Home']}** · " + ' · '.join(names))
-    if lines:
-        ui.markdown('  \n'.join(lines))
+    rows, pending, unverified = slate_questionables([game], teams_reported, roster, projections, bundle)
+    if rows:
+        players = sorted(rows, key=lambda r: (-r[4], r[2]))
+        names = [f"{name} ({team}, {mins:g} min)" if pd.notna(mins) else f"{name} ({team}, minutes unknown)"
+                 for _, team, name, mins, _ in players]
+        ui.markdown(' · '.join(names))
     elif not pending and not unverified:
-        ui.write('No key players listed as questionable on this slate.')
+        ui.write('No key players listed as questionable for this game.')
     if pending:
         ui.caption('Awaiting a verified team report · ' + ', '.join(pending))
     if unverified:
@@ -1018,12 +1011,12 @@ def render_live_dashboard(ui, roster):
                 if st.session_state.get('edges_game') not in by_id:
                     st.session_state['edges_game'] = games[0]['id']
                 game_id = ui.pills('Choose a game',list(by_id),format_func=lambda value:labels[value],selection_mode='single',key='edges_game')
-                with injury_panel:
-                    render_edge_injuries(ui, games, game_id, edge_date, roster, projections, approved_bundle)
                 if game_id is None:
                     ui.info('Select a game to see its top edges.')
                 else:
                     game = by_id[game_id]
+                    with injury_panel:
+                        render_edge_injuries(ui, game, roster, projections, approved_bundle)
                     game_projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
                     ui.caption(game_minutes_caption(game_projections, [game['Away'], game['Home']]))
                     notice = unmatched_minutes_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])

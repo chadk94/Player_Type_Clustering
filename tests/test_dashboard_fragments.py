@@ -191,12 +191,15 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         event = dict(id='test-points', home_team='Houston Rockets', away_team='Atlanta Hawks', commence_time=start)
         target = self.app.selectbox(key='projection_player').value
         game_day = pd.Timestamp(start).tz_convert('America/New_York').date()
+        other_event = dict(event, id='second-game', away_team='Cleveland Cavaliers', home_team='Charlotte Hornets')
         self.injuries.return_value = (now, 'https://example.com/test-report.pdf', {
+            (game_day, 'CLE@CHA', 'CLE'): {'submitted': True, 'partial': False,
+                                          'players': {'Evan Mobley': 'Questionable'}},
             (game_day, 'ATL@HOU', 'ATL'): {'submitted': True, 'partial': False,
                                           'players': {target: 'Questionable'}}})
         self.mock('get_odds_api_key', return_value='test-key')
         self.mock('next_team_game', return_value={'Opponent':'HOU','GameTimeUTC':start})
-        self.mock('sportsbook_events', return_value=[event])
+        self.mock('sportsbook_events', return_value=[event,other_event])
         self.mock('team_projection_preview', side_effect=lambda ui, rows, *args: rows)
         payload = {**event, 'bookmakers':[{'key':'fanduel','markets':[{
             'key':'player_points','last_update':now.isoformat(),'outcomes':[
@@ -206,10 +209,14 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.mock('sportsbook_props', return_value=payload)
         self.schedule.return_value = pd.DataFrame([
             dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
-            for side,opp,venue in [('HOU','ATL','home'),('ATL','HOU','away')]])
+            for side,opp,venue in [('HOU','ATL','home'),('ATL','HOU','away'),
+                                   ('CHA','CLE','home'),('CLE','CHA','away')]])
         self.app.run()
         self.assert_no_errors()
-        self.assertTrue(any(f'**ATL @ HOU** · {target} (ATL,' in m.value for m in self.app.markdown))
+        self.assertTrue(any('**Key questionable players** · ATL @ HOU' in m.value for m in self.app.markdown))
+        self.assertTrue(any(f'{target} (ATL,' in m.value for m in self.app.markdown))
+        self.assertFalse(any('Evan Mobley (CLE,' in m.value for m in self.app.markdown))
+        self.assertFalse(any('Awaiting a verified team report · CHA' in c.value for c in self.app.caption))
         self.assertTrue(any('Awaiting a verified team report · HOU' in c.value for c in self.app.caption))
         frame = next(d.value for d in self.app.dataframe if 'Stat' in d.value and 'Projected' in d.value and 'Baseline' in d.value)
         point = frame.loc[frame.Stat.eq('PTS')].iloc[0]
