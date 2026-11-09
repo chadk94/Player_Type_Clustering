@@ -491,6 +491,16 @@ The earlier 209-player counts above describe the initial pre-approval screen.
 
 ### Sportsbook edges by team
 
+**Key questionable players** lists officially Questionable players across the
+selected date's upcoming sportsbook games, with the selected game first.
+The NBA model's key-player cutoff is strictly above 20 minutes in either the
+saved workbook rotation or the game projection. The list shows game minutes,
+including a projected zero for a regular who is being held out. The panel
+checks [NBA injury reports](https://official.nba.com/nba-injury-report-2026-27-season/)
+every five minutes while open and links the timestamped report it used.
+Missing reports and unverified players are flagged. Injury updates are
+informational. Your approved minutes still control the projections.
+
 The **💰 Top Sportsbook Edges** tab provides one-click game buttons plus date,
 sportsbook (FanDuel/DraftKings/BetMGM), and Over/Under filters. It defaults to the
 next date offered by the sportsbook feed and shows all qualifying distinct

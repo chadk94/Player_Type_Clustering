@@ -74,6 +74,7 @@ class DashboardFragmentTests(unittest.TestCase):
             'GameTimeUTC': '2026-10-27T23:00:00Z',
         })
         self.mock('get_odds_api_key', return_value=None)
+        self.injuries = self.mock('edge_injury_report', return_value=None)
         self.build = self.mock('build_projections', wraps=dashboard.build_projections)
         self.effects = self.mock('matchup_effects', wraps=dashboard.matchup_effects)
         # Catch accidental network access, rather than letting a test make live calls.
@@ -189,6 +190,10 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         start = (now + timedelta(hours=4)).isoformat()
         event = dict(id='test-points', home_team='Houston Rockets', away_team='Atlanta Hawks', commence_time=start)
         target = self.app.selectbox(key='projection_player').value
+        game_day = pd.Timestamp(start).tz_convert('America/New_York').date()
+        self.injuries.return_value = (now, 'https://example.com/test-report.pdf', {
+            (game_day, 'ATL@HOU', 'ATL'): {'submitted': True, 'partial': False,
+                                          'players': {target: 'Questionable'}}})
         self.mock('get_odds_api_key', return_value='test-key')
         self.mock('next_team_game', return_value={'Opponent':'HOU','GameTimeUTC':start})
         self.mock('sportsbook_events', return_value=[event])
@@ -204,6 +209,8 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
             for side,opp,venue in [('HOU','ATL','home'),('ATL','HOU','away')]])
         self.app.run()
         self.assert_no_errors()
+        self.assertTrue(any(f'**ATL @ HOU** · {target} (ATL,' in m.value for m in self.app.markdown))
+        self.assertTrue(any('Awaiting a verified team report · HOU' in c.value for c in self.app.caption))
         frame = next(d.value for d in self.app.dataframe if 'Stat' in d.value and 'Projected' in d.value and 'Baseline' in d.value)
         point = frame.loc[frame.Stat.eq('PTS')].iloc[0]
         self.assertTrue(pd.notna(point['Exp. P(over)']))

@@ -29,6 +29,7 @@ from team_rate_blend import (season_rates, blend_team_rates, PRIOR_GAMES, POLICY
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
 from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
+from sportsbook_injuries import KEY_MINUTES, latest_report, slate_questionables
 from edge_rating_table import render_edge_table
 from projection_presentation import over_line_label, matchup_rating
 from recent_role import recent_role_comparison, add_recent_columns, DISPLAY_COLUMNS as RECENT_COLUMNS, CAPTION as RECENT_CAPTION
@@ -47,6 +48,49 @@ from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_mat
 @st.cache_data(ttl=300, show_spinner=False)
 def live_state(season):
     return load_live_state(season)
+
+
+@st.cache_data(ttl=240, show_spinner=False)
+def edge_injury_report():
+    try:
+        return latest_report()
+    except (requests.RequestException, ValueError, OSError):
+        return None
+
+
+@st.fragment(run_every='5m')
+def render_edge_injuries(ui, games, selected_id, date, roster, projections, bundle):
+    now = pd.Timestamp.now(tz='UTC')
+    upcoming = [g for g in games if g['GameTimeUTC'] > now]
+    if not upcoming:
+        return
+    ui.markdown(f'**Key questionable players** · {date:%b %d}')
+    report = edge_injury_report()
+    if report is None:
+        ui.caption(f'Current injury status unavailable. [NBA injury reports](https://official.nba.com/nba-injury-report-{SEASON}-season/)')
+        return
+    stamp, url, teams_reported = report
+    upcoming.sort(key=lambda g: g['id'] != selected_id)
+    rows, pending, unverified = slate_questionables(upcoming, teams_reported, roster, projections, bundle)
+    lines = []
+    for game in upcoming:
+        pair = f"{game['Away']}@{game['Home']}"
+        players = sorted((r for r in rows if r[0] == pair), key=lambda r: (-r[4], r[2]))
+        if players:
+            names = [f"{name} ({team}, {mins:g} min)" if pd.notna(mins) else f"{name} ({team}, minutes unknown)"
+                     for _, team, name, mins, _ in players]
+            lines.append(f"**{game['Away']} @ {game['Home']}** · " + ' · '.join(names))
+    if lines:
+        ui.markdown('  \n'.join(lines))
+    elif not pending and not unverified:
+        ui.write('No key players listed as questionable on this slate.')
+    if pending:
+        ui.caption('Awaiting a verified team report · ' + ', '.join(pending))
+    if unverified:
+        ui.caption('Coverage to verify · ' + ' · '.join(unverified))
+    older = ' · Latest quarter-hour update unconfirmed' if now - stamp >= pd.Timedelta(minutes=30) else ''
+    ui.caption(f'Over {KEY_MINUTES} minutes in the workbook rotation or game projection. Minutes shown are for this game. '
+               f'[NBA report · {stamp:%b %d, %I:%M %p %Z}]({url}){older} · Checks every 5 minutes.')
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -525,6 +569,7 @@ def render_live_dashboard(ui, roster):
         sportsbook_events.clear()
         sportsbook_props.clear()
         sportsbook_game_lines.clear()
+        edge_injury_report.clear()
     with ui.spinner('Refreshing team records and season averages…'):
         try:
             state = live_state(SEASON)
@@ -920,6 +965,7 @@ def render_live_dashboard(ui, roster):
     def render_edges_page():
         probability_observations = []
         ui.subheader('💰 Sportsbook Edges by Team')
+        injury_panel = ui.container()
         ui.caption('Edges are ranked within each team by the gap from the juice-adjusted book total. Steals and blocks Unders require an Under price of −160 or better.')
         # Only fetch props for the selected game, never the full slate.
         try:
@@ -972,6 +1018,8 @@ def render_live_dashboard(ui, roster):
                 if st.session_state.get('edges_game') not in by_id:
                     st.session_state['edges_game'] = games[0]['id']
                 game_id = ui.pills('Choose a game',list(by_id),format_func=lambda value:labels[value],selection_mode='single',key='edges_game')
+                with injury_panel:
+                    render_edge_injuries(ui, games, game_id, edge_date, roster, projections, approved_bundle)
                 if game_id is None:
                     ui.info('Select a game to see its top edges.')
                 else:
