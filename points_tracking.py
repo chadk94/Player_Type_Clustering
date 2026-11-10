@@ -1,5 +1,6 @@
 """Prospective, browser-persisted experimental probabilities and result grading."""
 from datetime import datetime, timezone
+from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
 import json
@@ -10,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from points_probability import MODEL_VERSION, PROBABILITY_COLUMNS, model_profile
+from prop_distributions import COUNT_STATS, COUNT_VERSION
 
 
 def record_id(record):
@@ -32,7 +34,8 @@ def snapshot(row, event, bookmaker, context, page, mode='Standard', now=None):
         espn = str(context.get(pid, {}).get('ESPN_PLAYER_ID', past.get('espn_id', '')))
         if not espn.isdigit():
             return None
-        record = dict(schema=1, season=model_profile()['season'], model=MODEL_VERSION,
+        stat = row.get('Stat', 'PTS')
+        record = dict(schema=1 if stat == 'PTS' else 2, season=model_profile()['season'], model=row['Probability model'],
             profile=row['Probability profile'], event=str(event['id']), start=start.isoformat(),
             player_id=pid, espn_id=espn, player=str(row['Player']), team=str(row['Team']),
             opponent=str(row['Opponent']), book=bookmaker, line=float(row['Book line']),
@@ -41,10 +44,14 @@ def snapshot(row, event, bookmaker, context, page, mode='Standard', now=None):
             mean=float(row['Projected']), minutes=float(row['Projected minutes']),
             minutes_source=str(row.get('Minutes source', 'Unavailable')),
             stat_baseline=str(row.get('Stat baseline', 'Unavailable')),
-            variability_source=str(row['Variability source']), phi=float(row['Variability phi']),
-            ftm=float(row['Expected FTM']), twos=float(row['Expected 2PM']), threes=float(row['Expected 3PM']),
+            variability_source=str(row['Variability source']),
             over=float(row[PROBABILITY_COLUMNS[0]]), under=float(row[PROBABILITY_COLUMNS[1]]),
             push=float(row[PROBABILITY_COLUMNS[2]]))
+        if stat == 'PTS':
+            record.update(phi=float(row['Variability phi']), ftm=float(row['Expected FTM']),
+                          twos=float(row['Expected 2PM']), threes=float(row['Expected 3PM']))
+        else:
+            record.update(stat=stat, distribution=row['Distribution'], dispersion=float(row['Dispersion']))
         record['id'] = record_id(record)
         return record if valid_record(record) else None
     except (ValueError, KeyError, TypeError, OverflowError):
@@ -53,18 +60,29 @@ def snapshot(row, event, bookmaker, context, page, mode='Standard', now=None):
 
 def valid_record(r):
     try:
-        if not isinstance(r, dict) or r['schema'] != 1 or r['model'] != MODEL_VERSION or r['id'] != record_id(r):
+        if not isinstance(r, dict) or r['id'] != record_id(r):
             return False
         if r['season'] != model_profile()['season'] or len(json.dumps(r)) > 6000:
             return False
         if not str(r['espn_id']).isdigit() or not 0 < int(r['player_id']):
             return False
-        for k in ['mean', 'minutes', 'line', 'over', 'under', 'push', 'ftm', 'twos', 'threes', 'phi']:
+        numeric = ['mean', 'minutes', 'line', 'over', 'under', 'push']
+        if r['schema'] == 1 and r['model'] == MODEL_VERSION and r.get('stat', 'PTS') == 'PTS':
+            numeric.extend(['ftm', 'twos', 'threes', 'phi'])
+            if abs(r['ftm'] + 2*r['twos'] + 3*r['threes'] - r['mean']) > 1e-7:
+                return False
+        elif r['schema'] == 2 and r['model'] == COUNT_VERSION and r['stat'] in COUNT_STATS:
+            if not math.isfinite(r['dispersion']) or r['distribution'] not in (
+                    'poisson', 'pooled', 'player', 'pooled_mixture', 'player_mixture', 'binomial6'):
+                return False
+        else:
+            return False
+        for k in numeric:
             if not isinstance(r[k], (float, int)) or not math.isfinite(r[k]) or r[k] < 0:
                 return False
         if r['minutes'] > 48 or max(r['over'], r['under'], r['push']) > 1 or abs(r['over']+r['under']+r['push']-1) > 1e-8:
             return False
-        if abs(r['ftm']+2*r['twos']+3*r['threes']-r['mean']) > 1e-7 or r['line']*2 != round(r['line']*2):
+        if r['line']*2 != round(r['line']*2):
             return False
         for k in ['over_odds', 'under_odds']:
             if not np.isfinite(r[k]) or abs(r[k]) < 100:
@@ -103,30 +121,40 @@ def grade_records(records, logs):
     rows['ESPN_PLAYER_ID'] = rows.ESPN_PLAYER_ID.astype(str)
     results = []
     grouped = {key: g for key, g in rows.groupby(['Team', 'Opponent'])}
+    @lru_cache(maxsize=256)
+    def game_players(team, opponent, start, season):
+        pool = grouped.get((team, opponent))
+        if pool is None:
+            return {}
+        year = int(season[:4])
+        match = pool.loc[(pool['_start']-pd.Timestamp(start)).abs() <= pd.Timedelta(minutes=15)]
+        if (match.GAME_ID.nunique() != 1 or (match['_start'] < pd.Timestamp(f'{year}-10-01',tz='UTC')).any()
+                or (match['_start'] >= pd.Timestamp(f'{year+1}-07-01',tz='UTC')).any()):
+            return {}
+        unique = match.loc[~match.ESPN_PLAYER_ID.duplicated(keep=False)]
+        return unique.set_index('ESPN_PLAYER_ID').to_dict('index')
+
     for r in records:
         if not valid_record(r):
             continue
-        pool = grouped.get((r['team'], r['opponent']))
-        if pool is None:
+        player = game_players(r['team'],r['opponent'],r['start'],r['season']).get(r['espn_id'])
+        if player is None:
             continue
-        match = pool.loc[(pool['_start']-pd.Timestamp(r['start'])).abs() <= pd.Timedelta(minutes=15)]
-        if match.GAME_ID.nunique() != 1:
+        stat = r.get('stat','PTS')
+        parts = ('PTS','REB','AST') if stat == 'PRA' else ('FG3M' if stat == '3PM' else stat,)
+        try:
+            values = [float(player[key]) for key in parts]
+            minutes = float(player['MIN'])
+        except (ValueError, KeyError, TypeError):
             continue
-        year = int(r['season'][:4])
-        dates = match['_start']
-        if not ((dates >= pd.Timestamp(f'{year}-10-01', tz='UTC')) &
-                (dates < pd.Timestamp(f'{year+1}-07-01', tz='UTC'))).all():
+        if not math.isfinite(minutes) or minutes <= 0 or any(not v.is_integer() or v < 0 for v in values):
             continue
-        player = match.loc[match.ESPN_PLAYER_ID.eq(r['espn_id'])]
-        if len(player) != 1:
-            # Absence could be DNP or a feed gap, so don't assign a loss or 0 PTS.
-            continue
-        points, minutes = float(player.iloc[0].PTS), float(player.iloc[0].MIN)
-        if not np.isfinite([points, minutes]).all() or points < 0 or minutes < 0 or not points.is_integer():
-            continue
-        outcome = 'Over' if points > r['line'] else 'Under' if points < r['line'] else 'Push'
-        results.append(dict(id=r['id'], game=str(player.iloc[0].GAME_ID), points=points,
-                            actual_minutes=minutes, outcome=outcome, source='ESPN completed regular-season box score'))
+        actual = sum(values)
+        outcome = 'Over' if actual > r['line'] else 'Under' if actual < r['line'] else 'Push'
+        result = dict(id=r['id'], game=str(player['GAME_ID']), actual_minutes=minutes,
+                      outcome=outcome, source='ESPN completed regular-season box score')
+        result['points' if stat == 'PTS' else 'actual'] = actual
+        results.append(result)
     return results
 
 
@@ -134,10 +162,10 @@ def history_table(records, results):
     graded = {}
     for result in results if isinstance(results, list) else []:
         try:
-            points, minutes = float(result['points']), float(result['actual_minutes'])
-            if (np.isfinite([points, minutes]).all() and points >= 0 and points.is_integer()
-                    and minutes >= 0 and str(result['game']).isdigit()):
-                graded[result['id']] = {**result, 'points': points, 'actual_minutes': minutes}
+            actual, minutes = float(result.get('actual',result.get('points'))), float(result['actual_minutes'])
+            if (np.isfinite([actual, minutes]).all() and actual >= 0 and actual.is_integer()
+                    and minutes > 0 and str(result['game']).isdigit()):
+                graded[result['id']] = {**result, 'actual': actual, 'actual_minutes': minutes}
         except (ValueError, KeyError, TypeError, OverflowError):
             continue
     rows = []
@@ -145,21 +173,22 @@ def history_table(records, results):
         if not valid_record(r):
             continue
         result = graded.get(r['id'], {})
-        points = result.get('points', np.nan)
-        outcome = ('Over' if points > r['line'] else 'Under' if points < r['line'] else 'Push') if np.isfinite(points) else 'Pending / no verified appearance'
-        rows.append({**r, 'actual_points': points, 'actual_minutes': result.get('actual_minutes', np.nan),
+        actual = result.get('actual', np.nan)
+        stat = r.get('stat', 'PTS')
+        outcome = ('Over' if actual > r['line'] else 'Under' if actual < r['line'] else 'Push') if np.isfinite(actual) else 'Pending / no verified appearance'
+        rows.append({**r, 'stat':stat, 'actual':actual, 'actual_points':actual if stat == 'PTS' else np.nan, 'actual_minutes': result.get('actual_minutes', np.nan),
                      'outcome': outcome, 'result_game': result.get('game', '')})
     return pd.DataFrame(rows)
 
 
 def evaluation_rows(frame):
-    """One latest standard snapshot per game/player/book, selected without outcomes."""
+    """One latest standard snapshot per game/player/stat/book, selected without outcomes."""
     if frame.empty:
         return frame
     standard = frame.loc[frame['mode'].eq('Standard')].copy()
     standard['_captured'] = pd.to_datetime(standard.captured_at, utc=True)
     return standard.sort_values(['_captured', 'id']).drop_duplicates(
-        ['season', 'model', 'profile', 'event', 'player_id', 'book'], keep='last').drop(columns='_captured')
+        ['season', 'model', 'profile', 'event', 'player_id', 'book', 'stat'], keep='last').drop(columns='_captured')
 
 
 _component = None
@@ -208,9 +237,9 @@ def render_probability_tracking(ui, observations, logs, page):
     accept_tracking_reply(st.session_state, key, request, reply)
     saved = st.session_state[key]
     if saved['status'] == 'unavailable':
-        ui.warning('Points probability tracking could not save to this browser. Open the tracking panel to retry; the projection itself is unaffected.')
-    with ui.expander('Experimental points probability tracking'):
-        ui.caption('Experimental scoring-pattern probabilities. Extreme estimates and low-minute players are less reliable. '
+        ui.warning('Prop probability tracking could not save to this browser. Open the tracking panel to retry; the projection itself is unaffected.')
+    with ui.expander('Experimental prop probability tracking'):
+        ui.caption('Experimental player-prop probabilities. Extreme estimates and low-minute players are less reliable. '
                    'Over + Under + Push = 100%; integer lines include a separate push probability. '
                    'Projected averages, edge percentages and the 5% play rule are unchanged.')
         if saved['status'] == 'unavailable':
@@ -218,7 +247,7 @@ def render_probability_tracking(ui, observations, logs, page):
         elif saved['status'] == 'loading':
             ui.caption('Opening this browser’s prediction history…')
         else:
-            ui.caption(f"{len(saved['records'])} snapshots saved in this browser. Loading a verified pregame points comparison records it automatically, including lines below the 5% edge threshold. "
+            ui.caption(f"{len(saved['records'])} snapshots saved in this browser. Loading a verified pregame prop comparison records it automatically, including lines below the 5% edge threshold. "
                        'This covers loaded game comparisons, not every NBA game. Clearing site data removes it; download a backup.')
             if saved.get('invalid_records'):
                 ui.warning(f"{saved['invalid_records']} saved records failed validation and were excluded. Download a backup of the valid history.")
@@ -229,24 +258,26 @@ def render_probability_tracking(ui, observations, logs, page):
         frame = history_table(saved.get('records', []), saved.get('results', []))
         if not frame.empty:
             selected = evaluation_rows(frame)
-            settled = selected.loc[selected.actual_points.notna() & selected.outcome.ne('Push')]
-            ui.caption(f'{len(selected)} standard player/game/book predictions · {len(settled)} graded non-push results. '
-                       'Evaluation uses the latest saved pregame standard snapshot for each player/game/book. Repeated views do not count as independent trials.')
+            stat_filter = ui.selectbox('Evaluate stat', ['All', *sorted(selected.stat.unique())], key=key+'_stat')
+            sample = selected if stat_filter == 'All' else selected.loc[selected.stat.eq(stat_filter)]
+            settled = sample.loc[sample.actual.notna() & sample.outcome.ne('Push')]
+            ui.caption(f'{len(sample)} standard player/stat/game/book predictions · {len(settled)} graded non-push results. '
+                       'Evaluation uses the latest saved pregame standard snapshot for each player/stat/game/book. Repeated views do not count as independent trials.')
             if not settled.empty:
                 p = settled.over / (settled.over + settled.under)
                 y = settled.outcome.eq('Over').astype(float)
                 ui.caption(f'Over probability (excluding pushes): {p.mean():.1%} · Observed overs: {y.mean():.1%} · '
                            f'Brier error: {((p-y)**2).mean():.4f} (lower is better). Early samples are descriptive only.')
-            display = frame[['player', 'team', 'opponent', 'start', 'book', 'line', 'mean', 'minutes',
-                             'over', 'under', 'push', 'mode', 'outcome', 'actual_points', 'captured_at']].rename(columns={
+            display = frame[['player', 'team', 'opponent', 'start', 'book', 'stat', 'line', 'mean', 'minutes',
+                             'over', 'under', 'push', 'mode', 'outcome', 'actual', 'captured_at']].rename(columns={
                 'player':'Player','team':'Team','opponent':'Opponent','start':'Game time (UTC)',
-                'book':'Sportsbook','line':'Points line','mean':'Projected points','minutes':'Projected minutes',
+                'book':'Sportsbook','stat':'Stat','line':'Line','mean':'Projected','minutes':'Projected minutes',
                 'over':'P(over)','under':'P(under)','push':'P(push)','mode':'Preview type',
-                'outcome':'Result','actual_points':'Actual points','captured_at':'Saved at (UTC)'})
+                'outcome':'Result','actual':'Actual','captured_at':'Saved at (UTC)'})
             ui.dataframe(display.tail(100).iloc[::-1].style.format(
-                {**{key:'{:.1%}' for key in ['P(over)','P(under)','P(push)']},'Projected points':'{:.2f}',
+                {**{key:'{:.1%}' for key in ['P(over)','P(under)','P(push)']},'Projected':'{:.2f}',
                  'Projected minutes':'{:.1f}'}, na_rep='—'), hide_index=True, width='stretch')
             ui.download_button('Download all probability snapshots and results', frame.to_csv(index=False),
-                               'experimental_points_history.csv', 'text/csv', key=key+'_download')
+                               'experimental_prop_history.csv', 'text/csv', key=key+'_download')
             ui.download_button('Download evaluation sample', selected.to_csv(index=False),
-                               'experimental_points_evaluation.csv', 'text/csv', key=key+'_evaluation')
+                               'experimental_prop_evaluation.csv', 'text/csv', key=key+'_evaluation')

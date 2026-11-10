@@ -129,11 +129,23 @@ def points_quote(row, quote, observed=None):
     return result
 
 
-def game_points_probabilities(players, payload, bookmaker, context, now=None):
-    """All available PTS quotes, before the edge page's search/rank/5% filters."""
+def game_quote_probabilities(players, payload, bookmaker, context, evaluate, stats, now=None):
+    """Use the same player means and fresh paired quotes before edge filtering."""
     result = []
     for _, row in players.iterrows():
-        quote = player_quotes(payload, row.Player, bookmaker, now=now).set_index('Stat').loc['PTS'].to_dict()
-        probability = points_quote(row, quote, context.get(int(row.PLAYER_ID)))
-        result.append({**row.to_dict(), **quote, **probability, 'Stat': 'PTS', 'Projected': row.get('PTS')})
+        player = row.to_dict()
+        observed = context.get(int(row.PLAYER_ID))
+        quotes = player_quotes(payload, row.Player, bookmaker, now=now)
+        for quote in quotes.to_dict('records'):
+            stat = quote['Stat']
+            if stat not in stats or (stat != 'PTS' and quote['Market status'] != 'Current'):
+                continue
+            quote['Projected'] = player.get('FG3M' if stat == '3PM' else stat, np.nan)
+            result.append({**player, **quote, **evaluate(player, quote, observed)})
+    if not result:
+        return pd.DataFrame(columns=['PLAYER_ID', 'Player', 'Team', 'Stat', *PROBABILITY_COLUMNS])
     return pd.DataFrame(result)
+
+
+def game_points_probabilities(players, payload, bookmaker, context, now=None):
+    return game_quote_probabilities(players, payload, bookmaker, context, points_quote, ('PTS',), now=now)

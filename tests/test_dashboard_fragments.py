@@ -186,7 +186,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertIn("Today's Plays", [tab.label for tab in self.app.tabs])
         self.assertEqual(len(self.app.tabs), 6)
 
-    def test_experimental_points_display_and_tracking_keep_original_comparisons(self):
+    def test_prop_probabilities_match_across_player_and_edges_with_stat_specific_tracking(self):
         now = datetime.now(timezone.utc)
         start = (now + timedelta(hours=4)).isoformat()
         event = dict(id='test-points', home_team='Houston Rockets', away_team='Atlanta Hawks', commence_time=start)
@@ -207,6 +207,8 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
                 dict(description=name,name=side,point=20.5,price=-110)
                 for name in self.roster.loc[self.roster.TEAM_ABBREVIATION.isin(['ATL','HOU']),'PLAYER_NAME']
                 for side in ['Over','Under']]}]}]}
+        payload['bookmakers'][0]['markets'].append({'key':'player_assists','last_update':now.isoformat(),
+            'outcomes':[dict(description=target,name=side,point=2.,price=-110) for side in ['Over','Under']]})
         self.mock('sportsbook_props', return_value=payload)
         self.schedule.return_value = pd.DataFrame([
             dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
@@ -223,11 +225,14 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         point = frame.loc[frame.Stat.eq('PTS')].iloc[0]
         self.assertTrue(pd.notna(point['Exp. P(over)']))
         self.assertAlmostEqual(point['Exp. P(over)']+point['Exp. P(under)']+point['Exp. P(push)'],1.)
-        self.assertTrue(frame.loc[frame.Stat.ne('PTS'),'Exp. P(over)'].isna().all())
+        assist = frame.loc[frame.Stat.eq('AST')].iloc[0]
+        self.assertGreater(assist['Exp. P(push)'], 0.)
+        self.assertAlmostEqual(sum(assist[col] for col in dashboard.PROBABILITY_COLUMNS), 1.)
+        self.assertTrue(frame.loc[~frame.Stat.isin(['PTS','AST']),'Exp. P(over)'].isna().all())
         self.assertAlmostEqual(point['Edge %'],abs(round((point.Projected/point['Book implied total']-1)*100,2)))
         rows = next(call.args[1] for call in reversed(self.probability_tracking.call_args_list)
                     if call.args[3]=='player')
-        self.assertEqual(len(rows),1)
+        self.assertEqual(len(rows),2)
         self.assertEqual(rows[0]['mean'],point.Projected)
         self.assertEqual(rows[0]['mode'],'Standard')
         edge_observations = next(call.args[1] for call in reversed(self.probability_tracking.call_args_list)
@@ -247,8 +252,9 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
             np.testing.assert_allclose(table['Minutes cushion'],
                                        (table['Projected minutes'] - table['Good-to minutes']).abs())
             self.assertIn(f'{team} — {len(table)} edges', [h.value for h in self.app.subheader])
-        same_player = next(r for r in edge_observations if r['player_id']==rows[0]['player_id'])
-        self.assertEqual(same_player['id'],rows[0]['id'])
+        self.assertTrue({r['id'] for r in rows}.issubset({r['id'] for r in edge_observations}))
+        self.assertEqual(rows[1]['stat'],'AST')
+        self.assertAlmostEqual(rows[1]['mean'],assist.Projected)
         feeds = [m.call_count for m in (self.live,self.logs,self.effects,self.imported)]
         toggle = self.app.toggle(key='edges_recent_role')
         self.fragment_id = self.fragment_for(toggle)

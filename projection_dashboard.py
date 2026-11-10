@@ -36,7 +36,8 @@ from edge_rating_table import render_edge_table
 from todays_plays import render_shortlist
 from projection_presentation import over_line_label, player_matchup_rating
 from recent_role import recent_role_comparison, add_recent_columns, DISPLAY_COLUMNS as RECENT_COLUMNS, CAPTION as RECENT_CAPTION
-from points_probability import (scoring_context, points_quote, game_points_probabilities, PROBABILITY_COLUMNS)
+from points_probability import (scoring_context, game_quote_probabilities, PROBABILITY_COLUMNS)
+from prop_distributions import COUNT_STATS, prop_quote
 from points_tracking import snapshot as probability_snapshot, render_probability_tracking
 from opponent_selection import render_opponent_selector
 from player_navigation import (apply_pending_navigation, selected_game_context,
@@ -908,20 +909,30 @@ def render_live_dashboard(ui, roster):
             final_player = (adjusted if adjusted_on else baseline).iloc[0].copy()
             final_player['PTS'] = float(preview.loc[preview.Stat.eq('PTS'), 'Projected'].iloc[0])
             final_player['Opponent'] = opponent
-            points_line = comparison.loc[comparison.Stat.eq('PTS')].iloc[0]
-            probability = points_quote(final_player, points_line, probability_context.get(player_id))
+            with ui.expander('Personal fouls probability'):
+                foul_line = ui.number_input('Your fouls line', min_value=0., max_value=6., value=None,
+                    step=.5, key=f'foul_line_{player_id}_{opponent}', placeholder='Enter a whole or half foul')
+                ui.caption('Optional manual line. The sportsbook feed has no personal fouls market.')
+            if foul_line is not None:
+                comparison.loc[comparison.Stat.eq('PF'), ['Book line', 'Market status']] = [foul_line, 'Manual line']
+            mode = ('Manual minutes + opponent adjustment off' if flag_key in st.session_state and not adjusted_on
+                    else 'Manual minutes' if flag_key in st.session_state
+                    else 'Opponent adjustment off' if not adjusted_on else 'Standard')
+            probability_status = {}
             for column in PROBABILITY_COLUMNS:
                 comparison[column] = float('nan')
-                comparison.loc[comparison.Stat.eq('PTS'), column] = probability[column]
-            if event is not None:
-                mode = ('Manual minutes + opponent adjustment off' if flag_key in st.session_state and not adjusted_on
-                        else 'Manual minutes' if flag_key in st.session_state
-                        else 'Opponent adjustment off' if not adjusted_on else 'Standard')
-                saved = probability_snapshot({**final_player.to_dict(), **points_line.to_dict(), **probability},
-                    event, book_key, probability_context, 'Player vs Opponent', mode)
-                if saved:
-                    probability_observations.append(saved)
+            for i, quote in comparison.iterrows():
+                probability = prop_quote(final_player, quote, probability_context.get(player_id))
+                comparison.loc[i, PROBABILITY_COLUMNS] = [probability[c] for c in PROBABILITY_COLUMNS]
+                probability_status[quote.Stat] = probability['Probability status']
+                if event is not None and quote.get('Market status') == 'Current':
+                    saved = probability_snapshot({**final_player.to_dict(), **quote.to_dict(), **probability},
+                        event, book_key, probability_context, 'Player vs Opponent', mode)
+                    if saved:
+                        probability_observations.append(saved)
             comparison['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(comparison['Book line'],comparison['Over odds'])]
+            if foul_line is not None:
+                comparison.loc[comparison.Stat.eq('PF'), 'Book line (Over)'] = f'{foul_line:g} (manual)'
             display_columns = ['Stat','Baseline','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Play', *PROBABILITY_COLUMNS]
             if show_recent:
                 if recent_source is None:
@@ -940,11 +951,12 @@ def render_live_dashboard(ui, roster):
             ui.dataframe(display.style.apply(comparison_style,axis=1).format(
                 {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %','Matchup rating','Book line (Over)','Recent role status']},
                  **{column:'{:.1%}' for column in PROBABILITY_COLUMNS},'Edge %':'{:+.2f}%', 'Recent change %':'{:+.1f}%'},na_rep='—'),hide_index=True,width='stretch')
-            ui.caption('Exp. probabilities are experimental and available for points only. They do not affect projected averages or the 5% edge rule. Extreme probabilities and low-minute players are less reliable; integer lines include a push.')
-            if probability['Probability status'] != 'Experimental':
-                ui.caption('Points probability: ' + probability['Probability status'] + '.')
+            ui.caption('Experimental probabilities use the displayed projection and line, conditional on playing. An Over wins above the line, an Under wins below it, and a tie on a whole-number line is a push.')
+            for stat in comparison.loc[comparison['Market status'].isin(['Current','Manual line']), 'Stat']:
+                if probability_status[stat] != 'Experimental':
+                    ui.caption(f"{stat} probability unavailable · {probability_status[stat]}")
             ui.caption('Matchup ratings measure opponent lift versus baseline. 1 ⬇️⬇️ poor (−10% or worse), 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent (+10% or better). The 3PM rating uses three-point attempts. Fewer turnovers or fouls rate higher. Ratings are blank when adjustments are off or data is unavailable. Book line (Over) includes the Over price.')
-            ui.caption('PF = personal fouls committed. Uses your projected minutes and the defensive-archetype matchup effect. Missing foul rates stay blank; no sportsbook foul line is connected.')
+            ui.caption('PF = personal fouls committed. Enter a line under Personal fouls probability to see its chances.')
             unavailable = comparison.loc[comparison['Book implied total'].isna(),'Stat'].tolist()
             if unavailable:
                 ui.caption('No usable current two-sided line for: '+', '.join(unavailable)+'. Unavailable comparisons stay blank.')
@@ -1125,9 +1137,10 @@ def render_live_dashboard(ui, roster):
                         combined = team_projection_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key,team_rates)
                     ranked,total_edges = game_edges(combined,payload,game,BOOKS[edge_book_name],now=now,plays_only=plays_only,direction=edge_direction,stats=selected_stats,player_search=player_search)
                     if not combined.empty:
-                        probabilities = game_points_probabilities(combined, payload, BOOKS[edge_book_name], probability_context, now=now)
-                        ranked = ranked.merge(probabilities[['Player', 'Team', 'Stat', *PROBABILITY_COLUMNS]],
-                                              on=['Player', 'Team', 'Stat'], how='left', validate='many_to_one', sort=False)
+                        probabilities = game_quote_probabilities(combined, payload, BOOKS[edge_book_name], probability_context,
+                            prop_quote, ('PTS', *COUNT_STATS), now=now)
+                        ranked = ranked.merge(probabilities[['PLAYER_ID', 'Team', 'Stat', *PROBABILITY_COLUMNS]],
+                                              on=['PLAYER_ID', 'Team', 'Stat'], how='left', validate='many_to_one', sort=False)
                         for _, probability_row in probabilities.iterrows():
                             saved = probability_snapshot(probability_row, market_event, BOOKS[edge_book_name],
                                 probability_context, 'Top Sportsbook Edges')
@@ -1164,7 +1177,7 @@ def render_live_dashboard(ui, roster):
                             team_edges['Rank'] = range(1, len(team_edges) + 1)
                             team_exports.append(team_edges.drop(columns='PLAYER_ID'))
                             render_edge_table(team_edges, display_columns, roster, current_effects, team, game, edge_book_name, edge_date)
-                        ui.caption('Exp. probabilities are experimental, points only, and do not change rankings or the 5% rule. Extreme probabilities and low-minute players are less reliable. Over + Under + Push = 100%.')
+                        ui.caption('Experimental probabilities use each player’s final projection and the saved line, conditional on playing. Use P(over) for an Over play and P(under) for an Under. Whole-number lines can push.')
                         ui.caption('Hover or tap a matchup rating for recent results by archetype. Ratings measure opponent lift on a scale from 1 (poor) to 5 (excellent).')
                         ui.caption('Edge % is positive for both Overs and Unders; Play identifies the direction. Only edges greater than 5% are marked as plays. Color intensity grows with edge magnitude. Multiple stats for the same player may be correlated.')
                         ui.download_button('Download all edges for this game',pd.concat(team_exports,ignore_index=True).to_csv(index=False),f"{game['Away']}_{game['Home']}_edges.csv",'text/csv',key='edges_download')

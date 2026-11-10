@@ -80,15 +80,32 @@ the ten prior equivalents are never added to observed sample counts.
 
 Rebuild the historical snapshot with `python matchup_data.py --year 2026 --cache /path/to/local/boxscore-cache`. The cache holds raw source JSON outside the repository. Current-season schedules/box scores refresh every five minutes once a team reaches the matchup boundary; completed box scores are cached locally to avoid downloading them again. Every box score must match the requested season, type and completed status. Partial feed failures produce a visible warning.
 
-### Experimental points probabilities (November 3, 2026)
+### Experimental prop probabilities
 
-**Player vs Opponent** and **Top Sportsbook Edges** show experimental P(over),
-P(under), and P(push) for points at the current paired sportsbook line. Other
-categories remain blank. These columns do **not** change any projected average,
-PRA, archetype adjustment, book-implied total, edge percentage, ranking, or the
-existing strictly-greater-than-5% play rule. They are probabilities of scoring
-above/below/exactly on the line, not additional betting-edge measurements.
-Integer lines have a separate push probability; all three outcomes sum to 100%.
+**Player vs Opponent** and **Top Sportsbook Edges** show the probabilities of going over, under, or pushing the current paired sportsbook line, conditional on the player appearing. The input mean is the final projection shown on the page, including any minutes override in the player preview. Integer lines can push. Turnovers appear on the player page. For personal fouls, enter a whole or half line in **Personal fouls probability** on the player page. Manual lines are labeled and excluded from sportsbook grading.
+
+#### Count distributions (November 10, 2026)
+
+Rebounds, assists, made threes, steals and blocks use negative binomial distributions with stat-specific dispersion. The mean for each player comes from the existing projection. Turnovers use a Poisson distribution. PRA variability is fitted to observed points + rebounds + assists in the same game, accounting for their joint variation. Player estimates shrink toward the PRA pool using 40 appearances of prior weight. Players without an estimate use the pool. Personal fouls use a beta-binomial distribution over zero through six, modeling ordinary games with the six-foul limit.
+
+The validation archive contains three regular seasons of NBA player box scores. Historical means use prior player totals, earlier appearances and reconstructed pregame minutes. Where available, the study substitutes frozen team-adjusted forecasts and the passing-opportunity assist forecasts. Participants are known retrospectively. Historical market totals, saved rotations and a complete archive of posted prop lines were unavailable.
+
+The fitting script compares Poisson, pooled or player-specific dispersion, and two-state volume mixtures. Fouls compare bounded binomial and beta-binomial candidates. The first part of 2024–25 (through January 15) fits dispersion, later games in that season select each recipe, and all of 2025–26 evaluates the locked recipes. Selection minimizes average Brier score across synthetic half-lines near the pregame mean and roughly one Poisson standard deviation to either side, conditional on at least 12 projected minutes. A difference within 0.0001 favors the simpler candidate. Integer push frequencies and lower-minute games are evaluated separately. The deployed dispersion parameters are refit on the completed 2025–26 season.
+
+| Stat | Held-out Brier | Simple Poisson |
+| --- | ---: | ---: |
+| REB | 0.18879 | 0.19010 |
+| AST | 0.18782 | 0.18826 |
+| 3PM | 0.17512 | 0.17550 |
+| STL | 0.19358 | 0.19382 |
+| BLK | 0.16751 | 0.16781 |
+| TOV | 0.18524 | 0.18524 |
+| PRA | 0.22360 | 0.23461 |
+| PF | 0.17413 | 0.17341 |
+
+Lower Brier scores indicate smaller probability errors. The primary sample spans 1,230 games and 22,223 player appearances (22,222 for fouls). Results at extreme lines and in small samples warrant caution. To reproduce the fit, run `build_prop_distributions.py --help` for input paths and output arguments. It produces the fitted profile, candidate scores, held-out results and calibration by probability band.
+
+#### Points distribution (November 3, 2026)
 
 `points_probability.py` implements the offline calibration candidate
 `mixture_0.5_0.05_0.25`: made free throws, twos and threes share a gamma volume
@@ -114,8 +131,8 @@ tail modifications failed validation and are **not** included.
 **Prospective tracking:** a small separate Streamlit fragment saves immutable
 pregame snapshots into IndexedDB in the user's browser on this app's origin.
 Snapshots include model/profile version, book/event, quoted line and both odds,
-quote/capture/tip times, player NBA and ESPN IDs, projected points/minutes, scoring
-components and all three probabilities. Changes to inputs or quotes create a
+quote/capture/tip times, player NBA and ESPN IDs, projected stat/minutes, distribution
+parameters and all three probabilities. Changes to inputs or quotes create a
 new record. Identical views (including on both pages) deduplicate; the first
 capture timestamp is never overwritten. Saves are acknowledged after a database
 transaction; failures are shown in the tracking panel. Nothing is uploaded to a
@@ -123,19 +140,19 @@ shared repository or server database. Browser/site-data removal loses this
 history; the downloadable CSV is the backup. Different browsers have separate
 histories. This is **not** a background, league-wide collection service.
 
-The edges page records available points comparisons for the loaded game before
+The edges page records available sportsbook comparisons for the loaded game before
 the stat, direction, search and 5% filters. The player page records its
 loaded comparison. Manual-minute and opponent-adjustment-off previews have
 separate labels and are excluded from standard evaluation. On a new visit or
 **Refresh live data**, validated completed ESPN box scores match by player ESPN
 ID, teams and unique start time within 15 minutes. Missing appearances, ambiguous
 games and mismatched dates stay ungraded, never zero points. Results include
-actual points/minutes, Over/Under/Push and the ESPN game ID. Feed gaps leave
+the actual stat and minutes, Over/Under/Push and the ESPN game ID. Feed gaps leave
 previously saved results available; corrections from verified boxes replace
 grades without overwriting forecasts.
 
 The tracking panel and downloads retain every snapshot. Its evaluation sample
-selects the latest captured standard pregame snapshot per player/game/book/model
+selects the latest captured standard pregame snapshot per player/stat/game/book/model
 without looking at outcomes, then grades it. Repeated quotes are not independent
 trials. Brier error and observed over rates use non-push results and conditional
 P(over | no push); pushes remain in the downloadable record. Different books
