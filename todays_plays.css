@@ -10,3 +10,4 @@ td,th {padding:.4rem .55rem;border:1px solid var(--st-border-color,#8886);white-
 th {background:var(--st-secondary-background-color,#8882)}
 td button+button {margin-inline-start:.4rem}
 a {color:var(--st-link-color,LinkText)}
+textarea {box-sizing:border-box;width:100%;font:inherit;color:inherit;background:var(--st-background-color,Canvas)}

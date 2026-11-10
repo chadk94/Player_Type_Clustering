@@ -1,3 +1,17 @@
+export function googleDocsText(day, picks) {
+    const lines = ["Today's Plays · " + day];
+    for (const status of ['Review', 'Confirmed']) {
+        const group = picks.filter(p => p.day === day && p.status === status);
+        if (!group.length) continue;
+        lines.push('', status === 'Review' ? 'In review' : 'Confirmed');
+        for (const p of group) {
+            const odds = (p.odds > 0 ? '+' : '') + p.odds;
+            lines.push(`${p.player} · ${p.side} ${p.line} ${p.stat} (${odds}) · ${p.book} · ${p.game} · Projected ${p.projected.toFixed(2)} · Edge ${p.edge.toFixed(2)}%`);
+        }
+    }
+    return lines.join('\n');
+}
+
 export default function({data, parentElement, setStateValue}) {
     const root = parentElement.querySelector('section');
     const ui = parentElement.playsUI ||= {day: data.today, pending: null};
@@ -64,7 +78,7 @@ export default function({data, parentElement, setStateValue}) {
             a.status.localeCompare(b.status) || a.game.localeCompare(b.game) || b.edge-a.edge);
         const review = rows.filter(p=>p.status==='Review');
         const status = make('p', rows.length ? review.length+' in review · '+(rows.length-review.length)+' confirmed'
-            : 'No plays saved for this slate. Check Save next to a prop in Top Sportsbook Edges.');
+            : 'Check Save next to a prop in Top Sportsbook Edges to start this slate. Saved plays can be copied to Google Docs.');
         root.append(status);
         if (rows.length) {
             const scroll=make('div'); scroll.className='play-table';
@@ -96,11 +110,39 @@ export default function({data, parentElement, setStateValue}) {
                 }
             }
             scroll.append(table);root.append(scroll);
+
+            const docs = make('div');
+            docs.className = 'tools';
+            const feedback = make('div');
+            feedback.setAttribute('role', 'status');
+            const copy = button('Copy for Google Docs', async () => {
+                const text = googleDocsText(ui.day, rows);
+                feedback.replaceChildren();
+                try {
+                    await navigator.clipboard.writeText(text);
+                    feedback.textContent = 'Copied. Paste into a new or existing Google Doc, then share it with your partners as Commenters.';
+                } catch {
+                    const field = make('textarea');
+                    field.readOnly = true;
+                    field.rows = 5;
+                    field.value = text;
+                    field.setAttribute('aria-label', 'Plays to copy into Google Docs');
+                    feedback.append(make('p', 'Copy the selected text and paste it into a Google Doc. Share the document with your partners as Commenters.'), field);
+                    field.focus();
+                    field.select();
+                }
+            });
+            const newDoc = make('a', 'New Google Doc ↗');
+            newDoc.href = 'https://docs.google.com/create';
+            newDoc.target = '_blank';
+            newDoc.rel = 'noopener noreferrer';
+            docs.append(copy, newDoc);
+            root.append(docs, feedback);
         }
         const saved=stateFor(ui.day);
         if (rows.length || saved.url) {
             const share=make('div');share.className='tools';
-            const publish=button(saved.url?'Update shared list':'Share list',()=>send('publish',rows));
+            const publish=button(saved.url?'Update shared list':'Share app review link',()=>send('publish',rows));
             publish.disabled=!!ui.pending;share.append(publish);
             if (saved.url) {
                 const open=make('a','Open partner review');open.href=saved.url;open.target='_blank';open.rel='noopener noreferrer';share.append(open);
