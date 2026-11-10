@@ -86,20 +86,24 @@ render_edge_injuries(st, games[st.session_state['selection']], games, roster, pr
         app = AppTest.from_string(script, default_timeout=30)
         app.session_state['fixtures'] = fixtures
         app.session_state['selection'] = 0
-        with patch('projection_dashboard.edge_injury_report', return_value=edition(0,'Questionable','Questionable')) as feed:
+        with (patch('projection_dashboard.edge_injury_report', return_value=edition(0,'Questionable','Questionable')) as feed,
+              patch('projection_dashboard.render_injury_voice') as voice):
             app.run()
             self.assertFalse(app.exception)
             self.assertFalse(app.toast)
+            self.assertEqual(voice.call_args.args[-1], [])
             self.assertEqual(app.radio(key='injury_alert_scope').value, 'All games on this slate')
             app.radio(key='injury_alert_scope').set_value('Selected game').run()
             feed.return_value = edition(15, 'Out', 'Available')
             app.run()
             self.assertEqual(len(app.toast), 1)
+            self.assertEqual(voice.call_args.args[-1], ['Cleveland Cavaliers. First is now out.'])
             self.assertIn('First (CLE)', app.toast[0].value)
             self.assertIn('Questionable → Out', app.toast[0].value)
             self.assertNotIn('Second', app.toast[0].value)
             app.run()
             self.assertFalse(app.toast)
+            self.assertEqual(voice.call_args.args[-1], [])
             app.session_state['selection'] = 1
             app.run()
             self.assertFalse(app.toast)
@@ -108,12 +112,15 @@ render_edge_injuries(st, games[st.session_state['selection']], games, roster, pr
             feed.return_value = edition(30, 'Doubtful', 'Out')
             app.run()
             self.assertEqual(len(app.toast), 2)
+            self.assertEqual(voice.call_args.args[-1], ['Cleveland Cavaliers. First is now doubtful.',
+                                                      'New York Knicks. Second is now out.'])
             self.assertFalse(any('Reserve' in t.value for t in app.toast))
             self.assertFalse(any('CLE @ CHA' in m.value for m in app.markdown))
             app.radio(key='injury_alert_scope').set_value('Off').run()
             feed.return_value = edition(45, 'Available', 'Available')
             app.run()
             self.assertFalse(app.toast)
+            self.assertFalse(voice.call_args.args[0])
             app.radio(key='injury_alert_scope').set_value('Selected game').run()
             self.assertFalse(app.toast)
 

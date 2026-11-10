@@ -1,5 +1,6 @@
 """Streamlit player-stat projections, opponent previews and sportsbook comparison."""
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 import tempfile
 import hashlib
@@ -73,12 +74,31 @@ def edge_injury_report():
         return None
 
 
+@lru_cache(maxsize=1)
+def injury_voice_component(runtime):
+    return st.components.v2.component('injury_alert_voice',
+        html='<div><button type="button" class="preview">Enable spoken alerts</button> '
+             '<button type="button" class="mute" hidden>Mute voice</button> '
+             '<span role="status"></span></div>',
+        css='button { font: inherit; color: var(--st-text-color); background: var(--st-background-color); '
+            'border: 1px solid var(--st-border-color, #8888); border-radius: .4rem; padding: .3rem .65rem; cursor: pointer }'
+            'span { font-size: .875rem }',
+        js=Path(__file__).with_name('injury_alert_voice.mjs').read_text())
+
+
+def render_injury_voice(game_ids, report=None, messages=()):
+    injury_voice_component(st.runtime.get_instance())(key='injury_voice_control',
+        data={'games': sorted(game_ids), 'report': report, 'messages': list(messages)},
+        height='content' if game_ids else 0)
+
+
 @st.fragment(run_every='5m')
 def render_edge_injuries(ui, game, games, roster, projections, bundle):
     now = pd.Timestamp.now(tz='UTC')
     upcoming = [g for g in games if g['GameTimeUTC'] > now]
     if not upcoming:
         st.session_state.pop('injury_alert_history', None)
+        render_injury_voice(())
         return
     selected = game if game is not None and game['GameTimeUTC'] > now else None
     if selected:
@@ -92,14 +112,18 @@ def render_edge_injuries(ui, game, games, roster, projections, bundle):
     for old_id in history.keys() - active_ids:
         del history[old_id]
     if not selected and not active_ids:
+        render_injury_voice(())
         return
     report = edge_injury_report()
     if report is None:
+        render_injury_voice(active_ids)
         ui.caption(f'Current injury status unavailable. [NBA injury reports](https://official.nba.com/nba-injury-report-{SEASON}-season/)')
         return
     stamp, url, teams_reported = report
     automatic = projections.set_index('PLAYER_ID')['Projected minutes'].to_dict()
     selected_teams = {}
+    spoken = []
+    team_names = {code: name for name, code in TEAM_NAMES.items()}
     for fixture in upcoming:
         game_id = fixture['id']
         if game_id not in active_ids and fixture != selected:
@@ -114,6 +138,10 @@ def render_edge_injuries(ui, game, games, roster, projections, bundle):
                          for team, name, before, after in changes]
                 title = f"Injury update · {fixture['Away']} @ {fixture['Home']}"
                 ui.toast(title + ' — ' + ' / '.join(updates), icon='🏀', duration='long')
+                for team, name, _, after in changes:
+                    status = 'off the injury report' if after == 'Off report' else after.lower()
+                    spoken.append(f"{team_names.get(team, team)}. {name} is now {status}.")
+    render_injury_voice(active_ids, stamp.isoformat(), spoken)
     if not selected:
         return
     rows = [row for info in selected_teams.values() for row in info.questionables]

@@ -508,7 +508,10 @@ or Off to mute them. The first report for a
 newly watched game starts monitoring quietly. Each alert names the player,
 the game and the reported change. The panel links to the timestamped NBA report.
 An unlisted player is labeled “Off report” only after a complete team report.
-Alerts stop at tip-off.
+Alerts stop at tip-off. Click **Enable spoken alerts** under Injury alerts to hear a voice test.
+When a pop-up appears, the tab reads each affected player’s team, name, and new
+status. Use **Test voice** to hear the preview again or **Mute voice** to silence
+announcements. Enable the voice again after a reload or in a new tab.
 
 The **💰 Top Sportsbook Edges** tab provides one-click game buttons plus date,
 sportsbook (FanDuel/DraftKings/BetMGM), and Over/Under filters. It defaults to the
