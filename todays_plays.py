@@ -151,10 +151,11 @@ def label(p):
 
 
 @lru_cache(maxsize=1)
-def shortlist_component(runtime):
-    return st.components.v2.component('todays_plays', html='<section></section>',
-        js=(ROOT/'play_storage.mjs').read_text()+'\n'+(ROOT/'todays_plays.mjs').read_text(),
-        css=(ROOT/'todays_plays.css').read_text())
+def shortlist_component(runtime, js, css):
+    # Long-running sessions need a fresh browser component when its assets change.
+    version = sha256((js + '\0' + css).encode()).hexdigest()[:12]
+    return st.components.v2.component(f'todays_plays_{version}', html='<section></section>',
+                                      js=js, css=css)
 
 
 @st.fragment
@@ -180,7 +181,9 @@ def render_shortlist(ui):
         except (TypeError, ValueError, sqlite3.Error, OSError) as exc:
             result['error'] = str(exc) if isinstance(exc, ValueError) else 'Sharing is unavailable. Your browser list is still saved.'
         st.session_state[key+'_result'] = result
-    shortlist_component(st.runtime.get_instance())(key=key, data=dict(
+    js = (ROOT/'play_storage.mjs').read_text() + '\n' + (ROOT/'todays_plays.mjs').read_text()
+    component = shortlist_component(st.runtime.get_instance(), js, (ROOT/'todays_plays.css').read_text())
+    component(key=key, data=dict(
         today=datetime.now(ZoneInfo('America/Denver')).date().isoformat(),
         result=st.session_state.get(key+'_result')), on_action_change=on_action)
 
