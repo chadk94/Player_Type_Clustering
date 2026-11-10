@@ -183,7 +183,8 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertEqual((self.live.call_count, self.logs.call_count, self.imported.call_count), tuple(n+1 for n in counts))
         self.live.clear.assert_called_once()
         self.logs.clear.assert_called_once()
-        self.assertEqual(len(self.app.tabs), 5)
+        self.assertIn("Today's Plays", [tab.label for tab in self.app.tabs])
+        self.assertEqual(len(self.app.tabs), 6)
 
     def test_experimental_points_display_and_tracking_keep_original_comparisons(self):
         now = datetime.now(timezone.utc)

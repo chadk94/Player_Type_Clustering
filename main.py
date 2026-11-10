@@ -1551,6 +1551,10 @@ def load_data():
 
 
 def main():
+    if 'plays' in st.query_params:
+        from todays_plays import render_partner_review
+        render_partner_review(st, st.query_params['plays'])
+        return
     # Keep the approved roster while live regular-season records drive the minutes window.
     from pathlib import Path
     import json

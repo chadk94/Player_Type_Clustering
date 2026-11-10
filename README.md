@@ -1442,3 +1442,9 @@ rounding); wrong-season, future and duplicate observations cannot enter the rate
 Manual/approved minutes and all manual archetypes remain unchanged. Tests cover
 normalized allocation, fixed team targets, career accuracy, partial/early samples,
 future data, zero-minute players, original edge/ranking values and fragment reruns.
+
+### Today's Plays
+
+Use **Save** in either team's Sportsbook Edges table to keep the selected side, line, side-specific odds, projection and edge. The shortlist is grouped by slate date in the same browser and persists on refresh. Changing a game's filters or its quoted price preserves the saved selection. A different line or sportsbook can be saved separately. Confirm, return to review, or remove a prop on **Today's Plays**.
+
+**Share list** publishes only the displayed date. Anyone with the review link can see those picks and post feedback on individual props. **Update shared list** publishes later edits to the same link. Use **Refresh feedback** on the owner page to read replies. Links expire seven days after the most recent publication. The owner's browser stores its private shortlist, publishing key and previously retrieved comments. Shared reviews and comments use SQLite in the app's temporary directory by default. If hosting resets that directory, the owner can republish from the original browser. Set `TODAYS_PLAYS_DB_PATH` to a persistent volume to retain feedback across redeployments. `NBA_PROPS_PUBLIC_URL` can override the production base URL for another deployment.

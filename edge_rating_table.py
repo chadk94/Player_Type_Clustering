@@ -9,6 +9,7 @@ import streamlit as st
 from matchup_projections import RECENT_OPPONENT_GAMES
 from points_probability import PROBABILITY_COLUMNS
 from sportsbook_lines import comparison_style
+from todays_plays import edge_pick
 
 
 # Match the component statistics used by apply_matchup, including the attempts
@@ -57,7 +58,7 @@ def rating_detail(stat, player, opponent, effects):
     return basis + f'vs {opponent} · {period} this season\nAverage per 36 minutes · 5+ minutes played\n\n' + '\n\n'.join(sections)
 
 
-def table_payload(edges, columns, roster, effects, team):
+def table_payload(edges, columns, roster, effects, team, game, book, day):
     players = roster.set_index('PLAYER_ID')
     output = []
     for _, row in edges.iterrows():
@@ -74,7 +75,7 @@ def table_payload(edges, columns, roster, effects, team):
             else:
                 labels.append(str(v))
         player = players.loc[row.PLAYER_ID] if row.PLAYER_ID in players.index else {}
-        output.append(dict(values=values, labels=labels, styles=comparison_style(raw),
+        output.append(dict(pick=edge_pick(row, game, book, day), values=values, labels=labels, styles=comparison_style(raw),
                            detail=rating_detail(row.Stat, player, row.Opponent, effects)))
     return dict(columns=columns, rows=output, team=team)
 
@@ -82,9 +83,9 @@ def table_payload(edges, columns, roster, effects, team):
 @lru_cache(maxsize=1)
 def _component(runtime):
     return st.components.v2.component('sportsbook_edge_table', html='<section></section>',
-        css=Path(__file__).with_suffix('.css').read_text(), js=Path(__file__).with_suffix('.mjs').read_text())
+        css=Path(__file__).with_suffix('.css').read_text(), js=Path(__file__).with_name('play_storage.mjs').read_text()+'\n'+Path(__file__).with_suffix('.mjs').read_text())
 
 
-def render_edge_table(edges, columns, roster, effects, team):
-    _component(st.runtime.get_instance())(data=table_payload(edges, columns, roster, effects, team),
+def render_edge_table(edges, columns, roster, effects, team, game, book, day):
+    _component(st.runtime.get_instance())(data=table_payload(edges, columns, roster, effects, team, game, book, day),
                                           key='sportsbook_edge_table_' + team)

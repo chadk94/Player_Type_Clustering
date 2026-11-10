@@ -32,6 +32,7 @@ from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
 from sportsbook_injuries import KEY_MINUTES, game_injuries, injury_alert_changes, latest_report
 from edge_rating_table import render_edge_table
+from todays_plays import render_shortlist
 from projection_presentation import over_line_label, player_matchup_rating
 from recent_role import recent_role_comparison, add_recent_columns, DISPLAY_COLUMNS as RECENT_COLUMNS, CAPTION as RECENT_CAPTION
 from points_probability import (scoring_context, points_quote, game_points_probabilities, PROBABILITY_COLUMNS)
@@ -710,7 +711,10 @@ def render_live_dashboard(ui, roster):
     # Each tab owns its reruns. Player/slider changes reuse this shared snapshot
     # and cannot trigger league-wide ESPN refreshes or hidden-tab calculations.
     # Imports and Refresh live data rerun the parent and rebuild every tab.
-    projection_tab, best_tab, edges_tab, team_tab, archetype_tab = ui.tabs(['Player vs Opponent', "🔥 Today's Best Matchups", '💰 Top Sportsbook Edges', '🏀 Team Projections', 'Archetypes'])
+    labels = ['Player vs Opponent', "🔥 Today's Best Matchups", '💰 Top Sportsbook Edges',
+              "Today's Plays", '🏀 Team Projections', 'Archetypes']
+    initial_tab = {'plays': "Today's Plays", 'edges': '💰 Top Sportsbook Edges'}.get(st.query_params.get('view'))
+    projection_tab, best_tab, edges_tab, plays_tab, team_tab, archetype_tab = ui.tabs(labels, default=initial_tab)
     ui.caption('Player baselines reach 100% this season after 20 player appearances. Historical priors stay unchanged through eight appearances, then phase out; career three-point accuracy keeps at least 50% career weight. Rookies use actual rates from their first appearance. Opponent archetype effects keep their separate 10-game season blend.')
     @st.fragment
     def render_player_page():
@@ -1131,7 +1135,7 @@ def render_live_dashboard(ui, roster):
                                 continue
                             team_edges['Rank'] = range(1, len(team_edges) + 1)
                             team_exports.append(team_edges.drop(columns='PLAYER_ID'))
-                            render_edge_table(team_edges, display_columns, roster, current_effects, team)
+                            render_edge_table(team_edges, display_columns, roster, current_effects, team, game, edge_book_name, edge_date)
                         ui.caption('Exp. probabilities are experimental, points only, and do not change rankings or the 5% rule. Extreme probabilities and low-minute players are less reliable. Over + Under + Push = 100%.')
                         ui.caption('Hover or tap a matchup rating for recent results by archetype. Ratings measure opponent lift on a scale from 1 (poor) to 5 (excellent).')
                         ui.caption('Edge % is positive for both Overs and Unders; Play identifies the direction. Only edges greater than 5% are marked as plays. Color intensity grows with edge magnitude. Multiple stats for the same player may be correlated.')
@@ -1147,6 +1151,8 @@ def render_live_dashboard(ui, roster):
         render_probability_tracking(ui, probability_observations, logs, 'edges')
     with edges_tab:
         render_edges_page()
+    with plays_tab:
+        render_shortlist(ui)
 
     @st.fragment
     def render_team_page():

@@ -1,0 +1,12 @@
+section {font:inherit;color:var(--st-text-color)}
+.tools {display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;margin:.35rem 0}
+label {font-weight:600} select,button,input {font:inherit;color:inherit}
+select,button {padding:.32rem .65rem;border:1px solid var(--st-border-color,#8887);background:var(--st-background-color,Canvas);border-radius:.4rem}
+button {cursor:pointer} button:hover {border-color:currentColor} button:disabled {opacity:.6}
+button:focus-visible,select:focus-visible,a:focus-visible {outline:2px solid currentColor;outline-offset:2px}
+p {margin:.5rem 0 .85rem} .play-table {overflow:auto;margin-bottom:1rem}
+table {border-collapse:collapse;width:100%;font-size:.9rem;font-variant-numeric:tabular-nums}
+td,th {padding:.4rem .55rem;border:1px solid var(--st-border-color,#8886);white-space:nowrap;text-align:left}
+th {background:var(--st-secondary-background-color,#8882)}
+td button+button {margin-inline-start:.4rem}
+a {color:var(--st-link-color,LinkText)}

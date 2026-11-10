@@ -14,3 +14,7 @@ button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; bor
     max-width: min(24rem, calc(100vw - 16px)); padding: .7rem .95rem; white-space: pre-line; font: inherit;
     font-size: .875rem; line-height: 1.45; color: var(--st-text-color, CanvasText); background: var(--st-background-color, Canvas);
     border: 1px solid var(--st-border-color, #8886); border-radius: .5rem; box-shadow: 0 3px 16px #0003; }
+
+.saved-play { background: color-mix(in srgb, var(--st-primary-color, #25785c) 8%, transparent); }
+.saved-play td:first-child { box-shadow: inset 3px 0 var(--st-primary-color, #25785c); }
+td input[type="checkbox"] { width: 1rem; height: 1rem; cursor: pointer; vertical-align: middle; }
