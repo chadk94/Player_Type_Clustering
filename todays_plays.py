@@ -1,8 +1,10 @@
 """Personal prop shortlists and opt-in, comment-only partner reviews."""
 from contextlib import closing
+from base64 import b64encode
 from datetime import date, datetime, timezone
 from functools import lru_cache
 from hashlib import sha256
+from io import BytesIO
 import json
 import math
 import os
@@ -54,9 +56,9 @@ def valid_day(value):
     return value
 
 
-def clean_picks(day, picks):
-    if not isinstance(picks, list) or len(picks) > MAX_PLAYS:
-        raise ValueError(f'A shared slate can contain up to {MAX_PLAYS} plays.')
+def clean_picks(day, picks, limit=MAX_PLAYS):
+    if not isinstance(picks, list) or len(picks) > limit:
+        raise ValueError(f'A slate can contain up to {limit:,} plays for this action.')
     result, seen = [], set()
     for raw in picks:
         try:
@@ -77,6 +79,48 @@ def clean_picks(day, picks):
         seen.add(p['id'])
         result.append(p)
     return result
+
+
+def plays_workbook(day, picks):
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    day = valid_day(day)
+    picks = clean_picks(day, picks, limit=10000)
+    if not picks:
+        raise ValueError('Save a play before downloading this slate.')
+    wb = Workbook()
+    sheet = wb.active
+    sheet.title = "Today's Plays"
+    sheet.merge_cells('A1:K1')
+    sheet['A1'] = f"Today's Plays · {day}"
+    sheet['A1'].font = Font(bold=True, size=16, color='17354A')
+    sheet.row_dimensions[1].height = 30
+    sheet.append(['Player', 'Game', 'Stat', 'Side', 'Line', 'Odds', 'Sportsbook',
+                  'Projected', 'Edge', 'Status', 'Partner feedback'])
+    for cell in sheet[2]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='264A60')
+    sheet.row_dimensions[2].height = 22
+    for n, p in enumerate(sorted(picks, key=lambda p: p['status'] != 'Review'), start=3):
+        values = [p['player'], p['game'], p['stat'], p['side'], p['line'], p['odds'], p['book'],
+                  p['projected'], p['edge'] / 100, 'In review' if p['status'] == 'Review' else 'Confirmed']
+        for column, value in enumerate(values, start=1):
+            cell = sheet.cell(n, column, value)
+            if isinstance(value, str):
+                cell.data_type = 's'  # Treat exported labels as literal text, including a leading '='.
+        sheet.cell(n, 6).number_format = '+0;-0;0'
+        sheet.cell(n, 8).number_format = '0.00'
+        sheet.cell(n, 9).number_format = '0.00%'
+        sheet.cell(n, 11).alignment = Alignment(wrap_text=True, vertical='top')
+    sheet.freeze_panes = 'B3'
+    sheet.auto_filter.ref = f'A2:K{sheet.max_row}'
+    for i, width in enumerate([25, 16, 9, 10, 10, 10, 18, 14, 12, 15, 44], start=1):
+        sheet.column_dimensions[get_column_letter(i)].width = width
+    output = BytesIO()
+    wb.save(output)
+    return output.getvalue()
 
 
 def public_token(owner_key, day):
@@ -162,6 +206,18 @@ def shortlist_component(runtime, js, css):
 def render_shortlist(ui):
     ui.subheader("Today's Plays")
     key = 'todays_plays_list'
+    def on_excel():
+        request = st.session_state.get(key, {}).get('excel') or {}
+        if not isinstance(request, dict):
+            return
+        day = request.get('day')
+        reply = dict(day=day, nonce=request.get('nonce'))
+        try:
+            reply['base64'] = b64encode(plays_workbook(day, request.get('picks'))).decode('ascii')
+        except (ValueError, TypeError):
+            reply['error'] = 'Could not export this slate. Check the saved picks and try again.'
+        st.session_state[key+'_workbook'] = reply
+
     def on_action():
         action = st.session_state.get(key, {}).get('action') or {}
         if not isinstance(action, dict):
@@ -185,7 +241,8 @@ def render_shortlist(ui):
     component = shortlist_component(st.runtime.get_instance(), js, (ROOT/'todays_plays.css').read_text())
     component(key=key, data=dict(
         today=datetime.now(ZoneInfo('America/Denver')).date().isoformat(),
-        result=st.session_state.get(key+'_result')), on_action_change=on_action)
+        result=st.session_state.get(key+'_result'), workbook=st.session_state.pop(key+'_workbook', None)),
+        on_action_change=on_action, on_excel_change=on_excel)
 
 
 def render_partner_review(ui, token):

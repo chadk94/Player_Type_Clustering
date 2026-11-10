@@ -1,15 +1,24 @@
-export function googleDocsText(day, picks) {
-    const lines = ["Today's Plays · " + day];
+export function googleDocsTable(day, picks) {
+    const headings = ['Player / Game', 'Prop / Sportsbook', 'Projected', 'Edge', 'Status', 'Partner feedback'];
+    const rows = [headings];
     for (const status of ['Review', 'Confirmed']) {
-        const group = picks.filter(p => p.day === day && p.status === status);
-        if (!group.length) continue;
-        lines.push('', status === 'Review' ? 'In review' : 'Confirmed');
-        for (const p of group) {
+        for (const p of picks.filter(p => p.day === day && p.status === status)) {
             const odds = (p.odds > 0 ? '+' : '') + p.odds;
-            lines.push(`${p.player} · ${p.side} ${p.line} ${p.stat} (${odds}) · ${p.book} · ${p.game} · Projected ${p.projected.toFixed(2)} · Edge ${p.edge.toFixed(2)}%`);
+            rows.push([`${p.player}\n${p.game}`, `${p.side} ${p.line} ${p.stat} (${odds})\n${p.book}`,
+                p.projected.toFixed(2), p.edge.toFixed(2) + '%', status === 'Review' ? 'In review' : status, '']);
         }
     }
-    return lines.join('\n');
+    const escape = value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    const title = "Today's Plays · " + day;
+    const htmlRows = rows.map((row, i) => {
+        const tag = i === 0 ? 'th' : 'td';
+        const color = i === 0 ? 'background:#e7eff4;' : '';
+        return '<tr>' + row.map(value => `<${tag} style="border:1px solid #a5b3be;padding:4px;text-align:left;vertical-align:top;${color}">${escape(value).replaceAll('\n', '<br>') || '<br>'}</${tag}>`).join('') + '</tr>';
+    });
+    return {
+        html: '<p><b>' + escape(title) + '</b></p><table style="border-collapse:collapse">' + htmlRows.join('') + '</table>',
+        text: [title, ...rows.map(row => row.map(value => value.replaceAll('\n', ' · ').replaceAll('\t', ' ')).join('\t'))].join('\n'),
+    };
 }
 
 export default function({data, parentElement, setStateValue}) {
@@ -59,6 +68,16 @@ export default function({data, parentElement, setStateValue}) {
             } catch { storageFailure(); return; }
         }
     }
+    const workbook = data.workbook;
+    const exportReady = workbook && workbook.nonce === ui.exportNonce && workbook.day === ui.day;
+    if (exportReady) {
+        ui.exportNonce = null;
+        ui.workbook = workbook;
+    }
+    function resetExport() {
+        ui.exportNonce = null;
+        ui.workbook = null;
+    }
     function draw() {
         try { render(); } catch { storageFailure(); }
     }
@@ -72,13 +91,13 @@ export default function({data, parentElement, setStateValue}) {
         const dateSelect = make('select');
         for (const day of days) dateSelect.add(new Option(day===data.today ? day+' · Today' : day, day));
         dateSelect.value = ui.day;
-        dateSelect.onchange = () => { ui.day=dateSelect.value; ui.message=''; draw(); };
+        dateSelect.onchange = () => { ui.day=dateSelect.value; ui.message=''; resetExport(); draw(); };
         dateLabel.append(dateSelect); bar.append(dateLabel); root.append(bar);
         const rows = picks.filter(p=>p.day===ui.day).sort((a,b)=>
             a.status.localeCompare(b.status) || a.game.localeCompare(b.game) || b.edge-a.edge);
         const review = rows.filter(p=>p.status==='Review');
         const status = make('p', rows.length ? review.length+' in review · '+(rows.length-review.length)+' confirmed'
-            : 'Check Save next to a prop in Top Sportsbook Edges to start this slate. Saved plays can be copied to Google Docs.');
+            : 'Check Save next to a prop in Top Sportsbook Edges to start this slate. You can copy your picks as a table or download them in Excel.');
         root.append(status);
         if (rows.length) {
             const scroll=make('div'); scroll.className='play-table';
@@ -115,28 +134,48 @@ export default function({data, parentElement, setStateValue}) {
             docs.className = 'tools';
             const feedback = make('div');
             feedback.setAttribute('role', 'status');
-            const copy = button('Copy for Google Docs', async () => {
-                const text = googleDocsText(ui.day, rows);
+            const copy = button('Copy table for Google Docs', async () => {
+                const {html, text} = googleDocsTable(ui.day, rows);
                 feedback.replaceChildren();
                 try {
-                    await navigator.clipboard.writeText(text);
-                    feedback.textContent = 'Copied. Paste into a new or existing Google Doc, then share it with your partners as Commenters.';
+                    await navigator.clipboard.write([new ClipboardItem({
+                        'text/html': new Blob([html], {type: 'text/html'}),
+                        'text/plain': new Blob([text], {type: 'text/plain'}),
+                    })]);
+                    feedback.textContent = 'Table copied. Paste into Google Docs and give partners Editor access to type in the feedback column.';
                 } catch {
-                    const field = make('textarea');
-                    field.readOnly = true;
-                    field.rows = 5;
-                    field.value = text;
-                    field.setAttribute('aria-label', 'Plays to copy into Google Docs');
-                    feedback.append(make('p', 'Copy the selected text and paste it into a Google Doc. Share the document with your partners as Commenters.'), field);
-                    field.focus();
-                    field.select();
+                    const preview = make('div');
+                    preview.className = 'play-table';
+                    preview.innerHTML = html;
+                    feedback.append(make('p', 'Copy the table below with Ctrl+C or ⌘C, then paste it into your document.'), preview);
+                    const range = document.createRange();
+                    range.selectNodeContents(preview);
+                    const selection = window.getSelection();
+                    selection?.removeAllRanges();
+                    selection?.addRange(range);
                 }
             });
             const newDoc = make('a', 'New Google Doc ↗');
             newDoc.href = 'https://docs.google.com/create';
             newDoc.target = '_blank';
             newDoc.rel = 'noopener noreferrer';
-            docs.append(copy, newDoc);
+            let excel;
+            if (ui.workbook?.base64) {
+                excel = make('a', 'Download Excel');
+                excel.download = 'Todays-Plays-' + ui.day + '.xlsx';
+                excel.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + ui.workbook.base64;
+                feedback.textContent = 'Workbook ready. If the download didn’t start, click Download Excel.';
+            } else {
+                excel = button(ui.exportNonce ? 'Preparing Excel…' : 'Download Excel', () => {
+                    ui.exportNonce = crypto.randomUUID();
+                    ui.workbook = null;
+                    setStateValue('excel', {nonce: ui.exportNonce, day: ui.day, picks: rows});
+                    draw();
+                });
+                excel.disabled = !!ui.exportNonce;
+            }
+            if (ui.workbook?.error) feedback.textContent = ui.workbook.error;
+            docs.append(copy, newDoc, excel);
             root.append(docs, feedback);
         }
         const saved=stateFor(ui.day);
@@ -173,9 +212,11 @@ export default function({data, parentElement, setStateValue}) {
     const onPicks = e => {
         // Follow the slate just selected on Edges, including tomorrow's games.
         if (e?.detail && typeof e.detail==='string') ui.day=e.detail;
+        resetExport();
         draw();
     };
     const cleanup=watchPicks(onPicks);
     draw();
+    if (exportReady && workbook.base64) root.querySelector('a[download]')?.click();
     return cleanup;
 }

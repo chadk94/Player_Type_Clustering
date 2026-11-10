@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from io import BytesIO
 import os
 from pathlib import Path
 import tempfile
@@ -7,9 +8,10 @@ import unittest
 from unittest.mock import patch
 
 import pandas as pd
+from openpyxl import load_workbook
 from streamlit.testing.v1 import AppTest
 
-from todays_plays import comment, edge_pick, public_token, publish, read_board
+from todays_plays import comment, edge_pick, plays_workbook, public_token, publish, read_board
 
 
 class TodaysPlaysTests(unittest.TestCase):
@@ -27,6 +29,28 @@ class TodaysPlaysTests(unittest.TestCase):
 
     def pick(self,row=None,book='FanDuel'):
         return edge_pick(self.row if row is None else row,self.game,book,date.fromisoformat(self.day))
+
+    def test_workbook_contains_editable_feedback_and_numeric_saved_quotes(self):
+        first = dict(self.pick(), player='=Literal name')
+        second = dict(self.pick(book='DraftKings'), status='Confirmed', odds=-115)
+        sheet = load_workbook(BytesIO(plays_workbook(self.day, [second, first]))).active
+        self.assertIn(self.day, sheet['A1'].value)
+        self.assertEqual((sheet.auto_filter.ref, sheet.freeze_panes), ('A2:K4', 'B3'))
+        self.assertEqual(sheet['K2'].value, 'Partner feedback')
+        self.assertEqual([c.value for c in sheet[3]],
+                         ['=Literal name', 'MIL @ NYK', 'AST', 'Under', 4.5, 107,
+                          'FanDuel', 4.1, 0.08, 'In review', None])
+        self.assertEqual((sheet['A3'].data_type, sheet['F3'].data_type, sheet['I3'].number_format), ('s', 'n', '0.00%'))
+        self.assertEqual((sheet['F4'].value, sheet['J4'].value, sheet['K4'].value), (-115, 'Confirmed', None))
+        self.assertFalse(sheet.protection.sheet)
+        sheet['K4'] = 'Check minutes'
+        output = BytesIO()
+        sheet.parent.save(output)
+        self.assertEqual(load_workbook(output).active['K4'].value, 'Check minutes')
+        with self.assertRaises(ValueError):
+            plays_workbook('2026-11-11', [first])
+        with self.assertRaises(ValueError):
+            plays_workbook(self.day, [])
 
     def test_identity_keeps_direction_book_and_line_while_quote_is_frozen(self):
         p=self.pick()
