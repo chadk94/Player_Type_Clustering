@@ -1,12 +1,32 @@
 from datetime import datetime, timezone, timedelta
 import unittest
+import numpy as np
 import pandas as pd
-from sportsbook_edges import game_edges, scheduled_book_games
+from sportsbook_edges import add_play_ev, game_edges, scheduled_book_games
 from sportsbook_lines import OddsFeedError, implied_total
 from import_minutes import TEAM_IDS
 
 
 class GameEdgeTests(unittest.TestCase):
+    def test_ev_uses_directional_price_unconditional_tails_and_returns_push_stakes(self):
+        quotes = pd.DataFrame([
+            # Directional gap, Over price, Under price, P(over), P(under), P(push)
+            (12, +150, -190, .40, .50, .10),
+            (-9, +150, -125, .35, .60, .05),
+            (-3, -150, +125, .50, .40, .10),
+            (14, -150, +110, .45, .55, 0.),
+            (-8, +130, -160, 0., 0., 1.),
+            (0, +110, -130, .50, .50, 0.),
+            (12, +150, -190, .30, .60, np.nan),
+            (-11, +130, np.nan, .40, .60, 0.),
+            (10, +150, -190, .90, .40, 0.),
+        ], columns=['Signed edge %','Over odds','Under odds','Exp. P(over)','Exp. P(under)','Exp. P(push)'])
+        ev = add_play_ev(quotes)
+        self.assertEqual(ev['EV side'].iloc[:4].tolist(), ['Over','Under','Under','Over'])
+        self.assertEqual(ev['EV odds'].iloc[:4].tolist(), [150,-125,125,-150])
+        np.testing.assert_allclose(ev['EV %'].iloc[:5], [10,13,0,-25,0], atol=1e-12)
+        self.assertTrue(ev['EV %'].iloc[5:].isna().all())
+
     def test_estimated_stat_profiles_stay_out_of_top_edges(self):
         self.players['Status'] = 'Temporary archetype-average profile'
         ranked, total = game_edges(self.players, self.payload, self.event, 'fanduel', now=self.now)

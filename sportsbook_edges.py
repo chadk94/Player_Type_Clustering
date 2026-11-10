@@ -6,6 +6,7 @@ import pandas as pd
 
 from import_minutes import TEAM_IDS
 from live_projections import name_key
+from points_probability import PROBABILITY_COLUMNS
 from projection_presentation import player_matchup_rating
 from team_rebounds import REBOUND_METADATA
 from matchup_projections import MATCHUP_METADATA
@@ -14,6 +15,27 @@ from sportsbook_lines import TEAM_NAMES, STAT_ORDER, OddsFeedError, player_quote
 EDGE_STATS = [stat for stat in STAT_ORDER if stat != 'TOV']
 # Books can move from the advertised start to the expected actual tip near game time.
 EVENT_TIME_TOLERANCE = pd.Timedelta(minutes=15)
+
+
+def add_play_ev(edges):
+    """Expected net profit per $100 at the quoted price for the indicated side."""
+    result = edges.copy()
+    over = result['Signed edge %'].gt(0)
+    under = result['Signed edge %'].lt(0)
+    result['EV side'] = np.select([over, under], ['Over', 'Under'], default='')
+    odds = result['Over odds'].where(over, result['Under odds']).where(over | under)
+    result['EV odds'] = odds
+    probabilities = result[PROBABILITY_COLUMNS]
+    p_over, p_under, _ = PROBABILITY_COLUMNS
+    win = probabilities[p_over].where(over, probabilities[p_under])
+    loss = probabilities[p_under].where(over, probabilities[p_over])
+    valid = (probabilities.notna() & probabilities.ge(0) & probabilities.le(1)).all(axis=1)
+    valid &= (probabilities.sum(axis=1) - 1).abs().le(1e-8) & np.isfinite(odds) & odds.abs().ge(100)
+    odds = odds.where(valid)
+    # A push has zero net profit. Both tails are unconditional on the bet settling.
+    profit = (odds / 100).where(odds.gt(0), 100 / odds.abs())
+    result['EV %'] = 100 * (win * profit - loss)
+    return result
 
 EDGE_COLUMNS = ['Rank','Player','PLAYER_ID','Team','Opponent','Stat','Play','Projected minutes',
                 'Baseline','Matchup rating','Projected','Book line','Book implied total','Edge %','Signed edge %','Over odds',

@@ -539,10 +539,18 @@ opponent-adjusted projection and the no-vig, Poisson-implied book total. This is
 not a probability edge or expected return. Both sides' American prices and the
 posted line remain visible. Multiple props for one player can be correlated.
 
+**EV %** is the model’s expected net profit per $100 staked at the selected sportsbook.
+It uses the unrounded win and loss probabilities for the indicated Over or Under and
+that side’s quoted payout. A push earns zero net profit. For example, a play at +150
+with a 40% win chance, 50% loss chance and 10% push chance has +10% EV.
+Choose **EV % across game** to rank both teams together, highest first, or click
+the EV column heading within a team. Missing probabilities or prices leave EV blank.
+With the 5% filter off, a below-threshold row shows the side used alongside its EV.
+
 **Filter by player** accepts a full or partial name (case and accents are ignored).
 Press Enter to apply it; clear it to restore all players in the selected game.
 Stat, direction and 5% filters still apply, and the CSV contains every filtered
-result, grouped and ranked within each team like the tables. Team adjustments
+result in the selected ranking, including EV, side and odds used. Team adjustments
 always use the full roster before search;
 filtering does not change anyone's projections.
 

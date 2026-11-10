@@ -265,6 +265,24 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         for original, shown in zip(edge_tables,shown_edges):
             pd.testing.assert_frame_equal(shown[original.columns],original)
         self.assertEqual([m.call_count for m in (self.live,self.logs,self.effects,self.imported)],feeds)
+        ranking = self.app.radio(key='edges_ranking')
+        self.fragment_id = self.fragment_for(ranking)
+        with patch.object(dashboard, 'sportsbook_props', side_effect=AssertionError('Sort refetched odds')):
+            ranking.set_value('EV % across game').run()
+        self.assert_no_errors()
+        game_table, = self.edge_frames()
+        self.assertEqual(set(game_table.Team), {'ATL', 'HOU'})
+        self.assertEqual(len(game_table), sum(map(len, shown_edges)))
+        self.assertEqual(game_table.Rank.tolist(), list(range(1,len(game_table)+1)))
+        ev = game_table['EV %']
+        self.assertGreater(ev.count(), 1)
+        self.assertTrue(ev.iloc[:ev.count()].is_monotonic_decreasing)
+        self.assertTrue(ev.iloc[ev.count():].isna().all())
+        over = game_table.Play.eq('Over')
+        win = game_table['Exp. P(over)'].where(over, game_table['Exp. P(under)'])
+        loss = game_table['Exp. P(under)'].where(over, game_table['Exp. P(over)'])
+        # This fixture quotes both sides at -110, including the whole-number assists line.
+        np.testing.assert_allclose(ev, 100 * (win * 100 / 110 - loss), equal_nan=True)
         # AppTest exposes only the most recently rerun fragment's elements.
         # Restore the full test tree before the separate player-slider check.
         self.fragment_id = None

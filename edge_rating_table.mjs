@@ -93,6 +93,9 @@ export default function({data, parentElement}) {
                     td.append(button);
                 } else {
                     td.textContent = label;
+                    if (data.columns[i] === 'EV %' && pick && row.values[i] != null) {
+                        td.title = pick.side + ' at ' + (pick.odds > 0 ? '+' : '') + pick.odds;
+                    }
                 }
             }
         }
@@ -103,7 +106,7 @@ export default function({data, parentElement}) {
         th.scope = 'col';
         button.type = 'button';
         button.onclick = () => {
-            direction = sort === i ? -direction : 1;
+            direction = sort === i ? -direction : (label === 'EV %' ? -1 : 1);
             sort = i;
             root.dataset.sort = label;
             root.dataset.direction = direction;

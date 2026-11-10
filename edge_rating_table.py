@@ -70,6 +70,9 @@ def table_payload(edges, columns, roster, effects, team, game, book, day):
                 labels.append('—')
             elif col == 'Minutes cushion':
                 labels.append(f'{v:.2f}'.rstrip('0').rstrip('.'))
+            elif col == 'EV %':
+                side = f" ({row['EV side']})" if not row.Play else ''
+                labels.append(f'{v:+.2f}%{side}')
             elif col in FORMATS:
                 labels.append(format(v, FORMATS[col]) + ('%' if col in ('Edge %', 'Recent change %') else ''))
             else:

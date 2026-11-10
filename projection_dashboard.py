@@ -30,7 +30,7 @@ from team_rate_blend import (season_rates, blend_team_rates, PRIOR_GAMES, POLICY
                             DEFENSIVE_PRIOR_GAMES, DEFENSIVE_FULL_CURRENT_GAMES)
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
 from slate_player_view import PLAYER_SORTS, rank_slate_players
-from sportsbook_edges import scheduled_book_games, game_edges, EDGE_STATS, EVENT_TIME_TOLERANCE
+from sportsbook_edges import scheduled_book_games, game_edges, add_play_ev, EDGE_STATS, EVENT_TIME_TOLERANCE
 from sportsbook_injuries import KEY_MINUTES, game_injuries, injury_alert_changes, latest_report
 from edge_rating_table import render_edge_table
 from todays_plays import render_shortlist
@@ -350,6 +350,36 @@ def mark_manual_minutes(key, slider_key):
 def reset_manual_minutes(flag_key, slider_key):
     st.session_state.pop(flag_key, None)
     st.session_state.pop(slider_key, None)
+
+
+@st.fragment
+def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day):
+    ranking = ui.radio('Rank edges by', ['Edge % by team', 'EV % across game'],
+                       horizontal=True, key='edges_ranking')
+    ui.caption('EV % is the model’s expected net profit per $100 staked at the odds for that side. '
+               'A push returns the stake. Hover over EV to see the price used.')
+    if ranking == 'EV % across game':
+        ordered = ranked.sort_values('EV %', ascending=False, na_position='last', kind='stable')
+        groups = [('Game', ordered)]
+        columns = ['Rank', 'Player', 'Team', *columns[2:]]
+    else:
+        groups = [(team, ranked.loc[ranked.Team.eq(team)]) for team in (game['Away'], game['Home'])]
+
+    exports = []
+    for group, rows in groups:
+        if group != 'Game':
+            ui.subheader(f'{group} — {len(rows)} edges')
+        if rows.empty:
+            ui.info('No eligible edges for this team match the current filters.')
+            continue
+        rows = rows.assign(Rank=range(1, len(rows) + 1))
+        exports.append(rows.drop(columns='PLAYER_ID'))
+        render_edge_table(rows, columns, roster, effects, group, game, book, day)
+    ui.caption('Experimental probabilities use each player’s final projection and the saved line, conditional on playing. '
+               'The 5% play filter uses Edge %. EV can be positive or negative for either side.')
+    ui.caption('Hover or tap a matchup rating for recent results by archetype. Ratings range from 1 (poor) to 5 (excellent).')
+    ui.download_button('Download all edges for this game', pd.concat(exports, ignore_index=True).to_csv(index=False),
+                       f"{game['Away']}_{game['Home']}_edges.csv", 'text/csv', key='edges_download')
 
 
 def set_edge_stats(selected):
@@ -1156,10 +1186,10 @@ def render_live_dashboard(ui, roster):
                         else:
                             ui.info('No eligible edges meet these filters. Props may not be posted yet, quotes may be stale, or projections may lack matchup history. Try another game/book or turn off the 5% filter.')
                     else:
-                        ui.success(f'Showing all {total_edges} eligible player-stat edges, grouped by team')
+                        ui.success(f'Showing all {total_edges} eligible player-stat edges')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
-                        ranked = add_minutes_cushion(ranked, combined)
-                        display_columns = ['Rank','Player','Stat','Play','Projected minutes','Good-to minutes','Minutes cushion','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
+                        ranked = add_play_ev(add_minutes_cushion(ranked, combined))
+                        display_columns = ['Rank','Player','Stat','Play','EV %','Projected minutes','Good-to minutes','Minutes cushion','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
                         ui.caption('Good-to minutes shows how low an Over or how high an Under can go while its edge stays above 5%. Minutes cushion is the room from the projection. Tested in half-minute steps through 48 with the same prices and teammate minutes.')
                         if show_recent:
                             recent = recent_role_comparison(combined, roster, players, logs, SEASON)
@@ -1167,20 +1197,8 @@ def render_live_dashboard(ui, roster):
                             after_projection = display_columns.index('Projected') + 1
                             display_columns[after_projection:after_projection] = RECENT_COLUMNS
                             ui.caption(RECENT_CAPTION)
-                        team_exports = []
-                        for team in [game['Away'], game['Home']]:
-                            team_edges = ranked.loc[ranked.Team.eq(team)].copy()
-                            ui.subheader(f"{team} — {len(team_edges)} edges")
-                            if team_edges.empty:
-                                ui.info('No eligible edges for this team match the current filters.')
-                                continue
-                            team_edges['Rank'] = range(1, len(team_edges) + 1)
-                            team_exports.append(team_edges.drop(columns='PLAYER_ID'))
-                            render_edge_table(team_edges, display_columns, roster, current_effects, team, game, edge_book_name, edge_date)
-                        ui.caption('Experimental probabilities use each player’s final projection and the saved line, conditional on playing. Use P(over) for an Over play and P(under) for an Under. Whole-number lines can push.')
-                        ui.caption('Hover or tap a matchup rating for recent results by archetype. Ratings measure opponent lift on a scale from 1 (poor) to 5 (excellent).')
-                        ui.caption('Edge % is positive for both Overs and Unders; Play identifies the direction. Only edges greater than 5% are marked as plays. Color intensity grows with edge magnitude. Multiple stats for the same player may be correlated.')
-                        ui.download_button('Download all edges for this game',pd.concat(team_exports,ignore_index=True).to_csv(index=False),f"{game['Away']}_{game['Home']}_edges.csv",'text/csv',key='edges_download')
+                        render_ranked_edges(ui, ranked, display_columns, roster, current_effects, game,
+                                            edge_book_name, edge_date)
                     with ui.expander('Game projection coverage'):
                         if not combined.empty:
                             ui.dataframe(combined[['Player','Team','Opponent','Projected minutes','Minutes source','Off samples','Def samples','Stat baseline','Matchup data','Status','Matchup status']],hide_index=True,width='stretch')
