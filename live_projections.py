@@ -13,6 +13,7 @@ import requests
 
 from import_minutes import TEAM_IDS
 from archetype_fallback import ARCHETYPE_BASELINE
+from assist_opportunities import apply_assist_sample
 from career_shooting import apply_accuracy, load_career_profiles
 from player_rate_priors import load_prior_season_minutes, stocks_prior_minutes, effective_player_prior
 
@@ -86,7 +87,8 @@ def parse_player_summary(payload, season_year):
                    'GP': float(gp), 'MIN': float(mpg)}
             for key, source in STAT_NAMES.items():
                 row[key] = values.get(source, np.nan)
-            for key, source in [('Season FG3M total', 'threePointFieldGoalsMade'),
+            for key, source in [('Season AST total', 'assists'),
+                                ('Season FG3M total', 'threePointFieldGoalsMade'),
                                 ('Season FG3A total', 'threePointFieldGoalsAttempted')]:
                 if source in values:
                     row[key] = values[source]
@@ -161,10 +163,11 @@ def match_player_stats(roster, current):
     return matches
 
 
-def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None, archetype_priors=None, career_profiles=None, prior_season_minutes=None):
+def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None, archetype_priors=None, career_profiles=None, prior_season_minutes=None, assist_samples=None):
     """Actual rookie rates; veteran historical priors phase out by 20 appearances."""
     if opening_games < 0 or prior_minutes < 0:
         raise ValueError('Projection settings must be nonnegative')
+    assist_samples = assist_samples or {}
     minutes_overrides = minutes_overrides or {}
     approved_minutes = approved_minutes or {}
     archetype_priors = archetype_priors or {}
@@ -266,9 +269,15 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
         row['Actual sample minutes'] = total_current_minutes if current_ok else 0.
         missing = []
         estimated_stats = []
+        row['Passing games used'] = 0
         for stat in STAT_NAMES:
             prior_rate = profile.get(stat, np.nan) / profile.MIN if prior_ok else np.nan
             new_rate = observed.get(stat, np.nan) / observed.MIN if current_ok else np.nan
+            if stat == 'AST' and current_ok:
+                sample = assist_samples.get(player.PLAYER_ID)
+                new_rate, applied = apply_assist_sample(sample, observed, new_rate)
+                if applied:
+                    row['Passing games used'] = int(sample['tracked_gp'])
             stat_weight = stock_weight if stat in ('STL', 'BLK') else weight
             if actual_first or (current_ok and stat_weight == 1.):
                 # Direct assignment avoids 0 * NaN historical contamination at

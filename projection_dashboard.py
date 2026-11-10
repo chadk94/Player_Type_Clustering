@@ -9,7 +9,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from live_projections import (ESPN, build_projections, fetch_json, load_live_state, name_key, next_regular_season_game, round_projected_minutes)
+from live_projections import (ESPN, build_projections, fetch_json, load_live_state, match_player_stats, name_key, next_regular_season_game, round_projected_minutes)
 from archetype_fallback import build_archetype_priors
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import load_game_logs
@@ -20,6 +20,7 @@ from FanduelScrape import get_odds_api_key
 from market_points import market_targets, apply_market_points
 from edge_minutes import add_minutes_cushion
 from team_assists import apply_team_assists
+from assist_opportunities import adjusted_assist_samples, DailyPassingFeed, POLICY_VERSION as ASSIST_POLICY_VERSION
 from team_threes import apply_team_threes
 from career_shooting import SHOOTING_POLICY_VERSION
 from player_rate_priors import PLAYER_RATE_POLICY_VERSION
@@ -48,6 +49,19 @@ from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_mat
 @st.cache_data(ttl=300, show_spinner=False)
 def live_state(season):
     return load_live_state(season)
+
+
+@st.cache_resource
+def passing_feed():
+    return DailyPassingFeed()
+
+
+@st.cache_data(ttl=300, max_entries=3, show_spinner=False)
+def dashboard_assist_samples(season, roster, players, logs):
+    matches = match_player_stats(roster, players)
+    ids = pd.Series({pid: str(row.ESPN_PLAYER_ID) for pid, row in matches.items()}, dtype=str)
+    unique = ids[~ids.duplicated(keep=False)]
+    return adjusted_assist_samples(season, logs, dict(zip(unique, unique.index)), passing_feed().read)
 
 
 @st.cache_data(ttl=240, show_spinner=False)
@@ -316,7 +330,7 @@ def set_edge_stats(selected):
 def team_game_projection(ui, game, book_name, schedule, now, snapshots, projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle=None):
     if project_for_game is not None:
         projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
-    snapshot_key = (game['key'], BOOKS[book_name], POLICY_VERSION, MATCHUP_POLICY_VERSION, SHOOTING_POLICY_VERSION, PLAYER_RATE_POLICY_VERSION)
+    snapshot_key = (game['key'], BOOKS[book_name], POLICY_VERSION, MATCHUP_POLICY_VERSION, SHOOTING_POLICY_VERSION, PLAYER_RATE_POLICY_VERSION, ASSIST_POLICY_VERSION)
     order = [game['Away'], game['Home']]
     base = projections[projections.Team.isin(order)].copy()
     ui.caption(game_minutes_caption(base, order))
@@ -593,6 +607,7 @@ def render_live_dashboard(ui, roster):
         today_schedule.clear()
         team_schedule.clear()
         current_matchup_logs.clear()
+        dashboard_assist_samples.clear()
         sportsbook_events.clear()
         sportsbook_props.clear()
         sportsbook_game_lines.clear()
@@ -641,25 +656,6 @@ def render_live_dashboard(ui, roster):
             ui.caption(f'{len(fallback)} RotoWire baseline rows loaded from the October 16, 2026 export; verified actual stats take priority.')
         elif fallback is None:
             ui.caption('No RotoWire export has been loaded yet. Players without individual profiles can use a flagged archetype-average estimate when both assigned roles have enough historical coverage.')
-    archetype_priors = build_archetype_priors(roster, history)
-    projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback,
-                                    archetype_priors=archetype_priors)
-    gaps = projection_gaps(approved_bundle, projections)
-    if not gaps.empty:
-        ui.info(f'{len(gaps)} active player entries need projection data. Where flagged below, temporary archetype averages keep team totals available until individual stats arrive. Players without archetypes retain available individual baseline rates without an adjustment for the unassigned role. Unresolved statistical gaps still leave affected totals blank.')
-        with ui.expander('Players needing projection data'):
-            ui.dataframe(gaps, hide_index=True, width='stretch')
-    game_projection_cache = {}
-    def project_for_game(team, opponent, start):
-        minutes = for_matchup(approved_bundle, roster, team, opponent, start)
-        if not minutes: return projections
-        key = tuple(sorted(minutes.items()))
-        if key not in game_projection_cache:
-            changed = build_projections(roster[roster.PLAYER_ID.isin(minutes)], history, teams, players,
-                opening_games=OPENING_GAMES, fallback=fallback, approved_minutes=minutes, archetype_priors=archetype_priors)
-            game_projection_cache[key] = pd.concat(
-                [projections[~projections.PLAYER_ID.isin(minutes)], changed], ignore_index=True)
-        return game_projection_cache[key]
     role_policy_version = hashlib.sha256(b''.join((ROOT / p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv','archetype_league_reviews.csv','archetype_overrides.json','archetype_model.py','matchup_projections.py','matchup_data.py'])).hexdigest()
     prior_effects = prior_matchup_effects(roster, role_policy_version)
     current_effects = {}
@@ -674,6 +670,28 @@ def render_live_dashboard(ui, roster):
                     ui.warning('Some current-season matchup games could not be loaded. Sample counts may be incomplete.')
             except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
                 ui.warning(f'Current-season matchup data unavailable: {exc}')
+    assist_samples, missing_days = dashboard_assist_samples(SEASON, roster, players, logs)
+    if missing_days:
+        ui.caption('Some NBA passing updates are unavailable. Those games use recorded assists alongside the verified passing sample.')
+    archetype_priors = build_archetype_priors(roster, history)
+    projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback,
+                                    archetype_priors=archetype_priors, assist_samples=assist_samples)
+    gaps = projection_gaps(approved_bundle, projections)
+    if not gaps.empty:
+        ui.info(f'{len(gaps)} active player entries need projection data. Where flagged below, temporary archetype averages keep team totals available until individual stats arrive. Players without archetypes retain available individual baseline rates without an adjustment for the unassigned role. Unresolved statistical gaps still leave affected totals blank.')
+        with ui.expander('Players needing projection data'):
+            ui.dataframe(gaps, hide_index=True, width='stretch')
+    game_projection_cache = {}
+    def project_for_game(team, opponent, start):
+        minutes = for_matchup(approved_bundle, roster, team, opponent, start)
+        if not minutes: return projections
+        key = tuple(sorted(minutes.items()))
+        if key not in game_projection_cache:
+            changed = build_projections(roster[roster.PLAYER_ID.isin(minutes)], history, teams, players,
+                opening_games=OPENING_GAMES, fallback=fallback, approved_minutes=minutes, archetype_priors=archetype_priors, assist_samples=assist_samples)
+            game_projection_cache[key] = pd.concat(
+                [projections[~projections.PLAYER_ID.isin(minutes)], changed], ignore_index=True)
+        return game_projection_cache[key]
     team_rates = blend_team_rates(prior_team_rates(), logs, teams)
     probability_context = scoring_context(roster, players)
     ui.caption(f'Allowed assist, three-attempt and offensive-rebound shares use a {DEFENSIVE_PRIOR_GAMES:g}-game prior through eight completed games, then phase out last season by {DEFENSIVE_FULL_CURRENT_GAMES:g}. Other team rates keep a {PRIOR_GAMES:g}-game prior. Threes preserve individual shooting percentages; PRA uses final points + rebounds + assists.')
@@ -748,7 +766,7 @@ def render_live_dashboard(ui, roster):
                       args=(flag_key,slider_key))
             if flag_key in st.session_state:
                 baseline = build_projections(roster[roster.PLAYER_ID.eq(player_id)],history,teams,players,
-                    opening_games=OPENING_GAMES,fallback=fallback,minutes_overrides={player_id:custom_minutes},archetype_priors=archetype_priors)
+                    opening_games=OPENING_GAMES,fallback=fallback,minutes_overrides={player_id:custom_minutes},archetype_priors=archetype_priors, assist_samples=assist_samples)
                 ui.caption('Custom minutes apply to this player’s projection in your current session. Use automatic minutes to return to approved game minutes when imported, otherwise the workbook/season-average setting.')
             if pd.isna(automatic_minutes):
                 ui.caption('Automatic minutes are unavailable. Adjust the slider to set your own minutes.')
@@ -760,6 +778,10 @@ def render_live_dashboard(ui, roster):
             ui.caption(f"{row['Offensive archetype']} · {row['Defensive archetype']} · {row['Projected minutes']:.1f} projected minutes ({row['Minutes source']})")
             ui.caption(f"Stat baseline: {row['Stat baseline']} · Opponent history: {row['Matchup data']} · Offensive samples: {row['Off prior samples']} prior / {row['Off current samples']} current · Defensive samples: {row['Def prior samples']} prior / {row['Def current samples']} current")
             ui.caption(f"Player rates: {row['Player current weight']:.1%} this season · Steals/blocks: {row['STL/BLK current weight']:.1%} this season · {row['Season appearances']:g} appearances. Three-point accuracy uses its separate career blend; missing actual categories retain labeled fallbacks.")
+            if row['Passing games used']:
+                ui.caption(f"Assist baseline uses 50% potential assists and 50% passes made, with a 200-minute conversion prior. Verified passing sample: {row['Passing games used']} games.")
+            else:
+                ui.caption('Assist baseline uses the available player stat rate until verified passing data is available.')
             if pd.notna(row.get('Career 3P weight')):
                 shooting = (f"3P accuracy: {row['Expected 3P%']:.1%} · "
                             f"Career {row['Career 3P%']:.1%} at {row['Career 3P weight']:.1%} weight")

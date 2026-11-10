@@ -638,6 +638,14 @@ team denominator before scaling; other session slider values do not affect this
 preview or the automatic-minute edge rankings. Disabling opponent adjustments
 uses the unadjusted team baseline as the denominator; market matching still applies.
 
+### Player assists from passing opportunities
+
+Player vs Opponent, Today’s Best Matchups, Top Sportsbook Edges and Team Projections share one assist baseline. Half of the estimate comes from potential assists and half from passes made. For each measure, this season’s opportunity count is multiplied by the player’s estimated credited assists per opportunity. The conversion prior represents 200 minutes at the player's previous opportunity pace, capped by the available historical sample plus its league regularizer. Prior yields include 25 potential assists or 150 passes at league conversion. Players with no prior tracking use league conversion and pace.
+
+Verified tracking replaces the corresponding credited assists once. Other games contribute their recorded assists. The adjusted current rate enters the existing early-season player-rate blend before minutes, opponent archetypes and normalized team allocation. PRA uses final points, rebounds and assists. The player page reports how many tracked appearances contributed.
+
+The bundled inputs contain full-season 2025–26 NBA Passing totals and a verified 2026–27 opening sample through November 9. Later regular-season game days are fetched across the league, cached, and checked against completed ESPN box scores by player, game date, minutes and assists. Late or unavailable tracking can be picked up on a subsequent dashboard refresh. [NBA passing data](https://www.nba.com/stats/players/passing)
+
 ### Team assists with normalized archetype shares
 
 Both Player vs Opponent and Top Sportsbook Edges use the same assist calculation
