@@ -10,8 +10,9 @@ OFF_STATS = ['PTS','AST','OREB','FGM','FGA','FG3M','FG3A','FTM','FTA','TOV']
 DEF_STATS = ['DREB','STL','BLK','PF']
 HEAT_STATS = ['PTS','AST','DREB','OREB','FG3M','FG3A','STL','BLK']
 MATCHUP_PRIOR_GAMES = 10.
-MATCHUP_POLICY_VERSION = 'archetype-season-blend-10-games-v1'
-MATCHUP_METADATA = ['Matchup prior games', 'Off prior samples', 'Off current samples',
+SCORING_MATCHUP_PRIOR_GAMES = 5.
+MATCHUP_POLICY_VERSION = 'archetype-season-blend-pts-3pa-5-games-v2'
+MATCHUP_METADATA = ['Matchup prior games', 'PTS/3PA matchup prior games', 'Off prior samples', 'Off current samples',
                     'Def prior samples', 'Def current samples', 'Off current games', 'Def current games']
 
 
@@ -105,14 +106,15 @@ def matchup_effects(logs, *, include_recent=False):
     return effects
 
 
-def blend_matchup_effect(prior, current, stat, completed_games, prior_games=MATCHUP_PRIOR_GAMES):
-    """Blend independently smoothed season effects by relevant distinct games.
+def matchup_prior_games(stat):
+    """FG3M inherits the opponent effect fitted to FG3A."""
+    return SCORING_MATCHUP_PRIOR_GAMES if stat in ('PTS', 'FG3A', 'FG3M') else MATCHUP_PRIOR_GAMES
 
-    Ten prior game-equivalents are a policy assumption, not ten fabricated
-    observations. Existing neutral shrinkage (including 20 for STL/BLK) stays
-    inside each season estimate. Missing current evidence never erases a prior.
-    With no historical effect, a supported current effect approaches from zero.
-    """
+
+def blend_matchup_effect(prior, current, stat, completed_games, prior_games=None):
+    """Blend the two smoothed season effects using distinct games for this opponent, role and stat."""
+    if prior_games is None:
+        prior_games = matchup_prior_games(stat)
     if not np.isfinite(prior_games) or prior_games <= 0:
         raise ValueError('Matchup prior games must be positive')
     old, new = prior.get(stat, np.nan), current.get(stat, np.nan)
@@ -142,6 +144,7 @@ def apply_matchup(baselines, roster, teams, prior_effects, current_effects, oppo
         target = opponent or row.get('Opponent','')
         row['Opponent'] = target
         row['Matchup prior games'] = MATCHUP_PRIOR_GAMES
+        row['PTS/3PA matchup prior games'] = SCORING_MATCHUP_PRIOR_GAMES
         player = clusters.loc[row['PLAYER_ID']]
         missing_role = False
         fallback_stats = []

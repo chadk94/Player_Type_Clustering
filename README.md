@@ -51,15 +51,9 @@ The **Player vs Opponent** tab selects a player and any other team, with an oppo
 
 **Player-rate policy:** player stat-rate blending begins after the player's team completes four games. The minutes boundary remains game 4. Archetype matchup effects use the progressive season blend below rather than switching to current-only history at game 5.
 
-**Archetype matchup season blend (October 28, 2026):** each archetype/opponent/stat
-effect starts from its independently smoothed 2025–26 estimate. The 2026–27
-estimate receives weight `g / (g + 10)`, where `g` is the number of distinct
-completed games with a usable observation for that archetype/opponent/stat,
-capped by the verified opponent completed-game count. One game with several
-qualifying players still counts as one game. Blending begins with the first
-usable current game; there is no game-4/5 cutoff. Four relevant games give
-28.6% current / 71.4% prior; ten give 50/50. Ten prior game-equivalents are an
-explicit smoothing assumption, not a fitted optimum or invented observations.
+**Archetype matchup season blend (November 10, 2026).** For every opponent, the current-season weight is `g / (g + prior_games)`. Points and three-point attempts use five prior games. Made threes use the attempts effect. All other directly modeled stat components use ten prior games. PRA combines the resulting points, rebounds and assists.
+
+Here `g` counts distinct completed games with a usable observation for the specific archetype, opponent and stat, capped by the verified number of completed opponent games. With eight qualifying games, this season supplies 61.5% of the points and three-attempt matchup adjustment and 44.4% for another component with the same coverage. The prior game counts are modeling assumptions.
 
 Existing within-season decay and neutral shrinkage remain unchanged: 20 neutral
 player-appearances for STL/BLK, three for other categories. Missing current
@@ -74,7 +68,7 @@ PRA is recomputed from final PTS + REB + AST. Player baselines, approved minutes
 and manual archetype assignments are untouched. The player view includes
 **Archetype matchup blend details** with both season effects and actual weights.
 Exports separate prior/current player-game samples and current distinct games;
-the ten prior equivalents are never added to observed sample counts.
+prior game-equivalents are excluded from the observed sample counts. The multi-stat player export lists the default matchup prior and the separate PTS/3PA prior. Single-stat sportsbook rows show their applicable prior, with a blank for the composite PRA.
 
 `data/game_logs_2026.csv.gz` contains 26,547 player appearances across all **1,230 2025–26 regular-season games**, retrieved 2026-10-19 from ESPN team schedules and summary box scores. Each of 30 teams has 82 games. The NBA Cup Championship is explicitly excluded even though ESPN tags it season type 2. Source details are in `data/game_logs_2026.csv.source.json`. Current approved archetypes/manual overrides label these historical appearances; archived labels cover players outside the current roster. Exact unambiguous canonical/workbook name matching links providers; unmatched players do not contribute cluster samples. Full-season averages derived from these box scores supersede partial archived stat baselines where matched; archived feature data remains unchanged for clustering. RotoWire still covers players without actual prior-season profiles.
 

@@ -46,7 +46,7 @@ class MatchupTests(unittest.TestCase):
         self.assertEqual(late.iloc[0]['Matchup status'],'Available')
         current = {key:{**value,'PTS':20.} for key,value in effects.items()}
         self.assertAlmostEqual(apply_matchup(self.base,self.roster,self.teams,effects,current).iloc[0].PTS,
-                               10*(1+(-12.5*10/11+20/11)/100))
+                               10*(1+(-12.5*5/6+20/6)/100))
 
     def test_threes_matchup_ignores_opponent_makes_in_both_seasons(self):
         logs = self.logs.assign(FG3A=[8., 4.], FG3M=[0., 4.])
@@ -136,13 +136,34 @@ class MatchupTests(unittest.TestCase):
         for games in (0,1,3,4,5,10,40):
             new={'PTS':-30.,'games':games,'stat_games':{'PTS':games},'samples':games*5}
             effect,weight,source=blend_matchup_effect(old,new,'PTS',games)
-            self.assertAlmostEqual(weight,games/(games+10))
+            self.assertAlmostEqual(weight,games/(games+5))
             self.assertAlmostEqual(effect,10*(1-weight)-30*weight)
         duplicates=pd.concat([self.logs.assign(ESPN_PLAYER_ID=str(i)) for i in range(10)],ignore_index=True)
         effects=matchup_effects(duplicates)
         self.assertEqual(effects['Off',6,'BOS']['samples'],10)
         self.assertEqual(effects['Off',6,'BOS']['stat_games']['PTS'],1)
-        self.assertAlmostEqual(blend_matchup_effect(old,effects['Off',6,'BOS'],'PTS',4)[1],1/11)
+        self.assertAlmostEqual(blend_matchup_effect(old,effects['Off',6,'BOS'],'PTS',4)[1],1/6)
+
+    def test_scoring_prior_by_stat_across_all_opponents(self):
+        from import_minutes import TEAM_IDS
+        opponents = list(TEAM_IDS)
+        base = pd.concat([self.base.assign(Opponent=t) for t in opponents], ignore_index=True)
+        teams = pd.DataFrame({'TEAM_ABBREVIATION': opponents, 'GAMES_PLAYED': 10})
+        prior, current = {}, {}
+        for team in opponents:
+            for kind, cluster, stats in [('Off',6,OFF_STATS), ('Def',11,DEF_STATS)]:
+                key = kind, cluster, team
+                prior[key] = dict.fromkeys(stats, 13.)
+                current[key] = {**dict.fromkeys(stats, -12.7), 'samples':15, 'games':8}
+        result = apply_matchup(base, self.roster, teams, prior, current)
+        self.assertEqual(set(result.Opponent), set(opponents))
+        for stat in OFF_STATS + DEF_STATS:
+            prior_games = 5 if stat in ('PTS', 'FG3A', 'FG3M') else 10
+            np.testing.assert_allclose(result[f'{stat} matchup current weight'], 8/(8+prior_games))
+            np.testing.assert_allclose(result[f'{stat} %'], (13*prior_games - 12.7*8)/(prior_games+8))
+        np.testing.assert_allclose(result.PRA, result.PTS + result.REB + result.AST)
+        self.assertAlmostEqual(blend_matchup_effect({'PTS': 13.}, current['Off',6,'UTA'],
+            'PTS',10,prior_games=10.)[1], 8/18)  # Retain explicit priors for research callers.
 
     def test_blend_missing_categories_and_unverified_games(self):
         old={'PTS':10.,'AST':5.}
@@ -151,14 +172,14 @@ class MatchupTests(unittest.TestCase):
         self.assertEqual(blend_matchup_effect(old,new,'PTS',0),(10.,0.,'prior'))
         self.assertEqual(blend_matchup_effect(old,new,'PTS',np.nan),(10.,0.,'prior'))
         effect,weight,source=blend_matchup_effect({},new,'PTS',4)
-        self.assertAlmostEqual(effect,30*4/14)
-        self.assertAlmostEqual(weight,4/14)
+        self.assertAlmostEqual(effect,30*4/9)
+        self.assertAlmostEqual(weight,4/9)
         self.assertEqual(source,'current')
         self.assertTrue(np.isnan(blend_matchup_effect({},new,'AST',4)[0]))
         # A valid observed zero effect is evidence, not missing history.
-        self.assertAlmostEqual(blend_matchup_effect(old,{'PTS':0.,'games':4},'PTS',4)[0],10*10/14)
+        self.assertAlmostEqual(blend_matchup_effect(old,{'PTS':0.,'games':4},'PTS',4)[0],10*5/9)
         # Only verified completed opponent games may enter the blend.
-        self.assertAlmostEqual(blend_matchup_effect(old,new,'PTS',2)[1],2/12)
+        self.assertAlmostEqual(blend_matchup_effect(old,new,'PTS',2)[1],2/7)
 
     def test_missing_block_observations_are_not_neutral_prior_events(self):
         self.logs.loc[0,'BLK'] = np.nan

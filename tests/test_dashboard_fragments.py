@@ -576,7 +576,11 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.app.run()
         self.assert_no_errors()
         frames = [d.value for d in self.app.dataframe]
-        blend = next(f for f in frames if 'Blended effect %' in f).set_index('Stat').loc['PTS']
+        details = next(f for f in frames if 'Blended effect %' in f).set_index('Stat')
+        self.assertEqual(details.loc['PTS','Prior games'],5)
+        self.assertEqual(details.loc['3PA / 3PM','Prior games'],5)
+        self.assertEqual(details.loc['AST','Prior games'],10)
+        blend = details.loc['PTS']
         weight = blend['Current-season weight']
         self.assertGreater(weight,0.)
         self.assertLess(weight,1.)

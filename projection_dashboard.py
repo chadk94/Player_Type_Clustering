@@ -15,7 +15,8 @@ from archetype_fallback import build_archetype_priors
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import load_game_logs
 from matchup_projections import (assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS,
-                                 prior_season_profiles, MATCHUP_PRIOR_GAMES, MATCHUP_POLICY_VERSION)
+                                 prior_season_profiles, matchup_prior_games, MATCHUP_PRIOR_GAMES,
+                                 SCORING_MATCHUP_PRIOR_GAMES, MATCHUP_POLICY_VERSION)
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
 from market_points import market_targets, apply_market_points
@@ -756,7 +757,7 @@ def render_live_dashboard(ui, roster):
     probability_context = scoring_context(roster, players)
     ui.caption(f'Allowed assist, three-attempt and offensive-rebound shares use a {DEFENSIVE_PRIOR_GAMES:g}-game prior through eight completed games, then phase out last season by {DEFENSIVE_FULL_CURRENT_GAMES:g}. Other team rates keep a {PRIOR_GAMES:g}-game prior. Threes preserve individual shooting percentages; PRA uses final points + rebounds + assists.')
     ui.caption('Three-point accuracy blends prior-career NBA shooting with this season using a 200-attempt prior. Career weight never falls below 50%. Minutes and normalized archetype attempt shares still determine volume. Players without prior NBA attempts retain their existing baseline.')
-    ui.caption(f'Archetype matchup effects blend both seasons from the first usable game. Last season counts as {MATCHUP_PRIOR_GAMES:g} matchup games; each category uses its own relevant game count. Steals and blocks retain their stronger smoothing.')
+    ui.caption(f'Archetype matchup effects blend both seasons from the first usable game. Last season counts as {SCORING_MATCHUP_PRIOR_GAMES:g} games for points and three-point attempts and {MATCHUP_PRIOR_GAMES:g} for other stat components. Three-point makes follow attempts.')
     with ui.expander('Team rate weights and data coverage'):
         coverage = team_rates['coverage'].reset_index().rename(columns={
             'Current weight':'Other rates: this season', 'Prior games':'Other prior games',
@@ -774,7 +775,7 @@ def render_live_dashboard(ui, roster):
               "Today's Plays", '🏀 Team Projections', 'Archetypes']
     initial_tab = {'plays': "Today's Plays", 'edges': '💰 Top Sportsbook Edges'}.get(st.query_params.get('view'))
     projection_tab, best_tab, edges_tab, plays_tab, team_tab, archetype_tab = ui.tabs(labels, default=initial_tab)
-    ui.caption('Player baselines reach 100% this season after 20 player appearances. Historical priors stay unchanged through eight appearances, then phase out; career three-point accuracy keeps at least 50% career weight. Rookies use actual rates from their first appearance. Opponent archetype effects keep their separate 10-game season blend.')
+    ui.caption('Player baselines reach 100% this season after 20 player appearances. Historical priors stay unchanged through eight appearances, then phase out; career three-point accuracy keeps at least 50% career weight. Rookies use actual rates from their first appearance.')
     @st.fragment
     def render_player_page():
         probability_observations = []
@@ -856,7 +857,7 @@ def render_live_dashboard(ui, roster):
                 ui.caption('3P accuracy: ' + row.get('3P accuracy source', 'Existing baseline'))
             with ui.expander('Archetype matchup blend details'):
                 blend_stats = [('PTS','PTS'),('AST','AST'),('OREB','OREB'),('DREB','DREB'),('3PA / 3PM','FG3A'),('STL','STL'),('BLK','BLK'),('TOV','TOV'),('PF','PF')]
-                detail = pd.DataFrame([{'Stat':label,'Last-season effect %':row[f'Prior {stat} %'],
+                detail = pd.DataFrame([{'Stat':label,'Prior games':int(matchup_prior_games(stat)),'Last-season effect %':row[f'Prior {stat} %'],
                     'Current-season effect %':row[f'Current {stat} %'],'Current-season weight':row[f'{stat} matchup current weight'],
                     'Blended effect %':row[f'{stat} %']} for label,stat in blend_stats])
                 ui.dataframe(detail.style.format({'Last-season effect %':'{:+.2f}%', 'Current-season effect %':'{:+.2f}%',
@@ -1001,7 +1002,7 @@ def render_live_dashboard(ui, roster):
             with ui.expander('How matchup projections work'):
                 ui.write('Steals and blocks use stronger smoothing toward an average matchup, reducing the impact of small or noisy samples while retaining archetype differences.')
                 ui.write('Each archetype’s per-36 production against the selected opponent is compared with its league-wide per-36 average. Percent changes are weighted toward recent player-games and shrunk toward zero with 20 neutral samples for steals and blocks, and three for other stats. Offensive archetypes drive points, assists, offensive rebounds and shooting; defensive archetypes drive defensive rebounds, steals and blocks. Projected rebounds equal offensive plus defensive rebounds. Three-point makes use the attempts adjustment to preserve the player’s own shooting rate.')
-                ui.write('Minutes use your workbook for team games 1–3, then observed season minutes per appearance from game 4. Approved game minutes take priority. Rookies and other players using estimates switch to actual rates after their first verified appearance. Historical player rates start blending after four completed team games. The starting prior is 200 minutes, or 1,000 for steals/blocks when a player logged at least 500 actual minutes last season. These priors stay intact through eight player appearances, then decrease linearly to zero at 20 appearances. Current weight is actual season minutes divided by actual minutes plus the remaining prior. Missed team games do not advance this transition. Missing actual categories retain labeled fallbacks. Career three-point accuracy keeps its 200-attempt prior and 50% career minimum. Archetype matchup effects keep their separate relevant games / (relevant games + 10) season blend and existing smoothing.')
+                ui.write('Minutes use your workbook for team games 1–3, then observed season minutes per appearance from game 4. Approved game minutes take priority. Rookies and other players using estimates switch to actual rates after their first verified appearance. Historical player rates start blending after four completed team games. The starting prior is 200 minutes, or 1,000 for steals/blocks when a player logged at least 500 actual minutes last season. These priors stay intact through eight player appearances, then decrease linearly to zero at 20 appearances. Current weight is actual season minutes divided by actual minutes plus the remaining prior. Missed team games do not advance this transition. Missing actual categories retain labeled fallbacks. Career three-point accuracy keeps its 200-attempt prior and 50% career minimum.')
                 ui.write('Team assists keep a 10-game prior for own rates and points-to-field-goals conversion. The opponent’s assisted-basket rate uses a 5-game prior through eight completed games, then tapers to zero prior games at 20. Team and opponent rates still combine equally. The team assist total is allocated in proportion to existing archetype-adjusted player assists, so shared defensive penalties cancel while relative archetype differences remain. No second assist multiplier is applied. PRA combines the final points, rebounds and assists.')
                 ui.write('Team threes use expected FGA times a 50/50 mix of progressively blended team and opponent 3PA/FGA. Team attempts are allocated using normalized archetype-adjusted player attempt shares. Makes scale equally to preserve each player’s expected shooting percentage. Points and PRA already include the threes; no extra points are added. The player slider recalculates this preview, while game edges use the saved automatic team minutes. Changes to an external workbook must be imported and published before the app can use them.')
                 ui.write('Team rebounds use both teams’ expected misses, derived from market points and conversion rates with a 10-game prior. The opponent’s allowed offensive-rebound share uses the faster 5-game prior, phased out by 20 completed games; own rebound shares retain 10. Credited-player-rebound fractions account approximately for dead-ball/team rebounds and non-reboundable free throws. Each pool splits into offensive rebounds and opposing defensive rebounds. The two components are allocated separately using normalized archetype shares, then added for REB. PRA includes updated rebounds. Player matchup ratings retain the original archetype effect.')
