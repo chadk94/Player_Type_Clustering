@@ -51,9 +51,9 @@ The **Player vs Opponent** tab selects a player and any other team, with an oppo
 
 **Player-rate policy:** player stat-rate blending begins after the player's team completes four games. The minutes boundary remains game 4. Archetype matchup effects use the progressive season blend below rather than switching to current-only history at game 5.
 
-**Archetype matchup season blend (November 10, 2026).** For every opponent, the current-season weight is `g / (g + prior_games)`. Points and three-point attempts use five prior games. Made threes use the attempts effect. All other directly modeled stat components use ten prior games. PRA combines the resulting points, rebounds and assists.
+**Archetype matchup season blend (November 10, 2026).** For every opponent, the current-season weight is `g / (g + prior_games)`. Points, three-point attempts, assists, offensive rebounds and defensive rebounds use five prior games. Steals and blocks use twenty. The remaining directly modeled stat components use ten. Made threes inherit the attempts effect. Total rebounds sum the two rebound components, and PRA combines final points, rebounds and assists.
 
-Here `g` counts distinct completed games with a usable observation for the specific archetype, opponent and stat, capped by the verified number of completed opponent games. With eight qualifying games, this season supplies 61.5% of the points and three-attempt matchup adjustment and 44.4% for another component with the same coverage. The prior game counts are modeling assumptions.
+Here `g` counts distinct completed games with a usable observation for the specific archetype, opponent and stat, capped by the verified number of completed opponent games. With eight qualifying games for a stat, this season supplies 61.5% of a five-game-prior adjustment, 28.6% for steals or blocks, and 44.4% for a ten-game-prior adjustment. The prior game counts are modeling assumptions.
 
 Existing within-season decay and neutral shrinkage remain unchanged: 20 neutral
 player-appearances for STL/BLK, three for other categories. Missing current
@@ -68,7 +68,7 @@ PRA is recomputed from final PTS + REB + AST. Player baselines, approved minutes
 and manual archetype assignments are untouched. The player view includes
 **Archetype matchup blend details** with both season effects and actual weights.
 Exports separate prior/current player-game samples and current distinct games;
-prior game-equivalents are excluded from the observed sample counts. The multi-stat player export lists the default matchup prior and the separate PTS/3PA prior. Single-stat sportsbook rows show their applicable prior, with a blank for the composite PRA.
+prior game-equivalents are excluded from the observed sample counts. Multi-stat exports list the default prior and the PTS/3PA, AST/REB and STL/BLK priors. Sportsbook rows show the prior for their stat. Composite PRA has separate component adjustments and therefore has an empty per-stat prior field.
 
 `data/game_logs_2026.csv.gz` contains 26,547 player appearances across all **1,230 2025–26 regular-season games**, retrieved 2026-10-19 from ESPN team schedules and summary box scores. Each of 30 teams has 82 games. The NBA Cup Championship is explicitly excluded even though ESPN tags it season type 2. Source details are in `data/game_logs_2026.csv.source.json`. Current approved archetypes/manual overrides label these historical appearances; archived labels cover players outside the current roster. Exact unambiguous canonical/workbook name matching links providers; unmatched players do not contribute cluster samples. Full-season averages derived from these box scores supersede partial archived stat baselines where matched; archived feature data remains unchanged for clustering. RotoWire still covers players without actual prior-season profiles.
 
@@ -1377,8 +1377,8 @@ means the actual-only policy is in effect or no historical profile is available.
 Player vs Opponent, Today's Best Matchups, Top Sportsbook Edges, Team Projections
 and the all-games player view share this calculation. The team snapshot key includes
 this policy version so older saved pregame projections cannot silently undo it.
-Opponent smoothing is unchanged: 20 neutral STL/BLK samples, 10-appearance recency
-half-life, and the existing 10-game cross-season matchup blend. PTS, AST, REB, 3PM,
+STL/BLK opponent effects use 20 neutral samples and a 10-appearance recency
+half-life within each season. Their cross-season matchup prior is 20 games. PTS, AST, REB, 3PM,
 PRA, experimental points probabilities and the 5% edge/ranking rules are unchanged;
 STL/BLK edges can move because their projected averages change.
 

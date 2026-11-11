@@ -67,6 +67,26 @@ class GameEdgeTests(unittest.TestCase):
         ranked,_=game_edges(self.players,self.payload,self.event,'fanduel',now=self.now)
         self.assertEqual(set(ranked['Matchup rating']),{'5 ⬆️⬆️'})
 
+    def test_export_uses_stat_prior_from_the_projection_snapshot(self):
+        market = self.payload['bookmakers'][0]['markets'][0]
+        self.payload['bookmakers'][0]['markets'] = [
+            dict(market, key=key) for key in ('player_threes', 'player_assists', 'player_rebounds',
+                                              'player_steals', 'player_blocks', 'player_points_rebounds_assists')
+        ]
+        player = self.players.iloc[:1].assign(FG3M=6., AST=6., REB=6., STL=6., BLK=6., PRA=25.)
+        player['Matchup prior games'] = 10.
+        player['PTS/3PA matchup prior games'] = 5.
+        for is_new in (False, True):
+            if is_new:
+                player['AST/REB matchup prior games'] = 5.
+                player['STL/BLK matchup prior games'] = 20.
+            ranked, _ = game_edges(player, self.payload, self.event, 'fanduel', now=self.now)
+            priors = ranked.set_index('Stat')['Matchup prior games']
+            self.assertEqual(priors['3PM'], 5)
+            self.assertTrue(priors[['AST', 'REB']].eq(5 if is_new else 10).all())
+            self.assertTrue(priors[['STL', 'BLK']].eq(20 if is_new else 10).all())
+            self.assertTrue(pd.isna(priors['PRA']))
+
     def test_points_market_adjustment_does_not_change_matchup_rating(self):
         import copy
         points=copy.deepcopy(self.payload['bookmakers'][0]['markets'][0])

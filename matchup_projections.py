@@ -11,8 +11,19 @@ DEF_STATS = ['DREB','STL','BLK','PF']
 HEAT_STATS = ['PTS','AST','DREB','OREB','FG3M','FG3A','STL','BLK']
 MATCHUP_PRIOR_GAMES = 10.
 SCORING_MATCHUP_PRIOR_GAMES = 5.
-MATCHUP_POLICY_VERSION = 'archetype-season-blend-pts-3pa-5-games-v2'
-MATCHUP_METADATA = ['Matchup prior games', 'PTS/3PA matchup prior games', 'Off prior samples', 'Off current samples',
+MATCHUP_POLICY_VERSION = 'archetype-season-blend-pts-3pa-ast-reb-5-stl-blk-20-v3'
+PRIOR_GAMES_BY_FIELD = {
+    'Matchup prior games': MATCHUP_PRIOR_GAMES,
+    'PTS/3PA matchup prior games': SCORING_MATCHUP_PRIOR_GAMES,
+    'AST/REB matchup prior games': 5.,
+    'STL/BLK matchup prior games': 20.,
+}
+PRIOR_FIELD_BY_STAT = {
+    **dict.fromkeys(('PTS', 'FG3A', 'FG3M', '3PA', '3PM'), 'PTS/3PA matchup prior games'),
+    **dict.fromkeys(('AST', 'OREB', 'DREB', 'REB'), 'AST/REB matchup prior games'),
+    **dict.fromkeys(('STL', 'BLK'), 'STL/BLK matchup prior games'),
+}
+MATCHUP_METADATA = [*PRIOR_GAMES_BY_FIELD, 'Off prior samples', 'Off current samples',
                     'Def prior samples', 'Def current samples', 'Off current games', 'Def current games']
 
 
@@ -108,7 +119,7 @@ def matchup_effects(logs, *, include_recent=False):
 
 def matchup_prior_games(stat):
     """FG3M inherits the opponent effect fitted to FG3A."""
-    return SCORING_MATCHUP_PRIOR_GAMES if stat in ('PTS', 'FG3A', 'FG3M') else MATCHUP_PRIOR_GAMES
+    return PRIOR_GAMES_BY_FIELD[PRIOR_FIELD_BY_STAT.get(stat, 'Matchup prior games')]
 
 
 def blend_matchup_effect(prior, current, stat, completed_games, prior_games=None):
@@ -143,8 +154,7 @@ def apply_matchup(baselines, roster, teams, prior_effects, current_effects, oppo
         row = base.to_dict()
         target = opponent or row.get('Opponent','')
         row['Opponent'] = target
-        row['Matchup prior games'] = MATCHUP_PRIOR_GAMES
-        row['PTS/3PA matchup prior games'] = SCORING_MATCHUP_PRIOR_GAMES
+        row.update(PRIOR_GAMES_BY_FIELD)
         player = clusters.loc[row['PLAYER_ID']]
         missing_role = False
         fallback_stats = []

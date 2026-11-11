@@ -15,8 +15,7 @@ from archetype_fallback import build_archetype_priors
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import load_game_logs
 from matchup_projections import (assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS,
-                                 prior_season_profiles, matchup_prior_games, MATCHUP_PRIOR_GAMES,
-                                 SCORING_MATCHUP_PRIOR_GAMES, MATCHUP_POLICY_VERSION)
+                                 prior_season_profiles, matchup_prior_games, MATCHUP_PRIOR_GAMES, MATCHUP_POLICY_VERSION)
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
 from market_points import market_targets, apply_market_points
@@ -757,7 +756,8 @@ def render_live_dashboard(ui, roster):
     probability_context = scoring_context(roster, players)
     ui.caption(f'Allowed assist, three-attempt and offensive-rebound shares use a {DEFENSIVE_PRIOR_GAMES:g}-game prior through eight completed games, then phase out last season by {DEFENSIVE_FULL_CURRENT_GAMES:g}. Other team rates keep a {PRIOR_GAMES:g}-game prior. Threes preserve individual shooting percentages; PRA uses final points + rebounds + assists.')
     ui.caption('Three-point accuracy blends prior-career NBA shooting with this season using a 200-attempt prior. Career weight never falls below 50%. Minutes and normalized archetype attempt shares still determine volume. Players without prior NBA attempts retain their existing baseline.')
-    ui.caption(f'Archetype matchup effects blend both seasons from the first usable game. Last season counts as {SCORING_MATCHUP_PRIOR_GAMES:g} games for points and three-point attempts and {MATCHUP_PRIOR_GAMES:g} for other stat components. Three-point makes follow attempts.')
+    ui.caption(f"Archetype matchups count last season as {matchup_prior_games('PTS'):g} games for points, three-point attempts, assists and rebounds, "
+               f"{matchup_prior_games('STL'):g} for steals and blocks, and {MATCHUP_PRIOR_GAMES:g} for the other stat components. Three-point makes follow attempts.")
     with ui.expander('Team rate weights and data coverage'):
         coverage = team_rates['coverage'].reset_index().rename(columns={
             'Current weight':'Other rates: this season', 'Prior games':'Other prior games',

@@ -9,7 +9,7 @@ from live_projections import name_key
 from points_probability import PROBABILITY_COLUMNS
 from projection_presentation import player_matchup_rating
 from team_rebounds import REBOUND_METADATA
-from matchup_projections import MATCHUP_METADATA
+from matchup_projections import MATCHUP_METADATA, PRIOR_FIELD_BY_STAT
 from sportsbook_lines import TEAM_NAMES, STAT_ORDER, OddsFeedError, player_quotes, compare_with_book
 
 EDGE_STATS = [stat for stat in STAT_ORDER if stat != 'TOV']
@@ -115,8 +115,12 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
             comparison = comparison[comparison['Signed edge %'].lt(0)]
         for field in ['Player','PLAYER_ID','Team','Opponent','Projected minutes','Off samples','Def samples','Stat baseline','Matchup data',*MATCHUP_METADATA,'Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]:
             comparison[field] = player.get(field,np.nan)
-        comparison.loc[comparison.Stat.isin(['PTS', '3PM']), 'Matchup prior games'] = player.get('PTS/3PA matchup prior games', player.get('Matchup prior games', np.nan))
-        comparison.loc[comparison.Stat.eq('PRA'), 'Matchup prior games'] = np.nan  # Its components have different priors.
+        # Older saved rows have only the default and possibly the PTS/3PA override.
+        default_prior = player.get('Matchup prior games', np.nan)
+        comparison['Matchup prior games'] = [
+            np.nan if stat == 'PRA' else player.get(PRIOR_FIELD_BY_STAT.get(stat, 'Matchup prior games'), default_prior)
+            for stat in comparison.Stat
+        ]
         rows.append(comparison)
     if not rows:
         return pd.DataFrame(columns=EDGE_COLUMNS),0

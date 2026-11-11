@@ -124,10 +124,10 @@ class MatchupTests(unittest.TestCase):
             with self.subTest(completed=completed):
                 teams = self.teams.assign(GAMES_PLAYED=completed)
                 row = apply_matchup(self.base,self.roster,teams,prior,current).iloc[0]
-                expected=10*(1+(-.5/21*10/11+.5/21/11))
+                expected=10*(1+(-.5/21*20/21+.5/21/21))
                 self.assertAlmostEqual(row.STL,expected)
                 self.assertAlmostEqual(row.BLK,expected)
-                self.assertEqual(row['Def samples'],2)  # Two real player-games, never the ten prior equivalents.
+                self.assertEqual(row['Def samples'],2)  # Two observed player-games.
                 self.assertEqual(row['Def prior samples'],1)
                 self.assertEqual(row['Def current samples'],1)
 
@@ -144,7 +144,7 @@ class MatchupTests(unittest.TestCase):
         self.assertEqual(effects['Off',6,'BOS']['stat_games']['PTS'],1)
         self.assertAlmostEqual(blend_matchup_effect(old,effects['Off',6,'BOS'],'PTS',4)[1],1/6)
 
-    def test_scoring_prior_by_stat_across_all_opponents(self):
+    def test_matchup_prior_by_stat_across_all_opponents(self):
         from import_minutes import TEAM_IDS
         opponents = list(TEAM_IDS)
         base = pd.concat([self.base.assign(Opponent=t) for t in opponents], ignore_index=True)
@@ -157,10 +157,12 @@ class MatchupTests(unittest.TestCase):
                 current[key] = {**dict.fromkeys(stats, -12.7), 'samples':15, 'games':8}
         result = apply_matchup(base, self.roster, teams, prior, current)
         self.assertEqual(set(result.Opponent), set(opponents))
+        expected_priors = {'PTS':5, 'FG3A':5, 'FG3M':5, 'AST':5, 'OREB':5, 'DREB':5, 'STL':20, 'BLK':20}
         for stat in OFF_STATS + DEF_STATS:
-            prior_games = 5 if stat in ('PTS', 'FG3A', 'FG3M') else 10
+            prior_games = expected_priors.get(stat, 10)
             np.testing.assert_allclose(result[f'{stat} matchup current weight'], 8/(8+prior_games))
             np.testing.assert_allclose(result[f'{stat} %'], (13*prior_games - 12.7*8)/(prior_games+8))
+        np.testing.assert_allclose(result.REB, result.OREB + result.DREB)
         np.testing.assert_allclose(result.PRA, result.PTS + result.REB + result.AST)
         self.assertAlmostEqual(blend_matchup_effect({'PTS': 13.}, current['Off',6,'UTA'],
             'PTS',10,prior_games=10.)[1], 8/18)  # Retain explicit priors for research callers.
