@@ -74,7 +74,7 @@ def scheduled_book_games(events, schedule, now=None):
     return sorted({g['id']:g for g in games}.values(),key=lambda g:(g['GameTimeUTC'],g['Away']))
 
 
-def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, direction='Both', stats=None, player_search=''):
+def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, direction='Both', stats=None, player_search='', quotes_by_player=None):
     """All eligible distinct player-stat edges in one event/book, strongest % first.
 
     Both over and under display the magnitude of the projection/implied-mean gap.
@@ -83,17 +83,8 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
     """
     if payload.get('id') != event['id'] or (payload.get('home_team'),payload.get('away_team')) != (event['home_team'],event['away_team']):
         raise OddsFeedError('Sportsbook matchup could not be verified.')
-    if direction not in ['Both','Over','Under']:
-        raise ValueError('Invalid edge direction')
-    selected_stats = set(EDGE_STATS if stats is None else stats)
-    if not selected_stats.issubset(EDGE_STATS):
-        raise ValueError('Unknown stat category')
-    query = name_key(player_search)
     rows = []
     for _,player in matchups.iterrows():
-        # Filter after team calibration, but before ranking.
-        if player_search.strip() and (not query or query not in name_key(player.Player)):
-            continue
         expected = event['Away'] if player.Team == event['Home'] else event['Home'] if player.Team == event['Away'] else None
         if expected is None or player.get('Opponent') != expected:
             continue
@@ -105,14 +96,10 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
             'Projected':[player.get('FG3M' if stat=='3PM' else stat,np.nan) for stat in STAT_ORDER]})
         preview['Baseline'] = [sum(player.get(f'Baseline {part}',np.nan) for part in ['PTS','REB','AST']) if stat=='PRA' else player.get('Baseline '+('FG3M' if stat=='3PM' else stat),np.nan) for stat in STAT_ORDER]
         preview['Matchup rating'] = [player_matchup_rating(player, stat) for stat in STAT_ORDER]
-        comparison = compare_with_book(preview,player_quotes(payload,player.Player,bookmaker,now=now))
-        comparison = comparison[comparison.Stat.isin(selected_stats) & comparison['Market status'].eq('Current') & comparison['Edge %'].notna()]
-        if plays_only:
-            comparison = comparison[comparison.Play.ne('')]
-        if direction == 'Over':
-            comparison = comparison[comparison['Signed edge %'].gt(0)]
-        elif direction == 'Under':
-            comparison = comparison[comparison['Signed edge %'].lt(0)]
+        quotes = (quotes_by_player[name_key(player.Player)] if quotes_by_player is not None else
+                  player_quotes(payload,player.Player,bookmaker,now=now))
+        comparison = compare_with_book(preview, quotes)
+        comparison = comparison[comparison.Stat.isin(EDGE_STATS) & comparison['Market status'].eq('Current') & comparison['Edge %'].notna()]
         for field in ['Player','PLAYER_ID','Team','Opponent','Projected minutes','Off samples','Def samples','Stat baseline','Matchup data',*MATCHUP_METADATA,'Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]:
             comparison[field] = player.get(field,np.nan)
         # Older saved rows have only the default and possibly the PTS/3PA override.
@@ -123,10 +110,30 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
         ]
         rows.append(comparison)
     if not rows:
-        return pd.DataFrame(columns=EDGE_COLUMNS),0
+        return filter_game_edges(pd.DataFrame(columns=EDGE_COLUMNS), plays_only, direction, stats, player_search)
     ranked = pd.concat(rows,ignore_index=True).drop_duplicates(['Player','Stat'])
     ranked['_magnitude'] = ranked['Edge %'].abs()
     ranked = ranked.sort_values(['_magnitude','Player','Stat'],ascending=[False,True,True],kind='stable')
-    count = len(ranked)
-    ranked['Rank'] = range(1,len(ranked)+1)
-    return ranked[EDGE_COLUMNS],count
+    ranked['Rank'] = range(1, len(ranked)+1)
+    return filter_game_edges(ranked[EDGE_COLUMNS], plays_only, direction, stats, player_search)
+
+
+def filter_game_edges(rows, plays_only, direction, stats, player_search):
+    if direction not in ['Both','Over','Under']:
+        raise ValueError('Invalid edge direction')
+    selected_stats = set(EDGE_STATS if stats is None else stats)
+    if not selected_stats.issubset(EDGE_STATS):
+        raise ValueError('Unknown stat category')
+    query = name_key(player_search)
+    selected = rows.Stat.isin(selected_stats)
+    if plays_only:
+        selected &= rows.Play.ne('')
+    if direction == 'Over':
+        selected &= rows['Signed edge %'].gt(0)
+    elif direction == 'Under':
+        selected &= rows['Signed edge %'].lt(0)
+    if player_search.strip():
+        selected &= rows.Player.map(name_key).str.contains(query, regex=False) if query and len(rows) else False
+    filtered = rows.loc[selected].copy()
+    filtered['Rank'] = range(1, len(filtered)+1)
+    return filtered, len(filtered)

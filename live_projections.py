@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import re
 import unicodedata
+from threading import Lock
+from time import monotonic
 
 import numpy as np
 import pandas as pd
@@ -100,7 +102,26 @@ def parse_player_summary(payload, season_year):
     return frame.sort_values('GP', ascending=False).drop_duplicates('ESPN_PLAYER_ID')
 
 
-def load_live_state(season):
+class CompletedTeamCache:
+    """Reuse public season data while a team's verified game count is unchanged."""
+    def __init__(self, ttl=1800):
+        self.ttl = ttl
+        self.entries = {}
+        self.lock = Lock()
+
+    def get(self, key, games, fetch, complete):
+        with self.lock:
+            saved = self.entries.get(key)
+            if saved and saved[0] == games and monotonic() < saved[1]:
+                return saved[2]
+        value = fetch()
+        if complete(value):
+            with self.lock:
+                self.entries[key] = (games, monotonic() + self.ttl, value)
+        return value
+
+
+def load_live_state(season, team_cache=None):
     year = int(season[:4]) + 1  # ESPN uses the year in which the season ends.
     teams = parse_standings(fetch_json(f'{ESPN}/v2/sports/basketball/nba/standings?season={year}&seasontype=2'), year)
     frames, errors = [], []
@@ -108,7 +129,12 @@ def load_live_state(season):
     playing = teams[teams.GAMES_PLAYED.gt(0)]
     def read_team(row):
         url = f'{ESPN}/site/v2/sports/basketball/nba/teams/{row.ESPN_TEAM_ID}/athletes/statistics?season={year}&seasontype=2'
-        return parse_player_summary(fetch_json(url), year)
+        def read():
+            return parse_player_summary(fetch_json(url), year)
+        if team_cache is None:
+            return read()
+        return team_cache.get(('players', year, row.ESPN_TEAM_ID), row.GAMES_PLAYED, read,
+                              lambda frame: not frame.empty and frame.GP.eq(row.GAMES_PLAYED).any())
     with ThreadPoolExecutor(max_workers=6) as pool:
         jobs = {pool.submit(read_team, row): row.TEAM_ABBREVIATION for row in playing.itertuples()}
         for job in as_completed(jobs):

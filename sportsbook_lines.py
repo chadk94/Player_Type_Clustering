@@ -1,5 +1,6 @@
 """Current same-book, same-event player props and model-implied stat means."""
 from datetime import datetime, timezone
+from functools import lru_cache
 import math
 import numpy as np
 import pandas as pd
@@ -66,6 +67,7 @@ def fair_over_probability(over, under):
     return p/(p+q)
 
 
+@lru_cache(maxsize=4096)
 def implied_total(line, over, under):
     """Solve for a Poisson mean using paired, proportional no-vig prices.
 
@@ -93,11 +95,16 @@ def implied_total(line, over, under):
     return float(brentq(lambda mu:over_probability(mu)-target,1e-9,high))
 
 
-def player_quotes(payload, player_name, book_key, now=None, max_age_seconds=900):
-    now=now or datetime.now(timezone.utc)
-    rows={stat:{'Stat':stat,'Book line':np.nan,'Over odds':np.nan,'Under odds':np.nan,
+def _empty_quotes():
+    return {stat:{'Stat':stat,'Book line':np.nan,'Over odds':np.nan,'Under odds':np.nan,
                 'Book implied total':np.nan,'Fair over probability':np.nan,'Updated UTC':'',
                 'Market status':'No posted line'} for stat in STAT_ORDER}
+
+
+def game_quotes(payload, player_names, book_key, now=None, max_age_seconds=900):
+    """Parse each outcome once and apply the freshness check at this render's clock."""
+    now = now or datetime.now(timezone.utc)
+    rows = {name_key(name): _empty_quotes() for name in player_names}
     for book in payload.get('bookmakers',[]):
         if book.get('key')!=book_key:
             continue
@@ -105,42 +112,49 @@ def player_quotes(payload, player_name, book_key, now=None, max_age_seconds=900)
             stat=MARKETS.get(market.get('key'))
             if stat is None:
                 continue
-            candidates={}
+            by_player={}
             for outcome in market.get('outcomes',[]):
-                if name_key(outcome.get('description',''))!=name_key(player_name):
+                player = name_key(outcome.get('description',''))
+                if player not in rows:
                     continue
                 if outcome.get('name') not in ['Over','Under']:
                     continue
                 try:
                     point=float(outcome['point']); price=float(outcome['price'])
                     american_probability(price)
+                    candidates = by_player.setdefault(player, {})
                     candidates.setdefault(point,{}).setdefault(outcome['name'],[]).append(price)
                 except (ValueError,KeyError,TypeError):
                     continue
-            complete=[(point,sides) for point,sides in candidates.items()
-                      if set(sides)=={'Over','Under'} and all(len(v)==1 for v in sides.values())]
-            # Do not merge alternate/mismatched lines or silently pick between them.
-            if len(complete)!=1:
-                if candidates:
-                    rows[stat]['Market status']='Needs matching over/under prices' if not complete else 'Ambiguous lines'
-                continue
-            line,sides=complete[0]
-            over,under=sides['Over'][0],sides['Under'][0]
-            row=rows[stat]
-            row.update({'Book line':line,'Over odds':over,'Under odds':under,
-                        'Updated UTC':market.get('last_update',book.get('last_update',''))})
-            try:
-                updated=datetime.fromisoformat(row['Updated UTC'].replace('Z','+00:00'))
-                age=(now-updated).total_seconds()
-                if not -60<=age<=max_age_seconds:
-                    row['Market status']='Stale quote — comparison unavailable'
+            for player, candidates in by_player.items():
+                complete=[(point,sides) for point,sides in candidates.items()
+                          if set(sides)=={'Over','Under'} and all(len(v)==1 for v in sides.values())]
+                # Do not merge alternate/mismatched lines or silently pick between them.
+                if len(complete)!=1:
+                    if candidates:
+                        rows[player][stat]['Market status']='Needs matching over/under prices' if not complete else 'Ambiguous lines'
                     continue
-                row['Book implied total']=implied_total(line,over,under)
-                row['Fair over probability']=fair_over_probability(over,under)
-                row['Market status']='Current'
-            except (ValueError,TypeError,OverflowError):
-                row['Market status']='Unusable quote — comparison unavailable'
-    return pd.DataFrame(rows.values())
+                line,sides=complete[0]
+                over,under=sides['Over'][0],sides['Under'][0]
+                row=rows[player][stat]
+                row.update({'Book line':line,'Over odds':over,'Under odds':under,
+                            'Updated UTC':market.get('last_update',book.get('last_update',''))})
+                try:
+                    updated=datetime.fromisoformat(row['Updated UTC'].replace('Z','+00:00'))
+                    age=(now-updated).total_seconds()
+                    if not -60<=age<=max_age_seconds:
+                        row['Market status']='Stale quote — comparison unavailable'
+                        continue
+                    row['Book implied total']=implied_total(line,over,under)
+                    row['Fair over probability']=fair_over_probability(over,under)
+                    row['Market status']='Current'
+                except (ValueError,TypeError,OverflowError):
+                    row['Market status']='Unusable quote — comparison unavailable'
+    return {player: pd.DataFrame(markets.values()) for player, markets in rows.items()}
+
+
+def player_quotes(payload, player_name, book_key, now=None, max_age_seconds=900):
+    return game_quotes(payload, [player_name], book_key, now, max_age_seconds)[name_key(player_name)]
 
 
 def signed_edge_pct(projected, implied):

@@ -79,6 +79,7 @@ class DashboardFragmentTests(unittest.TestCase):
         self.effects = self.mock('matchup_effects', wraps=dashboard.matchup_effects)
         # Catch accidental network access, rather than letting a test make live calls.
         self.mock('fetch_json', side_effect=AssertionError('Unexpected network request'))
+        self.mock('sportsbook_slate_lines', return_value=[])
         self.mock('read_feed', side_effect=AssertionError('Unexpected sportsbook request'))
 
         # AppTest 1.53 always asks for a full rerun. Retain the same fragment
@@ -264,6 +265,14 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertEqual(len(shown_edges),2)
         for original, shown in zip(edge_tables,shown_edges):
             pd.testing.assert_frame_equal(shown[original.columns],original)
+        with patch.object(dashboard, 'game_quote_probabilities', side_effect=AssertionError('Search recalculated game probabilities')):
+            search = self.app.text_input(key='edges_player_search')
+            self.fragment_id = self.fragment_for(search)
+            search.set_value(target).run()
+            self.assert_no_errors()
+            self.assertEqual(set(pd.concat(self.edge_frames()).Player), {target})
+            self.app.text_input(key='edges_player_search').set_value('').run()
+            self.assert_no_errors()
         self.assertEqual([m.call_count for m in (self.live,self.logs,self.effects,self.imported)],feeds)
         ranking = self.app.radio(key='edges_ranking')
         self.fragment_id = self.fragment_for(ranking)

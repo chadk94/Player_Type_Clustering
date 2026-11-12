@@ -114,7 +114,7 @@ def decode_records(values):
 
 def grade_records(records, logs):
     """Only unique, completed ESPN game/player matches. Missing/DNP is never zero."""
-    if logs.empty:
+    if not records or logs.empty:
         return []
     rows = logs.copy()
     rows['_start'] = pd.to_datetime(rows.GAME_DATE, utc=True)
@@ -206,10 +206,12 @@ def accept_tracking_reply(state, key, request, reply):
     """Validate the browser acknowledgement before the normal fragment rerun."""
     if not isinstance(reply, dict) or reply.get('request') != request:
         return
+    if state[key].get('acknowledged') == request and state[key]['status'] == reply.get('status'):
+        return
     if reply.get('status') == 'ok' and isinstance(reply.get('records'), list):
         records = decode_records(reply['records'])
         state[key] = {'records': records, 'results': reply.get('results', []),
-                      'status': 'ok', 'invalid_records': len(reply['records']) - len(records)}
+                      'status': 'ok', 'acknowledged': request, 'invalid_records': len(reply['records']) - len(records)}
     elif reply.get('status') == 'unavailable':
         state[key]['status'] = 'unavailable'
 
@@ -219,8 +221,15 @@ def render_probability_tracking(ui, observations, logs, page):
     """Storage acknowledgements only rerun this small panel, never refresh feeds."""
     key = f'points_tracking_{page}'
     saved = st.session_state.setdefault(key, {'records': [], 'results': [], 'status': 'loading'})
-    records = [r for r in saved.get('records', []) if valid_record(r)]
-    results = grade_records(records, logs)
+    records = saved.get('records', [])
+    # A fragment reuses the same verified log snapshot until the dashboard refreshes.
+    # History is private to this browser session. An arriving box or forecast regrades it.
+    record_ids = tuple(r['id'] for r in records)
+    graded = st.session_state.get(key+'_graded')
+    if graded is None or graded[0] is not logs or graded[1] != record_ids:
+        graded = (logs, record_ids, grade_records(records, logs))
+        st.session_state[key+'_graded'] = graded
+    results = graded[2]
     request = sha256(json.dumps({'ids': [r['id'] for r in observations], 'results': results,
                                 'revision': st.session_state.get(key+'_revision', 0)}, sort_keys=True).encode()).hexdigest()
     def on_reply_change():
@@ -255,7 +264,9 @@ def render_probability_tracking(ui, observations, logs, page):
                    'No verified appearance stays ungraded. Manual-minute and opponent-off previews are saved separately from the standard evaluation.')
         ui.button('Reload saved history', key=key+'_reload', on_click=lambda: st.session_state.update(
             {key+'_revision': st.session_state.get(key+'_revision', 0)+1}))
-        frame = history_table(saved.get('records', []), saved.get('results', []))
+        if not saved.get('records') or not ui.toggle('Show history and downloads', key=key+'_show_history'):
+            return
+        frame = history_table(saved['records'], saved.get('results', []))
         if not frame.empty:
             selected = evaluation_rows(frame)
             stat_filter = ui.selectbox('Evaluate stat', ['All', *sorted(selected.stat.unique())], key=key+'_stat')

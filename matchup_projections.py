@@ -85,7 +85,7 @@ def matchup_effects(logs, *, include_recent=False):
     for kind,stats in [('Off',OFF_STATS),('Def',DEF_STATS)]:
         for cluster, group in valid.dropna(subset=[f'{kind}Cluster']).groupby(f'{kind}Cluster'):
             rates = group.reindex(columns=stats).div(group.MIN,axis=0)*36
-            means = rates.mean()
+            means = rates.mean().to_numpy()
             for opponent, opponent_rows in group.groupby('Opponent'):
                 result = {'samples':len(opponent_rows), 'games':opponent_rows.GAME_ID.nunique(),
                           'stat_games':{}}
@@ -96,13 +96,16 @@ def matchup_effects(logs, *, include_recent=False):
                     averages, counts = observed.mean(), observed.count()
                     result['recent'] = dict(games=len(ids), stats={
                         stat: (float(averages[stat]), int(counts[stat])) for stat in stats if counts[stat]})
-                for stat in stats:
-                    values = rates.loc[opponent_rows.index,stat]
-                    result['stat_games'][stat] = opponent_rows.loc[np.isfinite(values), 'GAME_ID'].nunique()
-                    if not np.isfinite(means[stat]) or means[stat] <= 0:
+                values_by_stat = rates.loc[opponent_rows.index].to_numpy(dtype=float).T
+                game_ids = opponent_rows.GAME_ID.to_numpy()
+                for stat, values, mean in zip(stats, values_by_stat, means):
+                    finite = np.isfinite(values)
+                    result['stat_games'][stat] = (result['games'] if finite.all() else
+                                                  pd.unique(game_ids[finite & pd.notna(game_ids)]).size)
+                    if not np.isfinite(mean) or mean <= 0:
                         result[stat] = np.nan
                         continue
-                    differences = ((values / means[stat] - 1)*100).dropna().to_numpy()
+                    differences = (values[~np.isnan(values)] / mean - 1) * 100
                     if not len(differences):
                         result[stat] = np.nan
                         continue

@@ -4,6 +4,9 @@ from datetime import datetime, timezone
 import argparse
 import json
 import hashlib
+from functools import lru_cache
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 import numpy as np
 import pandas as pd
 from live_projections import ESPN, ALIASES, fetch_json
@@ -91,36 +94,84 @@ def validate_team_boxscores(payload, rows):
             raise ValueError('Incomplete box-score points coverage')
 
 
-def load_game_logs(year, espn_team_ids, cache_dir=None):
+def verified_box(payload, year, event_id):
+    if str(payload.get('header', {}).get('id')) != event_id:
+        raise ValueError('Box score returned a different game')
+    rows = parse_boxscore(payload, year)
+    validate_team_boxscores(payload, rows)
+    return rows
+
+
+@lru_cache(maxsize=1400)
+def cached_box(path, year, event_id, modified_ns):
+    return verified_box(json.loads(path.read_bytes()), year, event_id)
+
+
+@lru_cache(maxsize=2)
+def bundled_box_rows(year):
+    path = ROOT / 'data' / f'game_logs_{year}.csv.gz'
+    try:
+        metadata = json.loads(path.with_suffix('.source.json').read_bytes())
+        if metadata.get('season_ending_year') != year or hashlib.sha256(path.read_bytes()).hexdigest() != metadata['sha256']:
+            return None
+        frame = pd.read_csv(path, usecols=COLUMNS, dtype={'GAME_ID': str, 'ESPN_PLAYER_ID': str})
+        if len(frame) != metadata['player_games'] or frame.GAME_ID.nunique() != metadata['loaded_games']:
+            return None
+        return frame
+    except (OSError, TypeError, ValueError, KeyError):
+        return None  # Live validation remains available without the bundled checkpoint.
+
+
+def load_game_logs(year, espn_team_ids, cache_dir=None, *, game_counts=None, team_cache=None, archive=None):
     """Fetch each completed game once. Per-event season guards reject silent feed fallback."""
-    errors, events = [], {}
+    errors, events = [], set()
     def schedule(team_id):
-        return fetch_json(f'{ESPN}/site/v2/sports/basketball/nba/teams/{team_id}/schedule?season={year}&seasontype=2')
+        def fetch_completed():
+            payload = fetch_json(f'{ESPN}/site/v2/sports/basketball/nba/teams/{team_id}/schedule?season={year}&seasontype=2')
+            if str(payload.get('team', {}).get('id')) != str(team_id):
+                raise ValueError('Schedule returned the wrong team')
+            return {str(event['id']) for event in payload['events']
+                    if event.get('season', {}).get('year') == year
+                    and int(event.get('seasonType', {}).get('type', 0)) == 2
+                    and event.get('competitions', [{}])[0].get('status', {}).get('type', {}).get('completed')}
+        if team_cache is None or game_counts is None:
+            return fetch_completed()
+        games = game_counts[str(team_id)]
+        return team_cache.get(('schedule', year, str(team_id)), games, fetch_completed, lambda ids: len(ids) == games)
     with ThreadPoolExecutor(max_workers=6) as pool:
         jobs = {pool.submit(schedule, team):str(team) for team in espn_team_ids}
         for job in as_completed(jobs):
             try:
-                for event in job.result().get('events', []):
-                    if event.get('season', {}).get('year') == year and int(event.get('seasonType', {}).get('type',0)) == 2:
-                        comp = event.get('competitions',[{}])[0]
-                        if comp.get('status',{}).get('type',{}).get('completed'):
-                            events[str(event['id'])] = event
+                events.update(job.result())
             except Exception as exc:
                 errors.append(f'Schedule {jobs[job]}: {exc}')
     def box(event_id):
         path = cache_dir / f'{event_id}.json' if cache_dir else None
         if path and path.exists():
-            payload = json.loads(path.read_text())
-        else:
-            payload = fetch_json(f'{ESPN}/site/v2/sports/basketball/nba/summary?event={event_id}')
-            if path:
-                path.write_text(json.dumps(payload))
-        rows = parse_boxscore(payload,year)
-        validate_team_boxscores(payload, rows)
+            try:
+                rows = cached_box(path, year, event_id, path.stat().st_mtime_ns)
+                if rows:
+                    return rows
+            except (KeyError, TypeError, ValueError, OSError):
+                pass  # Retry a partial or corrupt download from an older app version.
+        payload = fetch_json(f'{ESPN}/site/v2/sports/basketball/nba/summary?event={event_id}')
+        rows = verified_box(payload, year, event_id)
+        if path and rows:
+            with NamedTemporaryFile(dir=cache_dir, delete=False, mode='w') as tmp:
+                temp_path = Path(tmp.name)
+                try:
+                    json.dump(payload, tmp)
+                    tmp.close()
+                    temp_path.replace(path)
+                finally:
+                    temp_path.unlink(missing_ok=True)
         return rows
+    # Use only games that the current season schedules still list as completed.
+    archived = archive.loc[archive.GAME_ID.isin(events)] if archive is not None else pd.DataFrame()
+    pending = events.difference(archived.GAME_ID.unique()) if not archived.empty else events
     rows = []
     with ThreadPoolExecutor(max_workers=6) as pool:
-        jobs = {pool.submit(box, event_id):event_id for event_id in events}
+        jobs = {pool.submit(box, event_id):event_id for event_id in pending}
         for i,job in enumerate(as_completed(jobs),1):
             try:
                 rows.extend(job.result())
@@ -128,7 +179,11 @@ def load_game_logs(year, espn_team_ids, cache_dir=None):
                 errors.append(f'Game {jobs[job]}: {exc}')
             if cache_dir and i % 100 == 0:
                 print(f'{i}/{len(events)} completed box scores',flush=True)
-    frame = pd.DataFrame(rows, columns=COLUMNS).drop_duplicates(['ESPN_PLAYER_ID','GAME_ID'])
+    frame = pd.DataFrame(rows, columns=COLUMNS)
+    if not archived.empty:
+        frame = pd.concat([archived, frame], ignore_index=True) if rows else archived
+    frame = (frame.drop_duplicates(['ESPN_PLAYER_ID','GAME_ID'])
+             .sort_values(['GAME_DATE', 'GAME_ID', 'ESPN_PLAYER_ID']).reset_index(drop=True))
     return frame, {'season_ending_year':year,'scheduled_completed_games':len(events),
                    'loaded_games':int(frame.GAME_ID.nunique()),'player_games':len(frame),'errors':errors,
                    'retrieved_at':datetime.now(timezone.utc).isoformat(),

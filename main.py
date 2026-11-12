@@ -6,19 +6,16 @@ import datetime
 
 import nba_api.stats.library.data
 import numpy as np
-import matplotlib.pyplot as plt
 import requests
 import streamlit as st
 import pandas
 from scipy.stats import poisson as scipy_poisson
 from nba_api.stats.library.parameters import SeasonTypeAllStar, PlayerOrTeamAbbreviation
-from sklearn.cluster import KMeans
 from nba_api.stats.endpoints import LeagueGameLog, SynergyPlayTypes, PlayerDashPtShots, shotchartdetail, \
     ShotChartDetail, LeagueHustleStatsPlayer, synergyplaytypes, LeagueDashPtStats, ScoreboardV3
 from nba_api.stats.static.players import get_players
 from nba_api.stats.static import teams
 from nba_api.stats.endpoints import commonteamroster
-from sklearn.preprocessing import StandardScaler
 import pandas as pd
 from FanduelScrape import getnbaprops, reformat_api, get_team_totals
 
@@ -986,6 +983,9 @@ def enhance_player_data(player_averages, min_games=10):
 def cluster_players_off(data, n_clusters):
     """Perform k-means clustering on players based on their stats and shooting profiles."""
     # Select features for clustering
+    import matplotlib.pyplot as plt
+    from sklearn.cluster import KMeans
+    from sklearn.preprocessing import StandardScaler
     data = data[data['MIN'] > 10].copy()
 
     # ============ UPDATED: EXPANDED FEATURE SET ============
@@ -1205,6 +1205,9 @@ def cluster_players_off(data, n_clusters):
 def cluster_players_def(data, n_clusters):
     """Perform k-means clustering on players based on their defensive stats."""
     # Select features for clustering
+    import matplotlib.pyplot as plt
+    from sklearn.cluster import KMeans
+    from sklearn.preprocessing import StandardScaler
     data = data[data['MIN'] > 10].copy()
 
     # ============ UPDATED: EXPANDED FEATURE SET ============
@@ -1457,6 +1460,8 @@ def add_advanced(data):  # ftr usage to ratio
 def basic_clustering(data):
     # Step 1: Generate or Load Data
     # Replace this with your actual dataset
+    import matplotlib.pyplot as plt
+    from sklearn.cluster import KMeans
     np.random.seed(42)
     data = np.random.rand(100, 2)  # 100 samples with 2 features
 

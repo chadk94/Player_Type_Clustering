@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from live_projections import match_player_stats
+from live_projections import match_player_stats, name_key
 from sportsbook_lines import player_quotes
 
 MODEL_VERSION = 'points-mixture-0.5-0.05-0.25-v1'
@@ -129,13 +129,14 @@ def points_quote(row, quote, observed=None):
     return result
 
 
-def game_quote_probabilities(players, payload, bookmaker, context, evaluate, stats, now=None):
+def game_quote_probabilities(players, payload, bookmaker, context, evaluate, stats, now=None, quotes_by_player=None):
     """Use the same player means and fresh paired quotes before edge filtering."""
     result = []
     for _, row in players.iterrows():
         player = row.to_dict()
         observed = context.get(int(row.PLAYER_ID))
-        quotes = player_quotes(payload, row.Player, bookmaker, now=now)
+        quotes = (quotes_by_player[name_key(row.Player)] if quotes_by_player is not None else
+                  player_quotes(payload, row.Player, bookmaker, now=now))
         for quote in quotes.to_dict('records'):
             stat = quote['Stat']
             if stat not in stats or (stat != 'PTS' and quote['Market status'] != 'Current'):

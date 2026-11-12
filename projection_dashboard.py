@@ -10,10 +10,10 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from live_projections import (ESPN, build_projections, fetch_json, load_live_state, match_player_stats, name_key, next_regular_season_game, round_projected_minutes)
+from live_projections import (CompletedTeamCache, ESPN, build_projections, fetch_json, load_live_state, match_player_stats, name_key, next_regular_season_game, round_projected_minutes)
 from archetype_fallback import build_archetype_priors
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
-from matchup_data import load_game_logs
+from matchup_data import bundled_box_rows, load_game_logs
 from matchup_projections import (assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS,
                                  prior_season_profiles, matchup_prior_games, MATCHUP_PRIOR_GAMES, MATCHUP_POLICY_VERSION)
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
@@ -30,7 +30,7 @@ from team_rate_blend import (season_rates, blend_team_rates, PRIOR_GAMES, POLICY
                             DEFENSIVE_PRIOR_GAMES, DEFENSIVE_FULL_CURRENT_GAMES)
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
 from slate_player_view import PLAYER_SORTS, rank_slate_players
-from sportsbook_edges import scheduled_book_games, game_edges, add_play_ev, EDGE_STATS, EVENT_TIME_TOLERANCE
+from sportsbook_edges import scheduled_book_games, game_edges, filter_game_edges, add_play_ev, EDGE_STATS, EVENT_TIME_TOLERANCE
 from sportsbook_injuries import KEY_MINUTES, game_injuries, injury_alert_changes, latest_report
 from edge_rating_table import render_edge_table
 from todays_plays import render_shortlist
@@ -46,12 +46,17 @@ from approved_minutes import render_import, for_matchup, projection_gaps, game_m
 from import_minutes import TEAM_IDS
 from schedule_feed import load_daily_schedule, ScheduleMemory
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
-                              player_quotes, compare_with_book, comparison_style, TEAM_NAMES)
+                              game_quotes, player_quotes, compare_with_book, comparison_style, TEAM_NAMES)
+
+
+@st.cache_resource
+def public_team_cache():
+    return CompletedTeamCache()
 
 
 @st.cache_data(ttl=300, show_spinner=False)
 def live_state(season):
-    return load_live_state(season)
+    return load_live_state(season, public_team_cache())
 
 
 @st.cache_resource
@@ -218,11 +223,13 @@ def next_team_game(season, espn_team_id, abbreviation):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def current_matchup_logs(year, team_ids):
+def current_matchup_logs(year, team_records):
     """Complete team boxes, including rounded-zero-minute attempts (coverage v2)."""
     cache = Path(tempfile.gettempdir()) / f'nba-matchup-boxes-{year}'
     cache.mkdir(exist_ok=True)
-    return load_game_logs(year, team_ids, cache)
+    counts = dict(team_records)
+    return load_game_logs(year, counts, cache, game_counts=counts, team_cache=public_team_cache(),
+                          archive=bundled_box_rows(year))
 
 
 @st.cache_data(show_spinner=False)
@@ -262,10 +269,37 @@ def sportsbook_props(event_id, bookmaker, _api_key):
     return payload
 
 
+@st.cache_data(ttl=300, max_entries=12, show_spinner=False)
+def sportsbook_slate_lines(bookmaker, _api_key):
+    try:
+        return read_feed('/odds', _api_key, bookmakers=bookmaker, markets='spreads,totals', oddsFormat='american')
+    except OddsFeedError:
+        return []
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def sportsbook_game_lines(event_id, bookmaker, _api_key):
     return read_feed(f'/events/{event_id}/odds',_api_key,
                      bookmakers=bookmaker,markets='spreads,totals',oddsFormat='american')
+
+
+def history_version():
+    paths = ('historical_player_data.csv', 'data/prior_stat_supplements.csv', 'data/game_logs_2026.csv.gz')
+    return tuple((ROOT / p).stat().st_mtime_ns if (ROOT / p).exists() else None for p in paths)
+
+
+@st.cache_data(max_entries=2, show_spinner=False)
+def historical_baselines(roster, version):
+    history = pd.read_csv(ROOT / 'historical_player_data.csv')
+    supplement_path = ROOT / 'data' / 'prior_stat_supplements.csv'
+    if supplement_path.exists():
+        supplement = pd.read_csv(supplement_path)
+        if not supplement.SEASON_ID.eq(int(SEASON[:4]) + 19999).all():
+            raise ValueError('Prior-stat supplement has the wrong source season')
+        history = pd.concat([history,supplement[~supplement.PLAYER_ID.isin(history.PLAYER_ID)]],ignore_index=True)
+    full_prior = prior_season_profiles(pd.read_csv(ROOT / 'data' / 'game_logs_2026.csv.gz',dtype={'ESPN_PLAYER_ID':str}),roster)
+    history = pd.concat([full_prior,history[~history.PLAYER_ID.isin(full_prior.PLAYER_ID)]],ignore_index=True)
+    return history, build_archetype_priors(roster, history)
 
 
 @st.cache_data(show_spinner=False)
@@ -276,10 +310,40 @@ def prior_team_rates():
 
 def team_projection_preview(ui, frame, event, book, api_key, team_rates):
     try:
-        targets = market_targets(sportsbook_game_lines(event['id'],book,api_key),event,book)
+        slate = sportsbook_slate_lines(book, api_key)
+        matches = [row for row in slate if isinstance(row, dict) and row.get('id') == event['id']] if isinstance(slate, list) else []
+        try:
+            if len(matches) != 1:
+                raise ValueError('No unique game in slate')
+            targets = market_targets(matches[0], event, book)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            targets = market_targets(sportsbook_game_lines(event['id'],book,api_key),event,book)
     except (OddsFeedError,ValueError,KeyError,TypeError,AttributeError):
         ui.caption('Team points, assist, three-point and rebound adjustments unavailable: no usable current spread/total for this sportsbook and game. Existing model estimates are retained.')
         return frame
+    # Validate live prices before reusing any result. A refresh/import creates
+    # new team rates and discards the entire session's previous calculations.
+    memo = st.session_state.get('team_adjustments_cache')
+    if memo is None or memo[0] is not team_rates:
+        memo = (team_rates, {})
+        st.session_state['team_adjustments_cache'] = memo
+    cache = memo[1]
+    values = pd.util.hash_pandas_object(frame, index=True).to_numpy().tobytes()
+    cache_key = (event['id'], book, tuple(sorted(targets.items())), tuple(frame.columns),
+                 hashlib.sha256(values).digest())
+    if cache_key not in cache:
+        notes = ProjectionNotes()
+        adjusted = calculate_team_adjustments(notes, frame, targets, event, team_rates)
+        if len(cache) >= 32:
+            del cache[next(iter(cache))]
+        cache[cache_key] = adjusted, notes.messages
+    adjusted, messages = cache[cache_key]
+    for message in messages:
+        ui.caption(message)
+    return adjusted.copy()
+
+
+def calculate_team_adjustments(ui, frame, targets, event, team_rates):
     adjusted,summary,issues = apply_market_points(frame,targets)
     coverage = team_rates['coverage']
     home,away = TEAM_NAMES[event['home_team']],TEAM_NAMES[event['away_team']]
@@ -387,23 +451,17 @@ def set_edge_stats(selected):
         st.session_state[f'edges_stat_{stat}'] = selected
 
 
-def team_game_projection(ui, game, book_name, schedule, now, snapshots, projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle=None):
-    if project_for_game is not None:
-        projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
+def team_game_projection(ui, game, book_name, schedule, now, snapshots, team_rates, game_frames, approved_bundle=None):
     snapshot_key = (game['key'], BOOKS[book_name], POLICY_VERSION, MATCHUP_POLICY_VERSION, SHOOTING_POLICY_VERSION, PLAYER_RATE_POLICY_VERSION, ASSIST_POLICY_VERSION)
     order = [game['Away'], game['Home']]
-    base = projections[projections.Team.isin(order)].copy()
+    base, before = game_frames(*order, game['GameTimeUTC'])
     ui.caption(game_minutes_caption(base, order))
     notice = unmatched_minutes_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
     if notice:
         ui.warning(notice)
-    rows = [apply_matchup(base[base.Team.eq(side)], roster, teams, prior_effects, current_effects, opponent)
-            for side, opponent in [(game['Away'], game['Home']), (game['Home'], game['Away'])]
-            if not base[base.Team.eq(side)].empty]
-    if len(rows) != 2:
+    if base.Team.nunique() != 2:
         ui.warning('Both teams need roster projections before a game total can be shown.')
         return
-    before = pd.concat(rows, ignore_index=True)
     final = before.copy()
     try:
         api_key = get_odds_api_key()
@@ -500,14 +558,13 @@ def render_slate_player_table(ui, frame, by_key, book_name, date, notes):
 
 
 def render_all_team_players(ui, games, book_name, date, schedule, now, snapshots,
-                            projections, roster, teams, prior_effects, current_effects,
-                            team_rates, project_for_game, approved_bundle):
+                            team_rates, game_frames, approved_bundle):
     frames, notes = [], []
     with ui.spinner('Loading player projections across all games…'):
         for game in games:
             messages = ProjectionNotes()
             result = team_game_projection(messages, game, book_name, schedule, now, snapshots,
-                projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle)
+                team_rates, game_frames, approved_bundle)
             label = f"{game['Away']} @ {game['Home']}"
             if result is None:
                 notes.append({'Game': label, 'Coverage': 'Unavailable', 'Details': ' '.join(messages.messages)})
@@ -533,7 +590,7 @@ def render_all_team_players(ui, games, book_name, date, schedule, now, snapshots
                              {g['key']: g for g in games}, book_name, date, notes)
 
 
-def render_team_projections(ui, projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game=None, approved_bundle=None):
+def render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
     ui.subheader('🏀 Team Projections')
     ui.caption('Compare team totals or rank all players using the same saved minutes and adjustments as Top Sportsbook Edges. Player sliders affect individual previews only.')
     ui.caption('Games stay available until one hour after their scheduled tip-off. The list updates when you use a control or refresh.')
@@ -570,7 +627,7 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
                     horizontal=True, key='team_projection_view')
     if view == 'All games — player projections':
         render_all_team_players(ui, games, book_name, date, schedule, now, snapshots,
-            projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle)
+            team_rates, game_frames, approved_bundle)
         return
     if st.session_state.get('team_projection_game') not in by_key:
         st.session_state['team_projection_game'] = games[0]['key']
@@ -583,7 +640,7 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
     ui.subheader(f"{game['Away']} @ {game['Home']} — {book_name}")
     with ui.expander('Adjustment details'):
         result = team_game_projection(ui, game, book_name, schedule, now, snapshots,
-            projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle)
+            team_rates, game_frames, approved_bundle)
     if result is None:
         return
     base, before, final = result
@@ -656,125 +713,181 @@ def render_team_projections(ui, projections, roster, teams, prior_effects, curre
 
 
 @st.fragment
+def render_matchup_rankings(ui, matchups):
+    rank_col, sample_col = ui.columns(2)
+    with rank_col:
+        ranked_stat = ui.selectbox('Rank matchups by',HEAT_STATS,key='matchup_rank')
+    with sample_col:
+        minimum = ui.number_input('Minimum samples per archetype',min_value=1,max_value=500,value=1,step=1,key='matchup_samples')
+    include_negative = ui.checkbox('Show negative matchups too',value=True,key='negative_matchups')
+    eligible = matchups[matchups['Off samples'].ge(minimum) & matchups['Def samples'].ge(minimum)]
+    eligible = eligible[eligible[f'{ranked_stat} %'].notna()]
+    if not include_negative:
+        eligible = eligible[eligible[f'{ranked_stat} %'].gt(0)]
+    eligible = eligible.sort_values(f'{ranked_stat} %',ascending=False)
+    ui.success(f'Found {len(eligible)} players with matchup history')
+    ui.caption('Home/away and opponent come from the selected day’s schedule. Percentages compare archetype production against that opponent with the archetype’s usual production. An attractive matchup is not an availability confirmation.')
+    columns = ['Player','Team','Venue','Opponent','Offensive archetype','Defensive archetype',*[f'{x} %' for x in HEAT_STATS],'Off samples','Def samples','Matchup data']
+    display = eligible[columns]
+    formats = {f'{x} %':'{:+.1f}%' for x in HEAT_STATS}
+    ui.dataframe(display.style.map(heat_color,subset=list(formats)).format(formats,na_rep='—'),hide_index=True,width='stretch')
+    with ui.expander('Projected stat lines for these matchups',expanded=True):
+        ui.caption('Uses the same team adjustments as Player vs Opponent, Top Sportsbook Edges and Team Projections when the selected sportsbook has a verified game total. Matchup percentages above remain archetype effects.')
+        ui.dataframe(eligible[['Player','Team','Opponent','Projected minutes','PTS','REB','AST','FG3M','STL','BLK','TOV','PRA','Stat baseline','Status','Team rate status']].rename(columns={'FG3M':'3PM'}).round(2),hide_index=True,width='stretch')
+    ui.download_button('Download matchup opportunities CSV',eligible.to_csv(index=False),'matchup_opportunities.csv','text/csv')
+
+
+@st.fragment
+def render_archetypes_page(ui, roster):
+    with ui.expander('Review the 100 corrected players'):
+        audit = pd.read_csv(ROOT / 'data/audit/reviewed_100_players.csv')
+        ui.write('All 100 previously uncategorized or unnamed assignments have been reviewed. Your manual overrides take precedence. Developing roles remain provisional.')
+        ui.dataframe(audit[['Player','Team','Offense','Defense','Confidence']],hide_index=True,width='stretch')
+        ui.download_button('Download the full 100-player audit',audit.to_csv(index=False),'archetype_audit_100_players.csv','text/csv')
+    with ui.expander('Review the 33 additional rotation players'):
+        rotation_audit = pd.read_csv(ROOT / 'data/audit/low_minute_33_players.csv')
+        ui.write('Roles are available even at 10 minutes or fewer. Existing manual assignments take precedence; developing roles remain provisional.')
+        ui.dataframe(rotation_audit[['PLAYER_NAME','TEAM_ABBREVIATION','OffArchetype','DefArchetype','Confidence']],hide_index=True,width='stretch')
+        ui.download_button('Download the 33-player assignments',rotation_audit.to_csv(index=False),'additional_33_archetypes.csv','text/csv')
+    ui.caption('Approved 2026–27 archetypes and projected minutes rounded to the nearest 0.5. Manual overrides remain authoritative.')
+    team = ui.selectbox('Team', ['All'] + sorted(roster.TEAM_ABBREVIATION.unique()), key='archetype_team')
+    selected = roster if team == 'All' else roster[roster.TEAM_ABBREVIATION.eq(team)]
+    if ui.checkbox('Only players with projected minutes', value=True, key='archetype_rotation'):
+        selected = selected[selected.PROJECTED_MIN.gt(0)]
+    columns = ['PLAYER_NAME','TEAM_ABBREVIATION','PROJECTED_MIN','OffArchetype','DefArchetype',
+               'OffAssignmentSource','DefAssignmentSource','HasHistoricalProfile']
+    ui.dataframe(selected[columns], hide_index=True, width='stretch')
+    ui.download_button('Download archetypes CSV', selected.to_csv(index=False), 'preseason_archetypes.csv', 'text/csv')
+
+
+@st.fragment
 def render_live_dashboard(ui, roster):
     roster = apply_roster_rules(roster)
     roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)
     ui.title(f'🏀 Player Stat Projections ({SEASON})')
     ui.caption(f'Your workbook minutes for each team’s first {OPENING_GAMES} games; season-average minutes from game {OPENING_GAMES + 1}. Counts include completed regular-season team games, not player appearances. Imported approved minutes take priority for matching games.')
-    approved_bundle = render_import(ui, roster, SEASON)
-    if ui.button('Refresh live data'):
-        live_state.clear()
-        today_schedule.clear()
-        team_schedule.clear()
-        current_matchup_logs.clear()
-        dashboard_assist_samples.clear()
-        sportsbook_events.clear()
-        sportsbook_props.clear()
-        sportsbook_game_lines.clear()
-        edge_injury_report.clear()
-    with ui.spinner('Refreshing team records and season averages…'):
-        try:
-            state = live_state(SEASON)
-            teams, players = state['teams'], state['players']
-            ui.caption(f"Live data checked: {state['as_of']} · ESPN regular-season data · Snapshot stays fixed while you browse. Use Refresh live data to update.")
-            if state['errors']:
-                ui.warning('Some current-season player summaries could not be loaded. Affected players may lack season-average minutes; unavailable values stay blank.')
-                with ui.expander('Data refresh details'):
-                    ui.write(state['errors'])
-        except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
-            ui.warning('Live team records are unavailable. Numerical projections are paused because the correct minutes window cannot be verified. Your archetypes remain available below.')
-            teams = pd.DataFrame(columns=['TEAM_ID','GAMES_PLAYED'])
-            players = pd.DataFrame()
-            with ui.expander('Data refresh details'):
-                ui.write(f'{type(exc).__name__}: {exc}')
-    history = pd.read_csv(ROOT / 'historical_player_data.csv')
-    supplement_path = ROOT / 'data' / 'prior_stat_supplements.csv'
-    if supplement_path.exists():
-        supplement = pd.read_csv(supplement_path)
-        if not supplement.SEASON_ID.eq(int(SEASON[:4]) + 19999).all():
-            raise ValueError('Prior-stat supplement has the wrong source season')
-        history = pd.concat([history,supplement[~supplement.PLAYER_ID.isin(history.PLAYER_ID)]],ignore_index=True)
-    full_prior = prior_season_profiles(pd.read_csv(ROOT / 'data' / 'game_logs_2026.csv.gz',dtype={'ESPN_PLAYER_ID':str}),roster)
-    history = pd.concat([full_prior,history[~history.PLAYER_ID.isin(full_prior.PLAYER_ID)]],ignore_index=True)
-    fallback = None
-    stored_fallback = ROOT / 'data' / 'rotowire_fallback.csv'
-    if stored_fallback.exists():
-        fallback = pd.read_csv(stored_fallback)
-    with ui.expander('RotoWire baseline for players without historical stats'):
-        ui.write('Verified current-season stats replace RotoWire and archetype estimates from a player’s first regular-season appearance. RotoWire fills only players or stat categories without usable actuals. Your approved minutes take priority for matching games; otherwise workbook/season-average minutes apply. Unassigned archetype sides use the baseline without an opponent multiplier. An uploaded CSV applies to this session and is not saved publicly.')
-        upload = ui.file_uploader('RotoWire 2026–27 season projections CSV',type=['csv'],key='rotowire_csv')
-        if upload is not None:
-            units = ui.selectbox('Export stat units',['Per game','Season totals','Per 36 minutes'],key='rotowire_units')
-            try:
-                fallback, unmatched = normalize_rotowire(read_rotowire_csv(upload),roster,
-                    {'Per game':'per_game','Season totals':'season_totals','Per 36 minutes':'per_36'}[units])
-                ui.caption(f'{len(fallback)} player rows matched; {len(unmatched)} unmatched rows ignored. Estimates are used only where actual stats are unavailable.')
-            except (ValueError, KeyError) as exc:
-                ui.error(str(exc))
-                fallback = None
-        elif fallback is not None:
-            ui.caption(f'{len(fallback)} RotoWire baseline rows loaded from the October 16, 2026 export; verified actual stats take priority.')
-        elif fallback is None:
-            ui.caption('No RotoWire export has been loaded yet. Players without individual profiles can use a flagged archetype-average estimate when both assigned roles have enough historical coverage.')
-    role_policy_version = hashlib.sha256(b''.join((ROOT / p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv','archetype_league_reviews.csv','archetype_overrides.json','archetype_model.py','matchup_projections.py','matchup_data.py'])).hexdigest()
-    prior_effects = prior_matchup_effects(roster, role_policy_version)
-    current_effects = {}
-    logs = pd.DataFrame()
-    if not teams.empty and teams.GAMES_PLAYED.gt(0).any():
-        with ui.spinner('Refreshing current-season team rates and matchup history…'):
-            try:
-                logs, details = current_matchup_logs(int(SEASON[:4])+1, tuple(teams.ESPN_TEAM_ID))
-                if not logs.empty:
-                    current_effects = current_matchup_effects(logs, roster, role_policy_version)
-                if details['errors']:
-                    ui.warning('Some current-season matchup games could not be loaded. Sample counts may be incomplete.')
-            except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
-                ui.warning(f'Current-season matchup data unavailable: {exc}')
-    assist_samples, missing_days = dashboard_assist_samples(SEASON, roster, players, logs)
-    if missing_days:
-        ui.caption('Some NBA passing updates are unavailable. Those games use recorded assists alongside the verified passing sample.')
-    archetype_priors = build_archetype_priors(roster, history)
-    projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback,
-                                    archetype_priors=archetype_priors, assist_samples=assist_samples)
-    gaps = projection_gaps(approved_bundle, projections)
-    if not gaps.empty:
-        ui.info(f'{len(gaps)} active player entries need projection data. Where flagged below, temporary archetype averages keep team totals available until individual stats arrive. Players without archetypes retain available individual baseline rates without an adjustment for the unassigned role. Unresolved statistical gaps still leave affected totals blank.')
-        with ui.expander('Players needing projection data'):
-            ui.dataframe(gaps, hide_index=True, width='stretch')
-    game_projection_cache = {}
-    def project_for_game(team, opponent, start):
-        minutes = for_matchup(approved_bundle, roster, team, opponent, start)
-        if not minutes: return projections
-        key = tuple(sorted(minutes.items()))
-        if key not in game_projection_cache:
-            changed = build_projections(roster[roster.PLAYER_ID.isin(minutes)], history, teams, players,
-                opening_games=OPENING_GAMES, fallback=fallback, approved_minutes=minutes, archetype_priors=archetype_priors, assist_samples=assist_samples)
-            game_projection_cache[key] = pd.concat(
-                [projections[~projections.PLAYER_ID.isin(minutes)], changed], ignore_index=True)
-        return game_projection_cache[key]
-    team_rates = blend_team_rates(prior_team_rates(), logs, teams)
-    probability_context = scoring_context(roster, players)
-    ui.caption(f'Allowed assist, three-attempt and offensive-rebound shares use a {DEFENSIVE_PRIOR_GAMES:g}-game prior through eight completed games, then phase out last season by {DEFENSIVE_FULL_CURRENT_GAMES:g}. Other team rates keep a {PRIOR_GAMES:g}-game prior. Threes preserve individual shooting percentages; PRA uses final points + rebounds + assists.')
-    ui.caption('Three-point accuracy blends prior-career NBA shooting with this season using a 200-attempt prior. Career weight never falls below 50%. Minutes and normalized archetype attempt shares still determine volume. Players without prior NBA attempts retain their existing baseline.')
-    ui.caption(f"Archetype matchups count last season as {matchup_prior_games('PTS'):g} games for points, three-point attempts, assists and rebounds, "
-               f"{matchup_prior_games('STL'):g} for steals and blocks, and {MATCHUP_PRIOR_GAMES:g} for the other stat components. Three-point makes follow attempts.")
-    with ui.expander('Team rate weights and data coverage'):
-        coverage = team_rates['coverage'].reset_index().rename(columns={
-            'Current weight':'Other rates: this season', 'Prior games':'Other prior games',
-            'Defensive current weight':'Allowed rates: this season',
-            'Defensive prior games':'Allowed prior games','Defensive status':'Allowed rate status'})
-        ui.dataframe(coverage.style.format({'Other rates: this season':'{:.1%}', 'Completed games':'{:.0f}',
-                                            'Verified games':'{:.0f}', 'Other prior games':'{:.1f}',
-                                            'Allowed rates: this season':'{:.1%}','Allowed prior games':'{:.2f}'},na_rep='—'),
-                     hide_index=True,width='stretch')
-        ui.caption('Allowed rates means assisted baskets, three-point attempt share and offensive-rebound share allowed. Each team uses its own completed regular-season game count. Incomplete current box scores retain last-season team rates, even after game 20; no missing games are invented. All projection pages share this snapshot; Refresh live data updates it.')
-    # Each tab owns its reruns. Player/slider changes reuse this shared snapshot
-    # and cannot trigger league-wide ESPN refreshes or hidden-tab calculations.
-    # Imports and Refresh live data rerun the parent and rebuild every tab.
+    details_panel = ui.container()
     labels = ['Player vs Opponent', "🔥 Today's Best Matchups", '💰 Top Sportsbook Edges',
               "Today's Plays", '🏀 Team Projections', 'Archetypes']
     initial_tab = {'plays': "Today's Plays", 'edges': '💰 Top Sportsbook Edges'}.get(st.query_params.get('view'))
     projection_tab, best_tab, edges_tab, plays_tab, team_tab, archetype_tab = ui.tabs(labels, default=initial_tab)
+    with plays_tab:
+        render_shortlist(ui)
+    with archetype_tab:
+        render_archetypes_page(ui, roster)
+    with details_panel:
+        approved_bundle = render_import(ui, roster, SEASON)
+        if ui.button('Refresh live data'):
+            public_team_cache.clear()
+            live_state.clear()
+            today_schedule.clear()
+            team_schedule.clear()
+            current_matchup_logs.clear()
+            dashboard_assist_samples.clear()
+            sportsbook_events.clear()
+            sportsbook_props.clear()
+            sportsbook_slate_lines.clear()
+            sportsbook_game_lines.clear()
+            edge_injury_report.clear()
+        with ui.spinner('Refreshing team records and season averages…'):
+            try:
+                state = live_state(SEASON)
+                teams, players = state['teams'], state['players']
+                ui.caption(f"Live data checked: {state['as_of']} · ESPN regular-season data · Teams with the same game count can reuse verified data for 30 minutes. Refresh live data rechecks all teams.")
+                if state['errors']:
+                    ui.warning('Some current-season player summaries could not be loaded. Affected players may lack season-average minutes; unavailable values stay blank.')
+                    with ui.expander('Data refresh details'):
+                        ui.write(state['errors'])
+            except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+                ui.warning('Live team records are unavailable. Numerical projections are paused because the correct minutes window cannot be verified. Your archetypes remain available below.')
+                teams = pd.DataFrame(columns=['TEAM_ID','GAMES_PLAYED'])
+                players = pd.DataFrame()
+                with ui.expander('Data refresh details'):
+                    ui.write(f'{type(exc).__name__}: {exc}')
+        history, archetype_priors = historical_baselines(roster, history_version())
+        fallback = None
+        stored_fallback = ROOT / 'data' / 'rotowire_fallback.csv'
+        if stored_fallback.exists():
+            fallback = pd.read_csv(stored_fallback)
+        with ui.expander('RotoWire baseline for players without historical stats'):
+            ui.write('Verified current-season stats replace RotoWire and archetype estimates from a player’s first regular-season appearance. RotoWire fills only players or stat categories without usable actuals. Your approved minutes take priority for matching games; otherwise workbook/season-average minutes apply. Unassigned archetype sides use the baseline without an opponent multiplier. An uploaded CSV applies to this session and is not saved publicly.')
+            upload = ui.file_uploader('RotoWire 2026–27 season projections CSV',type=['csv'],key='rotowire_csv')
+            if upload is not None:
+                units = ui.selectbox('Export stat units',['Per game','Season totals','Per 36 minutes'],key='rotowire_units')
+                try:
+                    fallback, unmatched = normalize_rotowire(read_rotowire_csv(upload),roster,
+                        {'Per game':'per_game','Season totals':'season_totals','Per 36 minutes':'per_36'}[units])
+                    ui.caption(f'{len(fallback)} player rows matched; {len(unmatched)} unmatched rows ignored. Estimates are used only where actual stats are unavailable.')
+                except (ValueError, KeyError) as exc:
+                    ui.error(str(exc))
+                    fallback = None
+            elif fallback is not None:
+                ui.caption(f'{len(fallback)} RotoWire baseline rows loaded from the October 16, 2026 export; verified actual stats take priority.')
+            elif fallback is None:
+                ui.caption('No RotoWire export has been loaded yet. Players without individual profiles can use a flagged archetype-average estimate when both assigned roles have enough historical coverage.')
+        role_policy_version = hashlib.sha256(b''.join((ROOT / p).read_bytes() for p in ['archetype_reviews.csv','archetype_reference_reviews.csv','archetype_rotation_reviews.csv','archetype_league_reviews.csv','archetype_overrides.json','archetype_model.py','matchup_projections.py','matchup_data.py'])).hexdigest()
+        prior_effects = prior_matchup_effects(roster, role_policy_version)
+        current_effects = {}
+        logs = pd.DataFrame()
+        if not teams.empty and teams.GAMES_PLAYED.gt(0).any():
+            with ui.spinner('Refreshing current-season team rates and matchup history…'):
+                try:
+                    logs, details = current_matchup_logs(int(SEASON[:4])+1, tuple(sorted(zip(teams.ESPN_TEAM_ID.astype(str), teams.GAMES_PLAYED))))
+                    if not logs.empty:
+                        current_effects = current_matchup_effects(logs, roster, role_policy_version)
+                    if details['errors']:
+                        ui.warning('Some current-season matchup games could not be loaded. Sample counts may be incomplete.')
+                except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+                    ui.warning(f'Current-season matchup data unavailable: {exc}')
+        assist_samples, missing_days = dashboard_assist_samples(SEASON, roster, players, logs)
+        if missing_days:
+            ui.caption('Some NBA passing updates are unavailable. Those games use recorded assists alongside the verified passing sample.')
+        projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback,
+                                        archetype_priors=archetype_priors, assist_samples=assist_samples)
+        gaps = projection_gaps(approved_bundle, projections)
+        if not gaps.empty:
+            ui.info(f'{len(gaps)} active player entries need projection data. Where flagged below, temporary archetype averages keep team totals available until individual stats arrive. Players without archetypes retain available individual baseline rates without an adjustment for the unassigned role. Unresolved statistical gaps still leave affected totals blank.')
+            with ui.expander('Players needing projection data'):
+                ui.dataframe(gaps, hide_index=True, width='stretch')
+        game_projection_cache = {}
+        def project_for_game(team, opponent, start):
+            minutes = for_matchup(approved_bundle, roster, team, opponent, start)
+            if not minutes: return projections
+            key = tuple(sorted(minutes.items()))
+            if key not in game_projection_cache:
+                changed = build_projections(roster[roster.PLAYER_ID.isin(minutes)], history, teams, players,
+                    opening_games=OPENING_GAMES, fallback=fallback, approved_minutes=minutes, archetype_priors=archetype_priors, assist_samples=assist_samples)
+                game_projection_cache[key] = pd.concat(
+                    [projections[~projections.PLAYER_ID.isin(minutes)], changed], ignore_index=True)
+            return game_projection_cache[key]
+        @lru_cache(maxsize=32)
+        def game_frames(away, home, start):
+            # One immutable roster snapshot per game, including approved minutes.
+            frame = project_for_game(home, away, start)
+            base = frame.loc[frame.Team.isin((home, away))].reset_index(drop=True)
+            opponents = base.Team.map({away: home, home: away})
+            before = apply_matchup(base.assign(Opponent=opponents), roster, teams, prior_effects, current_effects)
+            return base, before
+
+        team_rates = blend_team_rates(prior_team_rates(), logs, teams)
+        probability_context = scoring_context(roster, players)
+        ui.caption(f'Allowed assist, three-attempt and offensive-rebound shares use a {DEFENSIVE_PRIOR_GAMES:g}-game prior through eight completed games, then phase out last season by {DEFENSIVE_FULL_CURRENT_GAMES:g}. Other team rates keep a {PRIOR_GAMES:g}-game prior. Threes preserve individual shooting percentages; PRA uses final points + rebounds + assists.')
+        ui.caption('Three-point accuracy blends prior-career NBA shooting with this season using a 200-attempt prior. Career weight never falls below 50%. Minutes and normalized archetype attempt shares still determine volume. Players without prior NBA attempts retain their existing baseline.')
+        ui.caption(f"Archetype matchups count last season as {matchup_prior_games('PTS'):g} games for points, three-point attempts, assists and rebounds, "
+                   f"{matchup_prior_games('STL'):g} for steals and blocks, and {MATCHUP_PRIOR_GAMES:g} for the other stat components. Three-point makes follow attempts.")
+        with ui.expander('Team rate weights and data coverage'):
+            coverage = team_rates['coverage'].reset_index().rename(columns={
+                'Current weight':'Other rates: this season', 'Prior games':'Other prior games',
+                'Defensive current weight':'Allowed rates: this season',
+                'Defensive prior games':'Allowed prior games','Defensive status':'Allowed rate status'})
+            ui.dataframe(coverage.style.format({'Other rates: this season':'{:.1%}', 'Completed games':'{:.0f}',
+                                                'Verified games':'{:.0f}', 'Other prior games':'{:.1f}',
+                                                'Allowed rates: this season':'{:.1%}','Allowed prior games':'{:.2f}'},na_rep='—'),
+                         hide_index=True,width='stretch')
+            ui.caption('Allowed rates means assisted baskets, three-point attempt share and offensive-rebound share allowed. Each team uses its own completed regular-season game count. Incomplete current box scores retain last-season team rates, even after game 20; no missing games are invented. All projection pages share this snapshot; Refresh live data updates it.')
+    # Each tab owns its reruns. Player/slider changes reuse this shared snapshot
+    # and cannot trigger league-wide ESPN refreshes or hidden-tab calculations.
+    # Imports and Refresh live data rerun the parent and rebuild every tab.
     ui.caption('Player baselines reach 100% this season after 20 player appearances. Historical priors stay unchanged through eight appearances, then phase out; career three-point accuracy keeps at least 50% career weight. Rookies use actual rates from their first appearance.')
     @st.fragment
     def render_player_page():
@@ -1014,77 +1127,89 @@ def render_live_dashboard(ui, roster):
     @st.fragment
     def render_best_matchups_page():
         ui.subheader("🔥 Today's Best Matchup Opportunities")
-        date_col, rank_col, sample_col = ui.columns(3)
-        with date_col:
-            date = ui.date_input('Slate date',value=datetime.now(ZoneInfo('America/Denver')).date(),key='matchup_date')
+        date = ui.date_input('Slate date',value=datetime.now(ZoneInfo('America/Denver')).date(),key='matchup_date')
         schedule = schedule_for_view(ui, date, 'matchup_schedule_reload')
         if schedule is None:
             return
         if schedule.empty:
             ui.info(f'No upcoming regular-season games were found for {date:%b %d, %Y}. Choose another date to preview its matchups.')
         else:
-            scheduled_frames = []
-            uncovered = {}
-            for fixture in schedule.itertuples():
-                side = next((name for name,tid in TEAM_IDS.items() if tid == fixture.TEAM_ID), None)
-                frame = project_for_game(side, fixture.Opponent, fixture.GameTimeUTC)
-                scheduled_frames.append(frame[frame.TEAM_ID.eq(fixture.TEAM_ID)])
-                notice = unmatched_minutes_message(approved_bundle, side, fixture.Opponent, fixture.GameTimeUTC)
-                if notice:
-                    uncovered[tuple(sorted([side, fixture.Opponent]))] = notice
+            matchup_book = ui.selectbox('Sportsbook for matchup projections',list(BOOKS),key='matchup_book')
+            frames, uncovered = [], []
+            abbreviations = {team_id: name for name, team_id in TEAM_IDS.items()}
+            with ui.expander('Team projection adjustments'):
+                key = get_odds_api_key()
+                try:
+                    events = scheduled_book_games(sportsbook_events(key), schedule) if key else []
+                except (OddsFeedError, requests.RequestException, ValueError, KeyError, TypeError):
+                    events = []
+                if not events:
+                    ui.caption('Verified game totals are unavailable; retaining matchup projections.')
+                for fixture in schedule.loc[schedule.Venue.eq('home')].itertuples():
+                    home, away = abbreviations[fixture.TEAM_ID], fixture.Opponent
+                    start = pd.Timestamp(fixture.GameTimeUTC)
+                    _, before = game_frames(away, home, start)
+                    if before.empty:
+                        continue
+                    notice = unmatched_minutes_message(approved_bundle, away, home, start)
+                    if notice:
+                        uncovered.append(notice)
+                    matches = [g for g in events if (g['Home'], g['Away']) == (home, away)
+                               and abs(g['GameTimeUTC'] - start) <= EVENT_TIME_TOLERANCE]
+                    final = before
+                    if len(matches) == 1:
+                        event = {**matches[0], 'commence_time': matches[0]['GameTimeUTC'].isoformat()}
+                        try:
+                            final = team_projection_preview(ui, before, event, BOOKS[matchup_book], key, team_rates)
+                        except (OddsFeedError, requests.RequestException, ValueError, KeyError, TypeError):
+                            ui.caption(f'{away} @ {home}: game team adjustments unavailable; retaining matchup projections.')
+                    frames.append(final)
             if uncovered:
                 extra = f' {len(uncovered)-1} other scheduled games are also not covered.' if len(uncovered)>1 else ''
-                ui.warning(next(iter(uncovered.values())) + extra)
-            slate_projections = pd.concat(scheduled_frames,ignore_index=True)
-            slate = slate_projections.merge(schedule,on='TEAM_ID',how='inner',validate='many_to_one')
-            matchups = apply_matchup(slate,roster,teams,prior_effects,current_effects)
-            # Calibrate complete rosters before sample, minute or rank filters.
-            # Ratings remain the original archetype effects; stat lines and CSVs
-            # use the same market/team pipeline as the other projection pages.
-            matchups['Team rate status'] = 'No verified game total'
-            matchup_book = ui.selectbox('Sportsbook for matchup projections',list(BOOKS),key='matchup_book')
-            with ui.expander('Team projection adjustments'):
-                try:
-                    key = get_odds_api_key()
-                    if not key:
-                        raise OddsFeedError('Sportsbook feed access is not configured.')
-                    events = scheduled_book_games(sportsbook_events(key),schedule)
-                    for game in events:
-                        mask = ((matchups.Team.eq(game['Home']) & matchups.Opponent.eq(game['Away']))
-                                | (matchups.Team.eq(game['Away']) & matchups.Opponent.eq(game['Home'])))
-                        if not mask.any():
-                            continue
-                        event = {**game,'commence_time':game['GameTimeUTC'].isoformat()}
-                        try:
-                            calibrated = team_projection_preview(ui,matchups.loc[mask],event,BOOKS[matchup_book],key,team_rates)
-                            matchups = pd.concat([matchups.loc[~mask],calibrated],ignore_index=True)
-                        except (OddsFeedError,requests.RequestException,ValueError,KeyError,TypeError):
-                            ui.caption(f"{game['Away']} @ {game['Home']}: game team adjustments unavailable; retaining matchup projections.")
-                except (OddsFeedError,requests.RequestException,ValueError,KeyError,TypeError):
-                    ui.caption('Verified game totals are unavailable; retaining matchup projections.')
+                ui.warning(uncovered[0] + extra)
+            if not frames:
+                ui.info('No players with roster projections were found for the scheduled games.')
+                return
+            matchups = pd.concat(frames, ignore_index=True).merge(schedule, on=['TEAM_ID','Opponent'],
+                                                                 how='inner', validate='many_to_one')
+            if 'Team rate status' not in matchups:
+                matchups['Team rate status'] = 'No verified game total'
+            else:
+                matchups['Team rate status'] = matchups['Team rate status'].fillna('No verified game total')
             matchups = matchups[matchups['Projected minutes'].gt(0)]
-            with rank_col:
-                ranked_stat = ui.selectbox('Rank matchups by',HEAT_STATS,key='matchup_rank')
-            with sample_col:
-                minimum = ui.number_input('Minimum samples per archetype',min_value=1,max_value=500,value=1,step=1,key='matchup_samples')
-            include_negative = ui.checkbox('Show negative matchups too',value=True,key='negative_matchups')
-            eligible = matchups[matchups['Off samples'].ge(minimum) & matchups['Def samples'].ge(minimum)]
-            eligible = eligible[eligible[f'{ranked_stat} %'].notna()]
-            if not include_negative:
-                eligible = eligible[eligible[f'{ranked_stat} %'].gt(0)]
-            eligible = eligible.sort_values(f'{ranked_stat} %',ascending=False)
-            ui.success(f'Found {len(eligible)} players with matchup history')
-            ui.caption('Home/away and opponent come from the selected day’s schedule. Percentages compare archetype production against that opponent with the archetype’s usual production. An attractive matchup is not an availability confirmation.')
-            columns = ['Player','Team','Venue','Opponent','Offensive archetype','Defensive archetype',*[f'{x} %' for x in HEAT_STATS],'Off samples','Def samples','Matchup data']
-            display = eligible[columns]
-            formats = {f'{x} %':'{:+.1f}%' for x in HEAT_STATS}
-            ui.dataframe(display.style.map(heat_color,subset=list(formats)).format(formats,na_rep='—'),hide_index=True,width='stretch')
-            with ui.expander('Projected stat lines for these matchups',expanded=True):
-                ui.caption('Uses the same team adjustments as Player vs Opponent, Top Sportsbook Edges and Team Projections when the selected sportsbook has a verified game total. Matchup percentages above remain archetype effects.')
-                ui.dataframe(eligible[['Player','Team','Opponent','Projected minutes','PTS','REB','AST','FG3M','STL','BLK','TOV','PRA','Stat baseline','Status','Team rate status']].rename(columns={'FG3M':'3PM'}).round(2),hide_index=True,width='stretch')
-            ui.download_button('Download matchup opportunities CSV',eligible.to_csv(index=False),'matchup_opportunities.csv','text/csv')
+            render_matchup_rankings(ui, matchups)
     with best_tab:
         render_best_matchups_page()
+
+    # One session-local set per league snapshot. Check quote freshness at every
+    # interaction before reusing calculated probabilities, minute cushions or EV.
+    edge_cache = {}
+    def edge_snapshot(combined, payload, game, book, now):
+        if any(payload.get(k) != game[k] for k in ('id', 'home_team', 'away_team')):
+            raise OddsFeedError('Sportsbook matchup could not be verified.')
+        quotes = game_quotes(payload, combined.get('Player', []), book, now=now)
+        prices = pd.concat(quotes) if quotes else pd.DataFrame()
+        signature = hashlib.sha256()
+        for frame in (combined, prices):
+            signature.update(pd.util.hash_pandas_object(frame).to_numpy().tobytes())
+        key = (game['id'], game['GameTimeUTC'], book, signature.digest())
+        if key not in edge_cache:
+            ranked, _ = game_edges(combined, payload, game, book, now=now, plays_only=False, quotes_by_player=quotes)
+            probabilities = game_quote_probabilities(combined, payload, book, probability_context,
+                prop_quote, ('PTS', *COUNT_STATS), now=now, quotes_by_player=quotes)
+            ranked = ranked.merge(probabilities[['PLAYER_ID', 'Team', 'Stat', *PROBABILITY_COLUMNS]],
+                                  on=['PLAYER_ID', 'Team', 'Stat'], how='left', validate='many_to_one', sort=False)
+            ranked = add_play_ev(add_minutes_cushion(ranked, combined)) if not ranked.empty else ranked
+            observations = []
+            event = {**game, 'commence_time':game['GameTimeUTC'].isoformat()}
+            for row in probabilities.to_dict('records'):
+                saved = probability_snapshot(row, event, book, probability_context, 'Top Sportsbook Edges', now=now)
+                if saved:
+                    observations.append(saved)
+            if len(edge_cache) >= 16:
+                del edge_cache[next(iter(edge_cache))]
+            edge_cache[key] = ranked, observations
+        return edge_cache[key]
 
     @st.fragment
     def render_edges_page():
@@ -1149,34 +1274,17 @@ def render_live_dashboard(ui, roster):
                     ui.info('Select a game to see its top edges.')
                 else:
                     game = by_id[game_id]
-                    game_projections = project_for_game(game['Home'], game['Away'], game['GameTimeUTC'])
+                    game_projections, combined = game_frames(game['Away'], game['Home'], game['GameTimeUTC'])
                     ui.caption(game_minutes_caption(game_projections, [game['Away'], game['Home']]))
                     notice = unmatched_minutes_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
                     if notice:
                         ui.warning(notice)
-                    matchup_rows = []
-                    for side,opponent in [(game['Home'],game['Away']),(game['Away'],game['Home'])]:
-                        # Keep the whole roster so unavailable minutes cannot silently
-                        # disappear before team-coverage checks. Rankings exclude inactive rows.
-                        team_projection = game_projections[game_projections.Team.eq(side)]
-                        if not team_projection.empty:
-                            matchup_rows.append(apply_matchup(team_projection,roster,teams,prior_effects,current_effects,opponent))
                     payload = sportsbook_props(game_id,BOOKS[edge_book_name],edge_key)
-                    combined = pd.concat(matchup_rows,ignore_index=True) if matchup_rows else pd.DataFrame()
                     if not combined.empty:
                         market_event = {**game,'commence_time':game['GameTimeUTC'].isoformat()}
                         combined = team_projection_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key,team_rates)
-                    ranked,total_edges = game_edges(combined,payload,game,BOOKS[edge_book_name],now=now,plays_only=plays_only,direction=edge_direction,stats=selected_stats,player_search=player_search)
-                    if not combined.empty:
-                        probabilities = game_quote_probabilities(combined, payload, BOOKS[edge_book_name], probability_context,
-                            prop_quote, ('PTS', *COUNT_STATS), now=now)
-                        ranked = ranked.merge(probabilities[['PLAYER_ID', 'Team', 'Stat', *PROBABILITY_COLUMNS]],
-                                              on=['PLAYER_ID', 'Team', 'Stat'], how='left', validate='many_to_one', sort=False)
-                        for _, probability_row in probabilities.iterrows():
-                            saved = probability_snapshot(probability_row, market_event, BOOKS[edge_book_name],
-                                probability_context, 'Top Sportsbook Edges')
-                            if saved:
-                                probability_observations.append(saved)
+                    ranked, probability_observations = edge_snapshot(combined, payload, game, BOOKS[edge_book_name], now)
+                    ranked, total_edges = filter_game_edges(ranked, plays_only, edge_direction, selected_stats, player_search)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
                     ui.caption('Snapshot of paired Over/Under prices; quotes older than 15 minutes are excluded when loaded. Use Refresh live data to update. Edge % is a projection gap, not a win probability or expected betting return.')
                     if not selected_stats:
@@ -1189,7 +1297,6 @@ def render_live_dashboard(ui, roster):
                     else:
                         ui.success(f'Showing all {total_edges} eligible player-stat edges')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
-                        ranked = add_play_ev(add_minutes_cushion(ranked, combined))
                         display_columns = ['Rank','Player','Stat','Play','EV %','Projected minutes','Good-to minutes','Minutes cushion','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
                         ui.caption('Good-to minutes shows how low an Over or how high an Under can go while its edge stays above 5%. Minutes cushion is the room from the projection. Tested in half-minute steps through 48 with the same prices and teammate minutes.')
                         if show_recent:
@@ -1211,35 +1318,9 @@ def render_live_dashboard(ui, roster):
         render_probability_tracking(ui, probability_observations, logs, 'edges')
     with edges_tab:
         render_edges_page()
-    with plays_tab:
-        render_shortlist(ui)
 
     @st.fragment
     def render_team_page():
-        render_team_projections(ui, projections, roster, teams, prior_effects, current_effects, team_rates, project_for_game, approved_bundle)
+        render_team_projections(ui, team_rates, game_frames, approved_bundle)
     with team_tab:
         render_team_page()
-
-    @st.fragment
-    def render_archetypes_page():
-        with ui.expander('Review the 100 corrected players'):
-            audit = pd.read_csv(ROOT / 'data/audit/reviewed_100_players.csv')
-            ui.write('All 100 previously uncategorized or unnamed assignments have been reviewed. Your manual overrides take precedence. Developing roles remain provisional.')
-            ui.dataframe(audit[['Player','Team','Offense','Defense','Confidence']],hide_index=True,width='stretch')
-            ui.download_button('Download the full 100-player audit',audit.to_csv(index=False),'archetype_audit_100_players.csv','text/csv')
-        with ui.expander('Review the 33 additional rotation players'):
-            rotation_audit = pd.read_csv(ROOT / 'data/audit/low_minute_33_players.csv')
-            ui.write('Roles are available even at 10 minutes or fewer. Existing manual assignments take precedence; developing roles remain provisional.')
-            ui.dataframe(rotation_audit[['PLAYER_NAME','TEAM_ABBREVIATION','OffArchetype','DefArchetype','Confidence']],hide_index=True,width='stretch')
-            ui.download_button('Download the 33-player assignments',rotation_audit.to_csv(index=False),'additional_33_archetypes.csv','text/csv')
-        ui.caption('Approved 2026–27 archetypes and projected minutes rounded to the nearest 0.5. Manual overrides remain authoritative.')
-        team = ui.selectbox('Team', ['All'] + sorted(roster.TEAM_ABBREVIATION.unique()), key='archetype_team')
-        selected = roster if team == 'All' else roster[roster.TEAM_ABBREVIATION.eq(team)]
-        if ui.checkbox('Only players with projected minutes', value=True, key='archetype_rotation'):
-            selected = selected[selected.PROJECTED_MIN.gt(0)]
-        columns = ['PLAYER_NAME','TEAM_ABBREVIATION','PROJECTED_MIN','OffArchetype','DefArchetype',
-                   'OffAssignmentSource','DefAssignmentSource','HasHistoricalProfile']
-        ui.dataframe(selected[columns], hide_index=True, width='stretch')
-        ui.download_button('Download archetypes CSV', selected.to_csv(index=False), 'preseason_archetypes.csv', 'text/csv')
-    with archetype_tab:
-        render_archetypes_page()

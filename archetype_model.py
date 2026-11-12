@@ -7,7 +7,6 @@ for preseason and fixed named centroids for genuinely new feature profiles.
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
 
 ROOT = Path(__file__).resolve().parent
 
@@ -62,6 +61,7 @@ def physically_eligible(frame, side, roles):
 
 
 def assign_named_roles(frame, reference, features, side, rules, apply_rules, prior_mode=False):
+    from sklearn.preprocessing import StandardScaler
     valid = named_roles(rules,side)
     anchors = apply_rules(reference.copy(),side,rules)
     # Tiny/zero-minute samples should not define an archetype centroid.

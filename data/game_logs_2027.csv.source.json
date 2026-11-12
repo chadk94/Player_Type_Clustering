@@ -1,0 +1,16 @@
+{
+  "season_ending_year": 2027,
+  "scheduled_completed_games": 170,
+  "loaded_games": 169,
+  "player_games": 3824,
+  "errors": [
+    "Game 401909967: NYK: incomplete DREB coverage"
+  ],
+  "retrieved_at": "2026-11-12T19:06:20.333620+00:00",
+  "source": "ESPN team schedules and completed regular-season summary box scores",
+  "endpoint": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event={event_id}",
+  "sha256": "00e5ff7bf36fcddae1af4e8078d255b0362eb763581b1820bf5bd25a2ebe9b64",
+  "excluded_non_statistical_games": [
+    "NBA Cup Championship (excluded despite ESPN season type 2)"
+  ]
+}
