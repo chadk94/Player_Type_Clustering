@@ -869,6 +869,11 @@ def render_live_dashboard(ui, roster):
             before = apply_matchup(base.assign(Opponent=opponents), roster, teams, prior_effects, current_effects)
             return base, before
 
+        @lru_cache(maxsize=32)
+        def player_team_matchups(team, opponent, scheduled_start):
+            frame = projections if scheduled_start is None else project_for_game(team, opponent, scheduled_start)
+            return apply_matchup(frame.loc[frame.Team.eq(team)], roster, teams, prior_effects, current_effects, opponent)
+
         team_rates = blend_team_rates(prior_team_rates(), logs, teams)
         probability_context = scoring_context(roster, players)
         ui.caption(f'Allowed assist, three-attempt and offensive-rebound shares use a {DEFENSIVE_PRIOR_GAMES:g}-game prior through eight completed games, then phase out last season by {DEFENSIVE_FULL_CURRENT_GAMES:g}. Other team rates keep a {PRIOR_GAMES:g}-game prior. Threes preserve individual shooting percentages; PRA uses final points + rebounds + assists.')
@@ -1016,12 +1021,15 @@ def render_live_dashboard(ui, roster):
                 if event is None:
                     ui.caption(f'No matching pregame sportsbook event is available for {team} vs {opponent}. Lines stay blank after tip-off; prices from a later rematch are not substituted.')
                 else:
-                    team_baselines = team_players.copy()
+                    full_team = (player_team_matchups(team, opponent, scheduled_start)
+                                 if adjusted_on else team_players)
                     if flag_key in st.session_state:
-                        for column in baseline.columns:
-                            if column in team_baselines:
-                                team_baselines.loc[team_baselines.PLAYER_ID.eq(player_id),column] = baseline.iloc[0][column]
-                    full_team = apply_matchup(team_baselines,roster,teams,prior_effects,current_effects,opponent) if adjusted_on else team_baselines
+                        # Only this player's rates/minutes changed. Keep every teammate
+                        # in the same order for the normal team-target allocation.
+                        position = full_team.PLAYER_ID.tolist().index(player_id)
+                        replacement = adjusted if adjusted_on else baseline
+                        full_team = pd.concat([full_team.iloc[:position], replacement, full_team.iloc[position+1:]],
+                                              ignore_index=True)
                     market_team = team_projection_preview(ui,full_team,event,book_key,api_key,team_rates)
                     recent_source = market_team
                     market_player = market_team[market_team.PLAYER_ID.eq(player_id)].iloc[0]
