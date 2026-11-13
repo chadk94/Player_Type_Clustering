@@ -198,7 +198,7 @@ def tracking_component():
     global _component
     if _component is None:
         from streamlit.components.v2 import component
-        _component = component('points_probability_tracking', js=Path(__file__).with_suffix('.mjs').read_text())
+        _component = component('points_probability_tracking_v2', js=Path(__file__).with_suffix('.mjs').read_text())
     return _component
 
 
@@ -209,9 +209,23 @@ def accept_tracking_reply(state, key, request, reply):
     if state[key].get('acknowledged') == request and state[key]['status'] == reply.get('status'):
         return
     if reply.get('status') == 'ok' and isinstance(reply.get('records'), list):
-        records = decode_records(reply['records'])
-        state[key] = {'records': records, 'results': reply.get('results', []),
-                      'status': 'ok', 'acknowledged': request, 'invalid_records': len(reply['records']) - len(records)}
+        saved = state[key]
+        full = reply.get('full', True)
+        if not full and (not saved.get('acknowledged') or reply.get('base') != saved['acknowledged']):
+            return
+        decoded = decode_records(reply['records'])
+        if full:
+            saved.update(records=[], by_id=set(), result_map={}, invalid_records=0)
+            saved['restored'] = saved.get('restored', 0) + 1
+        for row in decoded:
+            if row['id'] not in saved['by_id']:
+                saved['by_id'].add(row['id'])
+                saved['records'].append(row)
+        for row in reply.get('results', []):
+            if isinstance(row, dict) and isinstance(row.get('id'), str) and row['id'] in saved['by_id']:
+                saved['result_map'][row['id']] = row
+        saved.update(status='ok', acknowledged=request, results=list(saved['result_map'].values()))
+        saved['invalid_records'] += len(reply['records']) - len(decoded)
     elif reply.get('status') == 'unavailable':
         state[key]['status'] = 'unavailable'
 
@@ -221,30 +235,44 @@ def render_probability_tracking(ui, observations, logs, page):
     """Storage acknowledgements only rerun this small panel, never refresh feeds."""
     key = f'points_tracking_{page}'
     saved = st.session_state.setdefault(key, {'records': [], 'results': [], 'status': 'loading'})
-    records = saved.get('records', [])
-    # A fragment reuses the same verified log snapshot until the dashboard refreshes.
-    # History is private to this browser session. An arriving box or forecast regrades it.
-    record_ids = tuple(r['id'] for r in records)
+    records = saved['records']
     graded = st.session_state.get(key+'_graded')
-    if graded is None or graded[0] is not logs or graded[1] != record_ids:
-        graded = (logs, record_ids, grade_records(records, logs))
+    # Upgrade a session opened before incremental sync, using its durable history.
+    # New logs or a full browser restore require a fresh pass. Subsequent
+    # acknowledgements only introduce additional, immutable forecasts.
+    restored = saved.get('restored', 0)
+    if not isinstance(graded, dict) or graded['logs'] is not logs or graded['restored'] != restored:
+        graded = dict(logs=logs, restored=restored, count=0, results=[], digest='')
         st.session_state[key+'_graded'] = graded
-    results = graded[2]
-    request = sha256(json.dumps({'ids': [r['id'] for r in observations], 'results': results,
-                                'revision': st.session_state.get(key+'_revision', 0)}, sort_keys=True).encode()).hexdigest()
+    if len(records) > graded['count']:
+        additions = grade_records(records[graded['count']:], logs)
+        if additions:
+            graded['results'].extend(additions)
+            graded['digest'] = sha256(json.dumps(graded['results'], sort_keys=True).encode()).hexdigest()
+        graded['count'] = len(records)
+    persisted = saved.get('result_map', {})
+    results = [r for r in graded['results'] if persisted.get(r['id']) != r]
+    revision = st.session_state.get(key+'_revision', 0)
+    request = sha256(json.dumps([[r['id'] for r in observations], graded['digest'], revision]).encode()).hexdigest()
+    restore = 'by_id' not in saved or saved.get('status') != 'ok' or revision != saved.get('synced_revision')
     def on_reply_change():
         # Component callbacks run before the automatically scheduled fragment.
         # Restore first so that this rerun can grade and persist restored history.
         # An explicit nested st.rerun(scope='fragment') fails on parent/app reruns.
-        reply = st.session_state.get(key+'_component', {}).get('reply')
+        reply = st.session_state.get(key+'_sync', {}).get('reply')
         accept_tracking_reply(st.session_state, key, request, reply)
+        if st.session_state[key].get('acknowledged') == request:
+            st.session_state[key]['synced_revision'] = revision
 
-    reply = tracking_component()(data={'request': request, 'season': model_profile()['season'],
+    reply = tracking_component()(data={'request': request, 'base': saved.get('acknowledged'), 'restore': restore,
+        'season': model_profile()['season'],
         'records': [{'id': r['id'], 'season': r['season'], 'body': json.dumps(r, allow_nan=False)}
-                    for r in observations], 'results': results}, key=key+'_component', height=0,
-        default={'reply': None}, on_reply_change=on_reply_change).reply
+                    for r in observations], 'results': results}, key=key+'_sync', height=0,
+        on_reply_change=on_reply_change).reply
     accept_tracking_reply(st.session_state, key, request, reply)
     saved = st.session_state[key]
+    if saved.get('acknowledged') == request:
+        saved['synced_revision'] = revision
     if saved['status'] == 'unavailable':
         ui.warning('Prop probability tracking could not save to this browser. Open the tracking panel to retry; the projection itself is unaffected.')
     with ui.expander('Experimental prop probability tracking'):

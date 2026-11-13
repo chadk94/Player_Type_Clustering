@@ -28,23 +28,45 @@ export function writeHistory(db, data) {
     });
 }
 
-export function readHistory(db, season) {
+// The store is append-only. Keep the last acknowledged key set on this
+// component, so another page's writes are discovered without sending the
+// browser's entire history over the connection on each player change.
+export function readHistory(db, season, previous) {
     return new Promise((resolve, reject) => {
         const tx = db.transaction(['forecasts', 'results'], 'readonly');
-        const records = tx.objectStore('forecasts').getAll();
+        const forecasts = tx.objectStore('forecasts');
+        const keys = forecasts.getAllKeys();
         const results = tx.objectStore('results').getAll();
+        let ids, full, bodies = [];
+        keys.onsuccess = () => {
+            ids = new Set(keys.result);
+            full = !previous || [...previous.ids].some(id => !ids.has(id));
+            if (full) {
+                const all = forecasts.getAll();
+                all.onsuccess = () => { bodies = all.result.filter(r => r.season === season).map(r => r.body); };
+            } else {
+                for (const id of ids) {
+                    if (previous.ids.has(id)) continue;
+                    const one = forecasts.get(id);
+                    one.onsuccess = () => { if (one.result?.season === season) bodies.push(one.result.body); };
+                }
+            }
+        };
         tx.oncomplete = () => {
-            const selected = records.result.filter(r => r.season === season);
-            const ids = new Set(selected.map(r => r.id));
-            // Keep forecast JSON as text: JS would otherwise turn 0.0 into 0,
-            // invalidating the canonical Python forecast checksum on restore.
-            resolve({records: selected.map(r => r.body), results: results.result.filter(r => ids.has(r.id))});
+            const knownResults = new Map();
+            const updates = [];
+            for (const result of results.result) {
+                const encoded = JSON.stringify(result);
+                knownResults.set(result.id, encoded);
+                if (full || previous.results.get(result.id) !== encoded) updates.push(result);
+            }
+            resolve({reply: {full, records: bodies, results: updates}, index: {ids, results: knownResults}});
         };
         tx.onerror = tx.onabort = () => reject(tx.error || Error('History read failed'));
     });
 }
 
-export default function({data, parentElement, setStateValue}) {
+export default function({data, parentElement, setTriggerValue}) {
     if (parentElement.pointsRequest === data.request) return;
     parentElement.pointsRequest = data.request;
     (async () => {
@@ -52,13 +74,18 @@ export default function({data, parentElement, setStateValue}) {
         try {
             db = await openHistory();
             await writeHistory(db, data);
-            const history = await readHistory(db, data.season);
+            // A superseded response, remount, or explicit reload recovers from
+            // the durable store. Never assume that the server received a reply.
+            const prior = parentElement.pointsHistory;
+            const previous = !data.restore && prior && prior.request === data.base ? prior.index : null;
+            const history = await readHistory(db, data.season, previous);
             if (parentElement.pointsRequest === data.request) {
-                setStateValue('reply', {request: data.request, status: 'ok', ...history});
+                parentElement.pointsHistory = {request: data.request, index: history.index};
+                setTriggerValue('reply', {request: data.request, base: data.base, status: 'ok', ...history.reply});
             }
         } catch (_) {
             if (parentElement.pointsRequest === data.request) {
-                setStateValue('reply', {request: data.request, status: 'unavailable'});
+                setTriggerValue('reply', {request: data.request, status: 'unavailable'});
             }
         } finally { db?.close(); }
     })();

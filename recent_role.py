@@ -78,7 +78,7 @@ def _ratios(player, observed, logs, season, as_of):
                      ratio(recent.AST, current.AST), ratio(recent.FG3A, current.FG3A)]), '10-appearance half-life'
 
 
-def recent_role_comparison(final, roster, current, logs, season, as_of=None):
+def recent_role_comparison(final, roster, current, logs, season, as_of=None, *, matched_players=None):
     """Full-roster, copy-only comparison; unavailable comparisons stay explicit.
 
     All active teammates participate before any player/stat filters. A missing
@@ -95,7 +95,7 @@ def recent_role_comparison(final, roster, current, logs, season, as_of=None):
     as_of = pd.Timestamp(as_of or pd.Timestamp.now(tz='UTC'))
     if as_of.tzinfo is None:
         raise ValueError('Recency snapshot time must have a timezone')
-    matches = match_player_stats(roster, current)
+    matches = match_player_stats(roster, current) if matched_players is None else matched_players
     for team, group in final.groupby('Team', sort=False):
         mask = final.Team.eq(team) & final['Projected minutes'].gt(0)
         active = final.loc[mask]

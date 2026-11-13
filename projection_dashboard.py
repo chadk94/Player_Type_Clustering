@@ -10,7 +10,7 @@ import pandas as pd
 import requests
 import streamlit as st
 
-from live_projections import (CompletedTeamCache, ESPN, build_projections, fetch_json, load_live_state, match_player_stats, name_key, next_regular_season_game, round_projected_minutes)
+from live_projections import (CompletedTeamCache, ESPN, STAT_NAMES, build_projections, fetch_json, load_live_state, match_player_stats, name_key, regular_season_matchups, next_from_matchups, round_projected_minutes)
 from archetype_fallback import build_archetype_priors
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import bundled_box_rows, load_game_logs
@@ -36,7 +36,7 @@ from edge_rating_table import render_edge_table
 from todays_plays import render_shortlist
 from projection_presentation import over_line_label, player_matchup_rating
 from recent_role import recent_role_comparison, add_recent_columns, DISPLAY_COLUMNS as RECENT_COLUMNS, CAPTION as RECENT_CAPTION
-from points_probability import (scoring_context, game_quote_probabilities, PROBABILITY_COLUMNS)
+from points_probability import (game_quote_probabilities, PROBABILITY_COLUMNS)
 from prop_distributions import COUNT_STATS, prop_quote
 from points_tracking import snapshot as probability_snapshot, render_probability_tracking
 from opponent_selection import render_opponent_selector
@@ -206,20 +206,19 @@ def schedule_for_view(ui, date, key):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def team_schedule(season, espn_team_id):
+def team_schedule(season, espn_team_id, abbreviation):
     year = int(season[:4])+1
     payload = fetch_json(f'{ESPN}/site/v2/sports/basketball/nba/teams/{espn_team_id}/schedule?season={year}&seasontype=2')
     if str(payload.get('team',{}).get('id')) != str(espn_team_id):
         raise ValueError('Schedule returned the wrong team')
-    return payload
+    return regular_season_matchups(payload, year, abbreviation)
 
 
 def next_team_game(season, espn_team_id, abbreviation):
     # Recheck the selection window on every render, even for cached schedules.
     # Keep the current matchup for the same first hour as Team Projections.
-    return next_regular_season_game(team_schedule(season, espn_team_id),
-                                    int(season[:4])+1, abbreviation,
-                                    post_tip_window=TEAM_GAME_RETENTION.to_pytimedelta())
+    return next_from_matchups(team_schedule(season, espn_team_id, abbreviation),
+                              post_tip_window=TEAM_GAME_RETENTION.to_pytimedelta())
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -789,7 +788,7 @@ def render_live_dashboard(ui, roster):
             sportsbook_slate_lines.clear()
             sportsbook_game_lines.clear()
             edge_injury_report.clear()
-        with ui.spinner('Refreshing team records and season averages…'):
+        with ui.spinner('Loading team records and player averages…'):
             try:
                 state = live_state(SEASON)
                 teams, players = state['teams'], state['players']
@@ -842,7 +841,8 @@ def render_live_dashboard(ui, roster):
         assist_samples, missing_days = dashboard_assist_samples(SEASON, roster, players, logs)
         if missing_days:
             ui.caption('Some NBA passing updates are unavailable. Those games use recorded assists alongside the verified passing sample.')
-        projections = build_projections(roster, history, teams, players, opening_games=OPENING_GAMES, fallback=fallback,
+        matched_players = match_player_stats(roster, players)
+        projections = build_projections(roster, history, teams, players, matched_players=matched_players, opening_games=OPENING_GAMES, fallback=fallback,
                                         archetype_priors=archetype_priors, assist_samples=assist_samples)
         gaps = projection_gaps(approved_bundle, projections)
         if not gaps.empty:
@@ -850,13 +850,14 @@ def render_live_dashboard(ui, roster):
             with ui.expander('Players needing projection data'):
                 ui.dataframe(gaps, hide_index=True, width='stretch')
         game_projection_cache = {}
+        @lru_cache(maxsize=64)
         def project_for_game(team, opponent, start):
             minutes = for_matchup(approved_bundle, roster, team, opponent, start)
             if not minutes: return projections
             key = tuple(sorted(minutes.items()))
             if key not in game_projection_cache:
                 changed = build_projections(roster[roster.PLAYER_ID.isin(minutes)], history, teams, players,
-                    opening_games=OPENING_GAMES, fallback=fallback, approved_minutes=minutes, archetype_priors=archetype_priors, assist_samples=assist_samples)
+                    opening_games=OPENING_GAMES, fallback=fallback, approved_minutes=minutes, archetype_priors=archetype_priors, assist_samples=assist_samples, matched_players=matched_players)
                 game_projection_cache[key] = pd.concat(
                     [projections[~projections.PLAYER_ID.isin(minutes)], changed], ignore_index=True)
             return game_projection_cache[key]
@@ -869,13 +870,36 @@ def render_live_dashboard(ui, roster):
             before = apply_matchup(base.assign(Opponent=opponents), roster, teams, prior_effects, current_effects)
             return base, before
 
+        @lru_cache(maxsize=128)
+        def manual_player_unit(player_id):
+            return build_projections(roster[roster.PLAYER_ID.eq(player_id)], history, teams, players,
+                opening_games=OPENING_GAMES, fallback=fallback, minutes_overrides={player_id:1.},
+                archetype_priors=archetype_priors, assist_samples=assist_samples, matched_players=matched_players)
+
+        def manual_player_baseline(player_id, minutes):
+            # Individual rates are linear in minutes before opponent and team allocation.
+            # Build the same manual model at one minute, including for inactive players.
+            unit = manual_player_unit(player_id)
+            frame = unit.copy()
+            if frame.iloc[0]['Minutes source'] != 'Manual adjustment':
+                return frame
+            frame['Projected minutes'] = minutes
+            stats = list(STAT_NAMES)
+            frame[stats] = unit[stats] * minutes
+            if pd.notna(frame['Career 3P weight'].iat[0]) and pd.notna(frame.FG3A.iat[0]):
+                frame['FG3M'] = frame.FG3A * frame['Expected 3P%']
+            elif minutes == 0:
+                frame['Expected 3P%'] = float('nan')
+            frame['PRA'] = frame.PTS + frame.REB + frame.AST
+            return frame
+
         @lru_cache(maxsize=32)
         def player_team_matchups(team, opponent, scheduled_start):
             frame = projections if scheduled_start is None else project_for_game(team, opponent, scheduled_start)
             return apply_matchup(frame.loc[frame.Team.eq(team)], roster, teams, prior_effects, current_effects, opponent)
 
         team_rates = blend_team_rates(prior_team_rates(), logs, teams)
-        probability_context = scoring_context(roster, players)
+        probability_context = {int(pid): row.to_dict() for pid, row in matched_players.items()}
         ui.caption(f'Allowed assist, three-attempt and offensive-rebound shares use a {DEFENSIVE_PRIOR_GAMES:g}-game prior through eight completed games, then phase out last season by {DEFENSIVE_FULL_CURRENT_GAMES:g}. Other team rates keep a {PRIOR_GAMES:g}-game prior. Threes preserve individual shooting percentages; PRA uses final points + rebounds + assists.')
         ui.caption('Three-point accuracy blends prior-career NBA shooting with this season using a 200-attempt prior. Career weight never falls below 50%. Minutes and normalized archetype attempt shares still determine volume. Players without prior NBA attempts retain their existing baseline.')
         ui.caption(f"Archetype matchups count last season as {matchup_prior_games('PTS'):g} games for points, three-point attempts, assists and rebounds, "
@@ -947,14 +971,18 @@ def render_live_dashboard(ui, roster):
             ui.button('Use automatic minutes',key=f'reset_minutes_{player_id}',on_click=reset_manual_minutes,
                       args=(flag_key,slider_key))
             if flag_key in st.session_state:
-                baseline = build_projections(roster[roster.PLAYER_ID.eq(player_id)],history,teams,players,
-                    opening_games=OPENING_GAMES,fallback=fallback,minutes_overrides={player_id:custom_minutes},archetype_priors=archetype_priors, assist_samples=assist_samples)
+                baseline = manual_player_baseline(player_id, custom_minutes)
                 ui.caption('Custom minutes apply to this player’s projection in your current session. Use automatic minutes to return to approved game minutes when imported, otherwise the workbook/season-average setting.')
             if pd.isna(automatic_minutes):
                 ui.caption('Automatic minutes are unavailable. Adjust the slider to set your own minutes.')
             else:
                 ui.caption(f'Automatic setting: {automatic_minutes:.1f} minutes ({team_players.loc[team_players.Player.eq(player_name),"Minutes source"].iloc[0]}).')
-            adjusted = apply_matchup(baseline,roster,teams,prior_effects,current_effects,opponent)
+            scheduled_start = upcoming['GameTimeUTC'] if upcoming and upcoming['Opponent'] == opponent else None
+            team_matchups = player_team_matchups(team, opponent, scheduled_start)
+            if flag_key in st.session_state:
+                adjusted = apply_matchup(baseline, roster, teams, prior_effects, current_effects, opponent)
+            else:
+                adjusted = team_matchups.loc[team_matchups.PLAYER_ID.eq(player_id)]
             row = adjusted.iloc[0]
             ui.subheader(f'{player_name} vs {opponent}', anchor='selected-player-projection')
             ui.caption(f"{row['Offensive archetype']} · {row['Defensive archetype']} · {row['Projected minutes']:.1f} projected minutes ({row['Minutes source']})")
@@ -1003,7 +1031,6 @@ def render_live_dashboard(ui, roster):
                 'Projected':[row[x] if adjusted_on else baseline.iloc[0][x] for x in stats]})
             rating_enabled = adjusted_on and row['Matchup status'] == 'Available'
             preview['Matchup rating'] = [player_matchup_rating(row, stat, rating_enabled) for stat in preview.Stat]
-            preview['Change'] = preview.Projected - preview.Baseline
             book_name = ui.selectbox('Sportsbook',list(BOOKS),key='projection_sportsbook')
             show_recent = ui.toggle('Show recent-role comparison', value=False, key='player_recent_role',
                                     help='Optional 10-appearance shot-volume/assist model. The current projection still drives edges and probabilities.')
@@ -1015,14 +1042,12 @@ def render_live_dashboard(ui, roster):
                 api_key = get_odds_api_key()
                 if not api_key:
                     raise OddsFeedError('Sportsbook feed access is not configured.')
-                scheduled_start = upcoming['GameTimeUTC'] if upcoming and upcoming['Opponent'] == opponent else None
                 event = next_matchup(sportsbook_events(api_key),team,opponent,
                                      scheduled_start=scheduled_start,time_tolerance=EVENT_TIME_TOLERANCE)
                 if event is None:
                     ui.caption(f'No matching pregame sportsbook event is available for {team} vs {opponent}. Lines stay blank after tip-off; prices from a later rematch are not substituted.')
                 else:
-                    full_team = (player_team_matchups(team, opponent, scheduled_start)
-                                 if adjusted_on else team_players)
+                    full_team = team_matchups if adjusted_on else team_players
                     if flag_key in st.session_state:
                         # Only this player's rates/minutes changed. Keep every teammate
                         # in the same order for the normal team-target allocation.
@@ -1033,21 +1058,17 @@ def render_live_dashboard(ui, roster):
                     market_team = team_projection_preview(ui,full_team,event,book_key,api_key,team_rates)
                     recent_source = market_team
                     market_player = market_team[market_team.PLAYER_ID.eq(player_id)].iloc[0]
-                    for stat in ['PTS','AST','FG3M','FG3A','OREB','DREB','REB','PRA']:
-                        display_stat = '3PM' if stat == 'FG3M' else stat
-                        preview.loc[preview.Stat.eq(display_stat),'Projected'] = market_player[stat]
-                        if adjusted_on:
-                            adjusted.loc[adjusted.PLAYER_ID.eq(player_id),stat] = market_player[stat]
-                        else:
-                            baseline.loc[baseline.PLAYER_ID.eq(player_id),stat] = market_player[stat]
-                    destination = adjusted if adjusted_on else baseline
-                    for column in ['Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total',
-                                   'Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share',
-                                   'Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team 3PA target','Expected team FGA','Team three attempt rate','Three-point share',
-                                   'Team rate current weight','Team rate games','Team rate prior games','Team rate status',
-                                   'Opponent allowed current weight','Opponent allowed prior games','Opponent allowed rate status',*REBOUND_METADATA]:
-                        if column in market_player:
-                            destination.loc[destination.PLAYER_ID.eq(player_id),column] = market_player[column]
+                    updated_stats = ['PTS','AST','FG3M','FG3A','OREB','DREB','REB','PRA']
+                    market_values = market_player[updated_stats].astype(float).rename(index={'FG3M':'3PM'})
+                    mapped = preview.Stat.map(market_values)
+                    preview['Projected'] = mapped.where(preview.Stat.isin(market_values.index), preview.Projected)
+                    # Market allocation returns a complete copy of the selected model
+                    # row, including its matchup fields and adjustment provenance.
+                    destination = market_team.loc[market_team.PLAYER_ID.eq(player_id)].copy()
+                    if adjusted_on:
+                        adjusted = destination
+                    else:
+                        baseline = destination
                     payload = sportsbook_props(event['id'],book_key,api_key)
                     if payload.get('id') != event['id'] or {payload.get('home_team'),payload.get('away_team')} != {event['home_team'],event['away_team']}:
                         raise OddsFeedError('Sportsbook matchup could not be verified.')
@@ -1071,17 +1092,18 @@ def render_live_dashboard(ui, roster):
                     else 'Manual minutes' if flag_key in st.session_state
                     else 'Opponent adjustment off' if not adjusted_on else 'Standard')
             probability_status = {}
-            for column in PROBABILITY_COLUMNS:
-                comparison[column] = float('nan')
-            for i, quote in comparison.iterrows():
-                probability = prop_quote(final_player, quote, probability_context.get(player_id))
-                comparison.loc[i, PROBABILITY_COLUMNS] = [probability[c] for c in PROBABILITY_COLUMNS]
-                probability_status[quote.Stat] = probability['Probability status']
+            probability_values = []
+            player_record = final_player.to_dict()
+            for quote in comparison.to_dict('records'):
+                probability = prop_quote(player_record, quote, probability_context.get(player_id))
+                probability_values.append([probability[c] for c in PROBABILITY_COLUMNS])
+                probability_status[quote['Stat']] = probability['Probability status']
                 if event is not None and quote.get('Market status') == 'Current':
-                    saved = probability_snapshot({**final_player.to_dict(), **quote.to_dict(), **probability},
+                    saved = probability_snapshot({**player_record, **quote, **probability},
                         event, book_key, probability_context, 'Player vs Opponent', mode)
                     if saved:
                         probability_observations.append(saved)
+            comparison[PROBABILITY_COLUMNS] = probability_values
             comparison['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(comparison['Book line'],comparison['Over odds'])]
             if foul_line is not None:
                 comparison.loc[comparison.Stat.eq('PF'), 'Book line (Over)'] = f'{foul_line:g} (manual)'
@@ -1094,7 +1116,7 @@ def render_live_dashboard(ui, roster):
                             recent_source.loc[recent_source.PLAYER_ID.eq(player_id),column] = baseline.iloc[0][column]
                     if adjusted_on:
                         recent_source = apply_matchup(recent_source,roster,teams,prior_effects,current_effects,opponent)
-                recent = recent_role_comparison(recent_source, roster, players, logs, SEASON)
+                recent = recent_role_comparison(recent_source, roster, players, logs, SEASON, matched_players=matched_players)
                 comparison = add_recent_columns(comparison, recent, player_id)
                 display_columns[4:4] = RECENT_COLUMNS
                 ui.caption(RECENT_CAPTION)
@@ -1308,7 +1330,7 @@ def render_live_dashboard(ui, roster):
                         display_columns = ['Rank','Player','Stat','Play','EV %','Projected minutes','Good-to minutes','Minutes cushion','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
                         ui.caption('Good-to minutes shows how low an Over or how high an Under can go while its edge stays above 5%. Minutes cushion is the room from the projection. Tested in half-minute steps through 48 with the same prices and teammate minutes.')
                         if show_recent:
-                            recent = recent_role_comparison(combined, roster, players, logs, SEASON)
+                            recent = recent_role_comparison(combined, roster, players, logs, SEASON, matched_players=matched_players)
                             ranked = add_recent_columns(ranked, recent)
                             after_projection = display_columns.index('Projected') + 1
                             display_columns[after_projection:after_projection] = RECENT_COLUMNS

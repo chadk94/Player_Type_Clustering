@@ -189,7 +189,7 @@ def match_player_stats(roster, current):
     return matches
 
 
-def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None, archetype_priors=None, career_profiles=None, prior_season_minutes=None, assist_samples=None):
+def build_projections(roster, history, teams, current, opening_games=3, prior_minutes=200, fallback=None, stats_start_game=5, minutes_overrides=None, approved_minutes=None, archetype_priors=None, career_profiles=None, prior_season_minutes=None, assist_samples=None, matched_players=None):
     """Actual rookie rates; veteran historical priors phase out by 20 appearances."""
     if opening_games < 0 or prior_minutes < 0:
         raise ValueError('Projection settings must be nonnegative')
@@ -207,7 +207,7 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
         raise ValueError('Custom minutes must be between 0 and 48')
     counts = teams.set_index('TEAM_ID').GAMES_PLAYED.to_dict()
     profiles = history.set_index('PLAYER_ID')
-    matches = match_player_stats(roster, current)
+    matches = match_player_stats(roster, current) if matched_players is None else matched_players
     fallback_profiles = fallback.set_index('PLAYER_ID') if fallback is not None and not fallback.empty else pd.DataFrame()
     actual_policy = json.loads((Path(__file__).parent / 'data/current_season_baselines.json').read_text())
     actual_ids = {int(key) for key in actual_policy['players']}
@@ -358,10 +358,8 @@ def build_projections(roster, history, teams, current, opening_games=3, prior_mi
     return pd.DataFrame(output)
 
 
-def next_regular_season_game(payload, season_year, team_abbreviation, now=None,
-                             post_tip_window=timedelta(0)):
-    """Earliest verified regular-season game still inside the selection window."""
-    now = now or datetime.now(timezone.utc)
+def regular_season_matchups(payload, season_year, team_abbreviation):
+    """Extract just the verified, non-final fixtures used by the player selector."""
     games=[]
     for event in payload.get('events',[]):
         try:
@@ -372,7 +370,7 @@ def next_regular_season_game(payload, season_year, team_abbreviation, now=None,
             if status.get('completed') or status.get('name') in ['STATUS_POSTPONED','STATUS_CANCELED','STATUS_CANCELLED','STATUS_SUSPENDED']:
                 continue
             start=datetime.fromisoformat(event['date'].replace('Z','+00:00'))
-            if start.tzinfo is None or start + post_tip_window <= now:
+            if start.tzinfo is None:
                 continue
             participants=competition['competitors']
             abbreviations=[ALIASES.get(p['team']['abbreviation'],p['team']['abbreviation']) for p in participants]
@@ -382,4 +380,14 @@ def next_regular_season_game(payload, season_year, team_abbreviation, now=None,
             games.append({'Opponent':opponent,'GameTimeUTC':start.astimezone(timezone.utc).isoformat(),'GameID':str(event['id'])})
         except (KeyError,ValueError,TypeError,StopIteration):
             continue
-    return min(games,key=lambda game:game['GameTimeUTC']) if games else None
+    return sorted(games, key=lambda game: game['GameTimeUTC'])
+
+
+def next_from_matchups(games, now=None, post_tip_window=timedelta(0)):
+    now = now or datetime.now(timezone.utc)
+    return next((game for game in games if datetime.fromisoformat(game['GameTimeUTC']) + post_tip_window > now), None)
+
+
+def next_regular_season_game(payload, season_year, team_abbreviation, now=None,
+                             post_tip_window=timedelta(0)):
+    return next_from_matchups(regular_season_matchups(payload, season_year, team_abbreviation), now, post_tip_window)

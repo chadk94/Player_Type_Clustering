@@ -110,3 +110,19 @@ preview()
             dict(request='current', status='unavailable'))
         self.assertEqual(state[key]['status'], 'unavailable')
         self.assertEqual(state[key]['records'], [self.record])
+
+
+    def test_incremental_reply_preserves_history_and_rejects_stale_parent(self):
+        key = 'history'
+        state = {key: dict(records=[], results=[], status='loading')}
+        first = json.dumps(self.record)
+        second = dict(self.record, mean=self.record['mean'], mode='Manual minutes')
+        second['id'] = tracking.record_id(second)
+        tracking.accept_tracking_reply(state, key, 'restore', dict(request='restore', full=True, status='ok', records=[first]))
+        delta = dict(request='next', base='wrong', full=False, status='ok', records=[json.dumps(second)])
+        tracking.accept_tracking_reply(state, key, 'next', delta)
+        self.assertEqual(state[key]['records'], [self.record])
+        tracking.accept_tracking_reply(state, key, 'next', dict(delta, base='restore', records=[first,json.dumps(second)]))
+        self.assertEqual(state[key]['records'], [self.record, second])
+        tracking.accept_tracking_reply(state, key, 'reset', dict(request='reset', full=True, status='ok', records=[]))
+        self.assertFalse(state[key]['records'])
