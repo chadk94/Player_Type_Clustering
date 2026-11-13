@@ -12,6 +12,7 @@ import streamlit as st
 
 from live_projections import (CompletedTeamCache, ESPN, STAT_NAMES, build_projections, fetch_json, load_live_state, match_player_stats, name_key, regular_season_matchups, next_from_matchups, round_projected_minutes)
 from archetype_fallback import build_archetype_priors
+from roster_membership import roster_on_date
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import bundled_box_rows, load_game_logs
 from matchup_projections import (assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS,
@@ -761,7 +762,7 @@ def render_archetypes_page(ui, roster):
 
 @st.fragment
 def render_live_dashboard(ui, roster):
-    roster = apply_roster_rules(roster)
+    roster = roster_on_date(apply_roster_rules(roster), SEASON, datetime.now(ZoneInfo('America/New_York')).date())
     roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)
     ui.title(f'🏀 Player Stat Projections ({SEASON})')
     ui.caption(f'Your workbook minutes for each team’s first {OPENING_GAMES} games; season-average minutes from game {OPENING_GAMES + 1}. Counts include completed regular-season team games, not player appearances. Imported approved minutes take priority for matching games.')
@@ -852,14 +853,19 @@ def render_live_dashboard(ui, roster):
         game_projection_cache = {}
         @lru_cache(maxsize=64)
         def project_for_game(team, opponent, start):
-            minutes = for_matchup(approved_bundle, roster, team, opponent, start)
-            if not minutes: return projections
-            key = tuple(sorted(minutes.items()))
+            day = pd.Timestamp(start).tz_convert('America/New_York').date()
+            game_roster = roster_on_date(roster, SEASON, day)
+            minutes = for_matchup(approved_bundle, game_roster, team, opponent, start)
+            moved = game_roster.loc[game_roster.TEAM_ID.ne(roster.TEAM_ID), ['PLAYER_ID', 'TEAM_ID']]
+            if not minutes and moved.empty:
+                return projections
+            changed_ids = set(minutes).union(moved.PLAYER_ID)
+            key = (tuple(sorted(minutes.items())), tuple(moved.itertuples(index=False, name=None)))
             if key not in game_projection_cache:
-                changed = build_projections(roster[roster.PLAYER_ID.isin(minutes)], history, teams, players,
+                changed = build_projections(game_roster[game_roster.PLAYER_ID.isin(changed_ids)], history, teams, players,
                     opening_games=OPENING_GAMES, fallback=fallback, approved_minutes=minutes, archetype_priors=archetype_priors, assist_samples=assist_samples, matched_players=matched_players)
                 game_projection_cache[key] = pd.concat(
-                    [projections[~projections.PLAYER_ID.isin(minutes)], changed], ignore_index=True)
+                    [projections[~projections.PLAYER_ID.isin(changed_ids)], changed], ignore_index=True)
             return game_projection_cache[key]
         @lru_cache(maxsize=32)
         def game_frames(away, home, start):

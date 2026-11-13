@@ -1474,6 +1474,10 @@ Use **Copy table for Google Docs** and paste into a document with normal paste, 
 **Share app review link** publishes only the displayed date. Anyone with the review link can see those picks and post feedback on individual props. **Update shared list** publishes later edits to the same link. Use **Refresh feedback** on the owner page to read replies. Links expire seven days after the most recent publication. The owner's browser stores its private shortlist, publishing key and previously retrieved comments. Shared reviews and comments use SQLite in the app's temporary directory by default. If hosting resets that directory, the owner can republish from the original browser. Set `TODAYS_PLAYS_DB_PATH` to a persistent volume to retain feedback across redeployments. `NBA_PROPS_PUBLIC_URL` can override the production base URL for another deployment.
 
 
+### In-season roster moves
+
+Nique Clifford (NBA ID 1642363) belongs to OKC for NBA game dates from November 8, 2026. Earlier Sacramento rotations use his Sacramento membership. The same player ID carries his statistical history and reviewed roles across the trade. The minutes importer checks team membership on the slate date. [Oklahoma City’s transaction announcement](https://www.nba.com/thunder/news/nique-clifford-261108)
+
 ### Dashboard loading and refresh
 
 Today’s Plays and Archetypes open while league data loads. Player projections, matchup rankings, sportsbook edges and team totals reuse the current session’s game rosters and calculations. Changing a filter or sort can reuse work for the same inputs. Price freshness is checked before reusing odds-based results. Prediction tracking restores the season history once per tracking panel. Player and minutes changes synchronize new forecasts and corrected results. **Reload saved history** rereads the full browser history. Open **Show history and downloads** inside its panel to build the history table and exports.

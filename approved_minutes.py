@@ -5,6 +5,7 @@ import json
 import math
 import pandas as pd
 from import_minutes import TEAM_IDS
+from roster_membership import roster_on_date
 
 
 def digest(value):
@@ -32,7 +33,8 @@ def validate_bundle(content, roster, season):
                 if (key,team) in required: raise ValueError('Duplicate game/team')
                 required[key,team] = opponent
         if len(dates) != 1: raise ValueError('Import one approved game day at a time')
-        known = {int(r.PLAYER_ID):int(r.TEAM_ID) for r in roster.itertuples()}
+        game_roster = roster_on_date(roster, season, next(iter(dates)))
+        known = {int(r.PLAYER_ID):int(r.TEAM_ID) for r in game_roster.itertuples()}
         seen = set(); all_players = set()
         for record in records:
             key = (record['game_key'], record['team_id']); team = record['team_id']
@@ -73,11 +75,14 @@ def for_matchup(bundle, roster, team, opponent, start):
     if not bundle or start is None or team not in TEAM_IDS or opponent not in TEAM_IDS: return {}
     timestamp = pd.Timestamp(start)
     if timestamp.tzinfo is None: return {}
-    day = str(timestamp.tz_convert('America/New_York').date())
+    game_day = timestamp.tz_convert('America/New_York').date()
+    day = game_day.isoformat()
     ids = {TEAM_IDS[team],TEAM_IDS[opponent]}
     matches = [g for g in bundle['games'] if g['game_date'] == day and {g['away_team_id'],g['home_team_id']} == ids]
     if len(matches) != 1: return {}
     key = matches[0]['game_key']
+    year = game_day.year - (game_day.month < 7)
+    roster = roster_on_date(roster, f'{year}-{(year + 1) % 100:02d}', game_day)
     # A prop-only roster player is explicitly inactive in the approved rotation.
     result = {int(p.PLAYER_ID):0. for p in roster[roster.TEAM_ID.isin(ids)].itertuples()}
     for record in bundle['approvals']:

@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from approved_minutes import validate_bundle
+from roster_membership import ROSTER_MOVES
 
 
 def new_state(season):
@@ -29,8 +30,9 @@ def update_upload(state, content, roster, season, clear=False):
     if clear or (content is None and state['seen_upload'] is not None):
         state.update(bundle=None, seen_upload=None, error=None)
         command(state, season, 'clear')
-    elif content is not None and fingerprint != state['seen_upload']:
-        state.update(bundle=None, seen_upload=fingerprint, error=None)
+    elif content is not None and (fingerprint != state['seen_upload'] or
+            (state['error'] and state.get('checked_moves') != ROSTER_MOVES)):
+        state.update(bundle=None, seen_upload=fingerprint, checked_moves=ROSTER_MOVES, error=None)
         try:
             state['bundle'] = validate_bundle(content, roster, season)
             command(state, season, 'save', state['bundle'])
