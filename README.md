@@ -1476,6 +1476,8 @@ Use **Copy table for Google Docs** and paste into a document with normal paste, 
 
 ### In-season roster moves
 
+Walter Clayton Jr. (NBA ID 1642383) uses his existing Secondary Playmaker and Pesky Guard profile for Dallas from October 21, 2026. He was off the NBA roster on October 19 and 20 after Memphis waived him. [Memphis waiver](https://www.nba.com/grizzlies/news/grizzlies-finalize-202627-opening-night-roster) · [Dallas signing](https://northernarizona.gleague.nba.com/news/mavericks-sign-walter-clayton-jr-to-two-way-contract)
+
 Nique Clifford (NBA ID 1642363) belongs to OKC for NBA game dates from November 8, 2026. Earlier Sacramento rotations use his Sacramento membership. The same player ID carries his statistical history and reviewed roles across the trade. The minutes importer checks team membership on the slate date. [Oklahoma City’s transaction announcement](https://www.nba.com/thunder/news/nique-clifford-261108)
 
 ### Dashboard loading and refresh
