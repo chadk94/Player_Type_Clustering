@@ -83,13 +83,9 @@ export default function({data, parentElement, setStateValue}) {
         setStateValue('jae', {type, nonce:ui.jaePending, day:ui.day, connection, picks});
         draw();
     }
-    function renderJae(confirmed) {
+    function renderJae(confirmed, hasPicks) {
         const connection = localStorage.getItem(connectionKey);
         const bar = make('div'); bar.className = 'tools';
-        const deliver = button('Send confirmed plays to Jae', () => requestJae('send', connection, confirmed));
-        deliver.title = 'Send at current FanDuel prices, with an alternate for overs. Card times are Eastern.';
-        deliver.disabled = !connection || !confirmed.length || !!ui.jaePending;
-        bar.append(deliver);
         const settings = make('details');
         settings.append(make('summary', connection ? 'Jae sheet connection' : 'Connect Jae’s Google Sheet'));
         const instructions = make('p', 'In the prepared Google Sheet, choose Jae card → Show dashboard connection. Paste it here once per browser.');
@@ -98,6 +94,27 @@ export default function({data, parentElement, setStateValue}) {
         const connect = button('Connect sheet', () => requestJae('connect', input.value.trim(), []));
         connect.disabled = !!ui.jaePending;
         settings.append(instructions,input,connect);
+        if (hasPicks) {
+            let action;
+            if (!confirmed.length) {
+                action = button('Choose plays for Jae', () => root.querySelector('.jae-pick')?.focus());
+                bar.append(action, make('span', 'Check For Jae beside each play you want to send.'));
+            } else if (!connection) {
+                action = button('Connect sheet to send', () => {
+                    settings.open = true;
+                    input.focus();
+                });
+                bar.append(action, make('span', 'Connect Jae’s Google Sheet in this browser.'));
+            } else {
+                const count = confirmed.length;
+                action = button(`Send ${count} confirmed ${count === 1 ? 'play' : 'plays'} to Jae`, () =>
+                    requestJae('send', connection, confirmed));
+                action.title = 'Send at current FanDuel prices, with an alternate for overs. Card times are Eastern.';
+                action.className = 'jae-send';
+                bar.append(action);
+            }
+            action.disabled = !!ui.jaePending;
+        }
         root.append(bar,settings);
         if (ui.jaePending || ui.jaeFeedback?.day === ui.day) {
             const info = make('div'); info.setAttribute('role','status');
@@ -132,40 +149,49 @@ export default function({data, parentElement, setStateValue}) {
         dateSelect.onchange = () => { ui.day=dateSelect.value; ui.message=''; resetExport(); draw(); };
         dateLabel.append(dateSelect); bar.append(dateLabel); root.append(bar);
         const rows = picks.filter(p=>p.day===ui.day).sort((a,b)=>
-            a.status.localeCompare(b.status) || a.game.localeCompare(b.game) || b.edge-a.edge);
+            a.game.localeCompare(b.game) || b.edge-a.edge);
         const review = rows.filter(p=>p.status==='Review');
         const status = make('p', rows.length ? review.length+' in review · '+(rows.length-review.length)+' confirmed'
             : 'Check Save next to a prop in Top Sportsbook Edges to start this slate. You can copy your picks as a table or download them in Excel.');
         root.append(status);
-        renderJae(rows.filter(p => p.status === 'Confirmed'));
+        renderJae(rows.filter(p => p.status === 'Confirmed'), rows.length > 0);
         if (rows.length) {
             const scroll=make('div'); scroll.className='play-table';
             const table=make('table'); table.setAttribute('aria-label','Saved player props');
             const header=table.createTHead().insertRow();
-            for (const title of ['Player','Game','Prop','Odds','Sportsbook','Projection','Edge','Status','Actions']) {
+            for (const title of ['For Jae','Player','Game','Prop','Odds','Sportsbook','Projection','Edge','Actions']) {
                 const th=make('th',title); th.scope='col'; header.append(th);
             }
             const body=table.createTBody();
-            for (const p of [...review, ...rows.filter(p=>p.status==='Confirmed')]) {
+            for (const p of rows) {
                 const tr=body.insertRow();
                 const prop=p.side+' '+p.line+' '+p.stat;
-                for (const text of [p.player,p.game,prop,(p.odds>0?'+':'')+p.odds,p.book,p.projected.toFixed(2),p.edge.toFixed(2)+'%',p.status]) {
+                const check=make('input');
+                check.type='checkbox'; check.className='jae-pick';
+                check.checked=p.status==='Confirmed';
+                check.dataset.pickId=p.id;
+                check.setAttribute('aria-label','For Jae: '+p.player+' '+prop+' ('+p.book+')');
+                check.onchange=()=>{
+                    try {
+                        setPickStatus(localStorage,p.id,check.checked?'Confirmed':'Review');
+                        notifyPicks(p.day);
+                        root.querySelector(`.jae-pick[data-pick-id="${CSS.escape(p.id)}"]`)?.focus({preventScroll:true});
+                    } catch { storageFailure(); }
+                };
+                tr.insertCell().append(check);
+                for (const text of [p.player,p.game,prop,(p.odds>0?'+':'')+p.odds,p.book,p.projected.toFixed(2),p.edge.toFixed(2)+'%']) {
                     tr.insertCell().textContent=text;
                 }
                 tr.title=p.quoted ? 'Quote updated '+p.quoted : 'Saved sportsbook quote';
                 const actions=tr.insertCell();
-                const move=p.status==='Review'?'Confirm':'Return to review';
-                for (const action of [move,'Remove']) {
-                    const b=button(action,()=>{
-                        try {
-                            if (action==='Remove') setPick(localStorage,p,false);
-                            else setPickStatus(localStorage,p.id,p.status==='Review'?'Confirmed':'Review');
-                            notifyPicks(p.day);
-                        } catch { storageFailure(); }
-                    });
-                    b.setAttribute('aria-label',action+' '+p.player+' '+prop);
-                    actions.append(b);
-                }
+                const remove=button('Remove',()=>{
+                    try {
+                        setPick(localStorage,p,false);
+                        notifyPicks(p.day);
+                    } catch { storageFailure(); }
+                });
+                remove.setAttribute('aria-label','Remove '+p.player+' '+prop);
+                actions.append(remove);
             }
             scroll.append(table);root.append(scroll);
 
@@ -255,7 +281,9 @@ export default function({data, parentElement, setStateValue}) {
         draw();
     };
     const cleanup=watchPicks(onPicks);
+    const onConnection = e => { if (e.key === connectionKey) draw(); };
+    window.addEventListener('storage', onConnection);
     draw();
     if (exportReady && workbook.base64) root.querySelector('a[download]')?.click();
-    return cleanup;
+    return () => { cleanup(); window.removeEventListener('storage', onConnection); };
 }

@@ -4,6 +4,10 @@ label {font-weight:600} select,button,input {font:inherit;color:inherit}
 select,button {padding:.32rem .65rem;border:1px solid var(--st-border-color,#8887);background:var(--st-background-color,Canvas);border-radius:.4rem}
 button {cursor:pointer} button:hover {border-color:currentColor} button:disabled {opacity:.6}
 button:focus-visible,select:focus-visible,a:focus-visible {outline:2px solid currentColor;outline-offset:2px}
+.jae-pick {width:1.15rem;height:1.15rem;cursor:pointer;vertical-align:middle;accent-color:#176944}
+.jae-pick:focus-visible {outline:2px solid currentColor;outline-offset:3px}
+button.jae-send {color:#fff;background:#176944;border-color:#176944;font-weight:600}
+button.jae-send:hover:not(:disabled) {background:#105337}
 p {margin:.5rem 0 .85rem} .play-table {overflow:auto;margin-bottom:1rem}
 table {border-collapse:collapse;width:100%;font-size:.9rem;font-variant-numeric:tabular-nums}
 td,th {padding:.4rem .55rem;border:1px solid var(--st-border-color,#8886);white-space:nowrap;text-align:left}
