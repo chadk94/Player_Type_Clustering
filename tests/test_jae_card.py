@@ -12,7 +12,7 @@ class JaeCardTests(TestCase):
         from jae_card import DENVER
         self.day = self.start.astimezone(DENVER).date().isoformat()
         self.pick = dict(id='a'*64, event='a'*32, day=self.day, book='FanDuel', stat='PTS', side='Under',
-                         game='OKC @ SAC', player='Sample Player', line=14.5, status='Confirmed',odds=-110)
+                         game='OKC @ SAC', player_id=1, player='Sample Player', line=14.5, status='Confirmed',odds=-110)
         self.market = dict(key='player_points',last_update=self.now.isoformat(),
                            outcomes=[dict(name=s,description=self.pick['player'],point=14.5,price=o)
                                      for s,o in [('Under',102),('Over',-115)]])
@@ -53,3 +53,45 @@ class JaeCardTests(TestCase):
         self.assertFalse(card_quotes([self.pick],self.fetch,lambda:self.now)[0])
         self.event['commence_time']=self.now.isoformat()
         self.assertFalse(card_quotes([self.pick],self.fetch,lambda:self.now)[0])
+
+    def test_exact_threes_alt_uses_one_sided_fresh_fanduel_market(self):
+        pick = dict(self.pick,stat='3PM',side='Over',line=1.5,book='DraftKings')
+        self.market['key'] = 'player_threes'
+        for outcome in self.market['outcomes']:
+            outcome['point'] = 1.5
+        alt = dict(key='player_threes_alternate', last_update=self.now.isoformat(),
+                   outcomes=[dict(name='Over',description=pick['player'],point=line,price=odds)
+                             for line,odds in [(1.5,-115),(2.5,400),(3.5,1000)]])
+        self.event['bookmakers'][0]['markets'].append(alt)
+        self.event['bookmakers'].append(dict(key='draftkings',markets=[dict(alt,outcomes=[
+            dict(name='Over',description=pick['player'],point=2.5,price=550)])]))
+        def row():
+            rows, skipped=card_quotes([pick],self.fetch,lambda:self.now)
+            self.assertFalse(skipped)
+            return rows[0]
+        self.assertEqual((row()['book'],row()['odds'],row()['alt']),('FanDuel',-115,{'line':2.5,'odds':400}))
+        alt['outcomes'].append(dict(alt['outcomes'][1],price=420))
+        self.assertIsNone(row()['alt']['odds'])
+        alt['outcomes'] = [alt['outcomes'][2]]
+        self.assertEqual(row()['alt'],{'line':2.5,'odds':None})
+        alt['last_update']=(self.now-timedelta(minutes=16)).isoformat()
+        self.assertIsNone(row()['alt']['odds'])
+        from jae_card import next_over
+        self.assertEqual(next_over(dict(pick,stat='PTS',line=14.5),
+                         {('sample player','PTS'):{19.5:{180},24.5:{400}}}),{'line':19.5,'odds':180})
+
+    def test_cross_book_saves_use_one_fanduel_id_and_recognize_legacy_rows(self):
+        from play_identity import prop_id
+        original=dict(self.pick,book='DraftKings')
+        original['id']=prop_id(original)
+        fd=dict(original,book='FanDuel')
+        fd['id']=prop_id(fd)
+        req=Mock(side_effect=[dict(existing=[]),dict(added=1)])
+        sent,_=send_card(self.day,[original,fd],'test',req,self.fetch)
+        self.assertIn('1 added',sent)
+        frozen,=req.call_args.kwargs['rows']
+        self.assertEqual((frozen['id'],frozen['book']),(fd['id'],'FanDuel'))
+        self.fetch.reset_mock()
+        req=Mock(return_value=dict(existing=[original['id']]))
+        self.assertIn('1 already sent',send_card(self.day,[fd],'test',req,self.fetch)[0])
+        self.fetch.assert_not_called()

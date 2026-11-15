@@ -20,6 +20,7 @@ import pandas as pd
 import streamlit as st
 
 from jae_card import send_card, sheet_request
+from play_identity import prop_id
 from sportsbook_lines import BOOKS
 
 ROOT = Path(__file__).parent
@@ -27,12 +28,6 @@ STATS = {'PTS', 'REB', 'AST', '3PM', 'STL', 'BLK', 'PRA'}
 WEEK = 7 * 24 * 3600
 TOKEN = re.compile(r'[0-9a-f]{64}\Z')
 MAX_PLAYS = 400
-
-
-def prop_id(play):
-    parts = [play[k] for k in ('day', 'event', 'book', 'player_id', 'stat', 'side')]
-    parts.append(format(play['line'], '.12g'))
-    return sha256(json.dumps(parts, separators=(',', ':')).encode()).hexdigest()
 
 
 def edge_pick(row, event, book, day):

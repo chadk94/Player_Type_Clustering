@@ -87,6 +87,7 @@ export default function({data, parentElement, setStateValue}) {
         const connection = localStorage.getItem(connectionKey);
         const bar = make('div'); bar.className = 'tools';
         const deliver = button('Send confirmed plays to Jae', () => requestJae('send', connection, confirmed));
+        deliver.title = 'Send at current FanDuel prices, with an alternate for overs. Card times are Eastern.';
         deliver.disabled = !connection || !confirmed.length || !!ui.jaePending;
         bar.append(deliver);
         const settings = make('details');

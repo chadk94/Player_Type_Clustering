@@ -33,7 +33,9 @@ test('the sheet creates daily tabs, freezes first delivery and feedback, and ref
     getSheetByName:day=>tabs.get(day),
     insertSheet(day){
       const sheet={rows:[],getLastRow(){return this.rows.length},getMaxRows:()=>1000,getFrozenRows:()=>1,
+        setFrozenRows(){}, setColumnWidths(){}, setColumnWidth(){}, hideColumns(){},
         getRange(r,c,n,w){const i=r-1,j=c-1;return {
+          setFontWeight(){return this},setBackground(){return this},setFontColor(){return this},setWrap(){return this},
           getValues:()=>sheet.rows.slice(i,i+n).map(row=>row.slice(j,j+w)),
           setValues:values=>{for (const [k,row] of values.entries()){
             const dest=sheet.rows[i+k] ||= [];for (const [l,v] of row.entries()) dest[j+l]=v;
@@ -58,9 +60,35 @@ test('the sheet creates daily tabs, freezes first delivery and feedback, and ref
   assert.equal(post({action:'append',rows:[row]}).added,1);
   tabs.get(day).rows[1][10]='Partner note';
   assert.equal(post({action:'append',rows:[{...row,odds:-115}]}).added,0);
-  assert.deepEqual(tabs.get(day).rows[1].slice(5,8),[102,-103,103/203]);
+  assert.deepEqual(tabs.get(day).rows[1].slice(4,8),[102,-103,103/203,'']);
   assert.equal(tabs.get(day).rows[1][10],'Partner note');
   const other='2026-11-16';
   assert.equal(post({day:other,action:'append',rows:[{...row,id:'b'.repeat(64),day:other}]}).added,1);
   assert.deepEqual([...tabs.keys()],[day,other]);
+  const over={...row,id:'c'.repeat(64),day:other,side:'Over',stat:'3PM',line:1.5,alt:{line:2.5,odds:400}};
+  assert.equal(post({day:other,action:'append',rows:[over]}).added,1);
+  assert.equal(tabs.get(other).rows[2][7],'Over 2.5 3PM  ·  +400');
+  assert.equal(ctx.altLabel_({...over,alt:{line:2.5,odds:null}}),'Over 2.5 3PM  ·  Unavailable');
+  assert.equal(post({day:other,action:'append',rows:[{...over,id:'d'.repeat(64),book:'DraftKings'}]}).ok,false);
+});
+
+test('legacy tab migration converts actual wall times and keeps feedback and play IDs outside the write',()=>{
+  let committed;
+  const notes='Keep this feedback', id='e'.repeat(64);
+  const rows=[[],['2026-11-15 13:30:00','DAL @ BOS','Test','Over 1.5 3PM','FanDuel',132,127,.44,
+      '2026-11-15 11:15:00','2026-11-15 11:17:00',notes,id]];
+  const sheet={getLastRow:()=>2,getRange(r,c,n,w){
+    assert.deepEqual([r,c,n,w],[1,1,2,10]);
+    return {getValues:()=>rows.map(row=>row.slice(0,10)),getFormulas:()=>rows.map(()=>Array(10).fill('')),
+      setValues:values=>{committed=values}};
+  }};
+  const ctx=vm.createContext({Utilities:{
+    parseDate:(s,zone)=>{assert.equal(zone,'America/Denver');return new Date(s.replace(' ','T')+'-07:00')},
+    formatDate:(date,zone)=>{assert.equal(zone,'America/New_York');return date.toLocaleTimeString('en-US',{timeZone:zone,hour:'numeric',minute:'2-digit'})}
+  }});
+  vm.runInContext(src,ctx);ctx.migrateDay_(sheet,{});
+  assert.equal(committed[0][0],'Game time (ET)');
+  assert.equal(committed[1][0],'3:30 PM');assert.equal(committed[1][8],'1:15 PM');assert.equal(committed[1][9],'1:17 PM');
+  assert.deepEqual(Array.from(committed[1].slice(4,8)),[132,127,.44,'']);
+  assert.deepEqual(rows[1].slice(10),[notes,id]);
 });

@@ -1,10 +1,12 @@
 """Freeze the selected side of a fresh sportsbook quote for Jae's card."""
 from collections import defaultdict
 from datetime import datetime, timezone
+import math
 import re
 from zoneinfo import ZoneInfo
 
 from live_projections import name_key
+from play_identity import prop_id
 from sportsbook_lines import BOOKS, MARKETS, TEAM_NAMES, OddsFeedError, american_probability, game_quotes, read_feed
 
 DENVER = ZoneInfo('America/Denver')
@@ -19,36 +21,90 @@ def worst_price(odds):
     return ticks + 100 if ticks >= 0 else ticks - 100
 
 
-def current_event(event_id, book, stats):
+def current_event(event_id, stats, over_stats):
     from FanduelScrape import get_odds_api_key
-    return read_feed(f'/events/{event_id}/odds', get_odds_api_key(), bookmakers=book,
-                     markets=','.join(key for key, stat in MARKETS.items() if stat in stats),
-                     oddsFormat='american')
+    base = [key for key, stat in MARKETS.items() if stat in stats]
+    alts = [key + '_alternate' for key, stat in MARKETS.items() if stat in over_stats]
+    api_key = get_odds_api_key()
+
+    def fetch(markets):
+        return read_feed(f'/events/{event_id}/odds', api_key, bookmakers='fanduel',
+                         markets=','.join(markets), oddsFormat='american')
+
+    if alts:
+        try:
+            return fetch(base + alts)
+        except OddsFeedError:
+            pass  # Keep the confirmed primary playable if the alternate feed fails.
+    return fetch(base)
+
+
+def alternate_overs(event, now):
+    """Index current one-sided FanDuel ladders separately from paired main markets."""
+    prices = defaultdict(lambda: defaultdict(set))
+    for book in event.get('bookmakers', []):
+        if book.get('key') != 'fanduel':
+            continue
+        for market in book.get('markets', []):
+            key = market.get('key', '')
+            if not key.endswith('_alternate') or (stat := MARKETS.get(key[:-10])) is None:
+                continue
+            try:
+                updated = market.get('last_update') or book.get('last_update')
+                age = (now - datetime.fromisoformat(updated.replace('Z', '+00:00'))).total_seconds()
+                if not -60 <= age <= 900:
+                    continue
+            except (AttributeError, TypeError, ValueError):
+                continue
+            for outcome in market.get('outcomes', []):
+                if outcome.get('name') != 'Over' or not outcome.get('description'):
+                    continue
+                try:
+                    line, odds = float(outcome['point']), float(outcome['price'])
+                    if not math.isfinite(line) or line < 0 or not odds.is_integer() or abs(odds) < 100:
+                        continue
+                except (TypeError, ValueError, KeyError):
+                    continue
+                prices[name_key(outcome['description']), stat][line].add(int(odds))
+    return prices
+
+
+def next_over(pick, prices):
+    if pick['side'] != 'Over':
+        return None
+    ladder = prices.get((name_key(pick['player']), pick['stat']), {})
+    if pick['stat'] == '3PM':
+        target = pick['line'] + 1
+    else:
+        target = min((line for line in ladder if line > pick['line']), default=None)
+    odds = ladder.get(target, set())
+    return {'line': target, 'odds': next(iter(odds)) if len(odds) == 1 else None}
 
 
 def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.utc)):
-    """One fresh request per event/book. Leave changed or unavailable lines unsent."""
+    """Requote every confirmed play at FanDuel at its exact saved line."""
     groups = defaultdict(list)
     for p in picks:
         if p['status'] == 'Confirmed':
-            groups[p['event'], BOOKS[p['book']]].append(p)
+            groups[p['event']].append(p)
     rows, skipped = [], []
-    for (event_id, book), group in groups.items():
+    for event_id, group in groups.items():
         try:
             if not re.fullmatch(r'[a-fA-F0-9]{32}', event_id):
                 raise ValueError('unrecognized event')
-            event = fetch(event_id, book, {p['stat'] for p in group})
+            event = fetch(event_id, {p['stat'] for p in group}, {p['stat'] for p in group if p['side'] == 'Over'})
             now = clock()
             start = datetime.fromisoformat(event['commence_time'].replace('Z', '+00:00'))
             if event['id'] != event_id or start <= now:
                 raise ValueError('event unavailable or already started')
             game = f"{TEAM_NAMES[event['away_team']]} @ {TEAM_NAMES[event['home_team']]}"
-            quotes = game_quotes(event, [p['player'] for p in group], book, now)
+            quotes = game_quotes(event, [p['player'] for p in group], 'fanduel', now)
+            ladders = alternate_overs(event, now)
         except (OddsFeedError, ValueError, TypeError, KeyError, AttributeError):
-            skipped.extend(f"{p['player']} {p['side']} {p['line']:g} {p['stat']} ({p['book']}) — game or quote unavailable." for p in group)
+            skipped.extend(f"{p['player']} {p['side']} {p['line']:g} {p['stat']} (FanDuel) — game or quote unavailable." for p in group)
             continue
         for p in group:
-            label = f"{p['player']} {p['side']} {p['line']:g} {p['stat']} ({p['book']})"
+            label = f"{p['player']} {p['side']} {p['line']:g} {p['stat']} (FanDuel)"
             if game != p['game'] or start.astimezone(DENVER).date().isoformat() != p['day']:
                 skipped.append(f'{label} — game changed.')
                 continue
@@ -64,7 +120,7 @@ def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.
             worst = worst_price(price)
             rows.append(dict(id=p['id'], day=p['day'], start=start.isoformat(), game=game,
                              player=p['player'], stat=p['stat'], side=p['side'], line=p['line'],
-                             book=p['book'], odds=price, worst=worst, breakeven=american_probability(worst),
+                             book='FanDuel', alt=next_over(p, ladders), odds=price, worst=worst, breakeven=american_probability(worst),
                              quoted=quote['Updated UTC'], sent=now.isoformat()))
     return rows, skipped
 
@@ -94,11 +150,23 @@ def sheet_request(connection, action, day, *, ids=(), rows=()):
 
 
 def send_card(day, picks, connection, request=sheet_request, fetch=current_event):
-    confirmed = [p for p in picks if p['status'] == 'Confirmed']
-    ids = {p['id'] for p in confirmed}
-    if not ids:
+    # The same pick can be shortlisted at more than one book. Use its FanDuel
+    # identity on the card so repeat sends and cross-book selections agree.
+    unique = {}
+    for p in picks:
+        if p['status'] == 'Confirmed':
+            if p['book'] != 'FanDuel':
+                p = dict(p, book='FanDuel')
+                p['id'] = prop_id(p)
+            unique[p['id']] = p
+    confirmed = list(unique.values())
+    if not confirmed:
         raise ValueError('Confirm at least one play for this slate.')
-    existing = set(request(connection, 'check', day, ids=sorted(ids))['existing']) & ids
+    # Recognize immutable rows sent under another book before the FanDuel-only switch.
+    aliases = {p['id']: {p['id']} | {prop_id(dict(p, book=b)) for b in BOOKS} for p in confirmed}
+    all_ids = sorted(set().union(*aliases.values()))
+    sent = set(request(connection, 'check', day, ids=all_ids)['existing'])
+    existing = {pid for pid, keys in aliases.items() if keys & sent}
     rows, skipped = card_quotes([p for p in confirmed if p['id'] not in existing], fetch)
     added = 0
     if rows:
