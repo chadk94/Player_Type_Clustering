@@ -5,6 +5,7 @@ const HEADERS = ['Game time (Denver)', 'Game', 'Player', 'Prop', 'Sportsbook', '
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Jae card')
     .addItem('Set up daily tabs', 'setupCard')
+    .addItem('Set deployed web app URL', 'setDeploymentUrl')
     .addItem('Show dashboard connection', 'showConnection').addToUi();
 }
 
@@ -20,13 +21,30 @@ function setupCard() {
   book.toast('Daily card ready. Future dates are created when you send their first plays.');
 }
 
-function showConnection() {
-  const url = ScriptApp.getService().getUrl();
-  const key = PropertiesService.getUserProperties().getProperty('writeKey');
-  if (!url || !key) {
-    SpreadsheetApp.getUi().alert('Run Set up daily tabs and deploy this project as a web app first.');
+function setDeploymentUrl() {
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.prompt('Set deployed web app URL',
+    'Paste the Web app URL from Deploy → Manage deployments in this sheet’s Apps Script project.',
+    ui.ButtonSet.OK_CANCEL);
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+  const url = response.getResponseText().trim();
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[\w-]{20,200}\/exec$/.test(url)) {
+    ui.alert('Use the deployed Google Web app URL ending in /exec.');
     return;
   }
+  PropertiesService.getUserProperties().setProperty('webAppUrl', url);
+  return url;
+}
+
+function showConnection() {
+  const props = PropertiesService.getUserProperties();
+  const key = props.getProperty('writeKey');
+  if (!key) {
+    SpreadsheetApp.getUi().alert('Run Set up daily tabs in this sheet first.');
+    return;
+  }
+  const url = props.getProperty('webAppUrl') || setDeploymentUrl();
+  if (!url) return;
   SpreadsheetApp.getUi().alert('Private dashboard connection', url + '#' + key,
     SpreadsheetApp.getUi().ButtonSet.OK);
 }

@@ -3,6 +3,30 @@ import test from 'node:test';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 const src=readFileSync(new URL('../integrations/jae_sheet.gs',import.meta.url),'utf8');
+test('pairing uses the saved production deployment and never accepts a preview or external URL',()=>{
+  const url='https://script.google.com/macros/s/'+'a'.repeat(40)+'/exec';
+  const props=new Map([['writeKey','private']]);
+  const alerts=[];
+  let entered=url.replace('/exec','/dev'), prompts=0;
+  const ui={Button:{OK:'ok'}, ButtonSet:{OK:'ok',OK_CANCEL:'choice'},
+    prompt(){prompts++; return {getSelectedButton:()=>'ok',getResponseText:()=>entered}},
+    alert(...message){alerts.push(message)}};
+  const ctx=vm.createContext({PropertiesService:{getUserProperties:()=>({
+    getProperty:k=>props.get(k),setProperty:(k,v)=>props.set(k,v)
+  })},SpreadsheetApp:{getUi:()=>ui}});
+  vm.runInContext(src,ctx);
+  ctx.showConnection();
+  assert.equal(props.has('webAppUrl'),false);
+  entered=url.replace('script.google.com','example.com');
+  ctx.showConnection();
+  assert.equal(props.has('webAppUrl'),false);
+  entered=url;
+  ctx.showConnection();
+  assert.equal(alerts.at(-1)[1],url+'#private');
+  ctx.showConnection();
+  assert.equal(prompts,3);
+  assert.equal(alerts.at(-1)[1],url+'#private');
+});
 test('the sheet creates daily tabs, freezes first delivery and feedback, and refuses unknown keys',()=>{
   const tabs=new Map();
   const book={
