@@ -68,6 +68,43 @@ export default function({data, parentElement, setStateValue}) {
             } catch { storageFailure(); return; }
         }
     }
+    const connectionKey = 'nba-props.jae.connection.v1';
+    const jaeReply = data.jae;
+    if (jaeReply && jaeReply.nonce === ui.jaePending) {
+        if (jaeReply.connected) localStorage.setItem(connectionKey, ui.jaeCandidate);
+        ui.jaeCandidate = null;
+        ui.jaePending = null;
+        ui.jaeFeedback = jaeReply;
+    }
+    function requestJae(type, connection, picks) {
+        ui.jaePending = crypto.randomUUID();
+        ui.jaeFeedback = null;
+        if (type === 'connect') ui.jaeCandidate = connection;
+        setStateValue('jae', {type, nonce:ui.jaePending, day:ui.day, connection, picks});
+        draw();
+    }
+    function renderJae(confirmed) {
+        const connection = localStorage.getItem(connectionKey);
+        const bar = make('div'); bar.className = 'tools';
+        const deliver = button('Send confirmed plays to Jae', () => requestJae('send', connection, confirmed));
+        deliver.disabled = !connection || !confirmed.length || !!ui.jaePending;
+        bar.append(deliver);
+        const settings = make('details');
+        settings.append(make('summary', connection ? 'Jae sheet connection' : 'Connect Jae’s Google Sheet'));
+        const instructions = make('p', 'In the prepared Google Sheet, choose Jae card → Show dashboard connection. Paste it here once per browser.');
+        const input = make('input'); input.type = 'password'; input.autocomplete = 'off';
+        input.placeholder = 'Private sheet connection'; input.setAttribute('aria-label',input.placeholder);
+        const connect = button('Connect sheet', () => requestJae('connect', input.value.trim(), []));
+        connect.disabled = !!ui.jaePending;
+        settings.append(instructions,input,connect);
+        root.append(bar,settings);
+        if (ui.jaePending || ui.jaeFeedback?.day === ui.day) {
+            const info = make('div'); info.setAttribute('role','status');
+            info.append(make('p', ui.jaePending ? 'Checking Jae’s sheet…' : ui.jaeFeedback.error || ui.jaeFeedback.message));
+            for (const reason of ui.jaeFeedback?.skipped || []) info.append(make('p',reason));
+            root.append(info);
+        }
+    }
     const workbook = data.workbook;
     const exportReady = workbook && workbook.nonce === ui.exportNonce && workbook.day === ui.day;
     if (exportReady) {
@@ -99,6 +136,7 @@ export default function({data, parentElement, setStateValue}) {
         const status = make('p', rows.length ? review.length+' in review · '+(rows.length-review.length)+' confirmed'
             : 'Check Save next to a prop in Top Sportsbook Edges to start this slate. You can copy your picks as a table or download them in Excel.');
         root.append(status);
+        renderJae(rows.filter(p => p.status === 'Confirmed'));
         if (rows.length) {
             const scroll=make('div'); scroll.className='play-table';
             const table=make('table'); table.setAttribute('aria-label','Saved player props');

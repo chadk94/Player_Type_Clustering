@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
+from jae_card import send_card, sheet_request
 from sportsbook_lines import BOOKS
 
 ROOT = Path(__file__).parent
@@ -218,6 +219,25 @@ def render_shortlist(ui):
             reply['error'] = 'Could not export this slate. Check the saved picks and try again.'
         st.session_state[key+'_workbook'] = reply
 
+    def on_jae():
+        action = st.session_state.get(key, {}).get('jae') or {}
+        reply = {'nonce': action.get('nonce'), 'day': action.get('day')}
+        try:
+            day = valid_day(action['day'])
+            connection = action['connection']
+            if action.get('type') == 'connect':
+                sheet_request(connection, 'check', day)
+                reply['connected'] = True
+                reply['message'] = 'Google Sheet connected.'
+            elif action.get('type') == 'send':
+                picks = clean_picks(day, action['picks'])
+                reply['message'], reply['skipped'] = send_card(day, picks, connection)
+            else:
+                raise ValueError('Unknown Jae card action.')
+        except (KeyError, TypeError, ValueError) as exc:
+            reply['error'] = str(exc) if isinstance(exc, ValueError) else 'Unable to confirm delivery. Retry to check the sheet.'
+        st.session_state[key+'_jae_reply'] = reply
+
     def on_action():
         action = st.session_state.get(key, {}).get('action') or {}
         if not isinstance(action, dict):
@@ -241,8 +261,8 @@ def render_shortlist(ui):
     component = shortlist_component(st.runtime.get_instance(), js, (ROOT/'todays_plays.css').read_text())
     component(key=key, data=dict(
         today=datetime.now(ZoneInfo('America/Denver')).date().isoformat(),
-        result=st.session_state.get(key+'_result'), workbook=st.session_state.pop(key+'_workbook', None)),
-        on_action_change=on_action, on_excel_change=on_excel)
+        jae=st.session_state.get(key+'_jae_reply'), result=st.session_state.get(key+'_result'), workbook=st.session_state.pop(key+'_workbook', None)),
+        on_action_change=on_action, on_excel_change=on_excel, on_jae_change=on_jae)
 
 
 def render_partner_review(ui, token):
