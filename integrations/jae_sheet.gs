@@ -2,8 +2,10 @@
 const LEGACY_HEADERS = ['Game time (Denver)', 'Game', 'Player', 'Prop', 'Sportsbook', 'Quoted odds',
   'Worst odds', 'Worst break-even %', 'Quote time (Denver)', 'Sent time (Denver)', 'Partner feedback', 'Play ID'];
 
-const HEADERS = ['Game time (ET)', 'Game', 'Player', 'Prop', 'FanDuel odds', 'Worst odds',
+const PREVIOUS_HEADERS = ['Game time (ET)', 'Game', 'Player', 'Prop', 'FanDuel odds', 'Worst odds',
   'Worst break-even %', 'Alternate over · FD odds', 'Quote time (ET)', 'Sent time (ET)', 'Partner feedback', 'Play ID'];
+const HEADERS = ['Tip-off (ET)', 'Game', 'Player', 'Prop', 'FanDuel odds', 'Play to', 'Break-even %',
+  'Alternate over · FD odds', 'Alt play to', 'Alt break-even %', 'Quoted (ET)', 'Sent (ET)', 'Partner feedback', 'Play ID'];
 const EASTERN = 'America/New_York';
 
 function easternStamp_(date) {
@@ -30,7 +32,7 @@ function setupCard() {
   try {
     const days = new Set(book.getSheets().map(s => s.getName()).filter(name => /^\d{4}-\d{2}-\d{2}$/.test(name)));
     days.add(day);
-    for (const date of days) ensureDay_(book, date);
+    for (const date of days) sortDay_(ensureDay_(book, date));
     SpreadsheetApp.flush();
     book.toast(days.size + ' daily cards ready. Game and quote times are Eastern.');
   } finally {
@@ -79,7 +81,7 @@ function migrateDay_(sheet, book) {
       : String(value);
     return easternStamp_(Utilities.parseDate(wallTime, 'America/Denver', 'yyyy-MM-dd HH:mm:ss'));
   };
-  const migrated = [HEADERS.slice(0, 10)];
+  const migrated = [PREVIOUS_HEADERS.slice(0, 10)];
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     const odds = r[4] && r[4] !== 'FanDuel' ? r[5] + ' (' + r[4] + ')' : r[5];
@@ -91,36 +93,105 @@ function migrateDay_(sheet, book) {
   range.setValues(migrated);
 }
 
+// Store an Eastern wall-clock serial so Sheets can sort and display the full
+// timestamp regardless of the workbook owner's time zone.
+function serialTime_(wallTime) {
+  const ms = Date.parse(wallTime.replace(' ', 'T') + 'Z');
+  if (!Number.isFinite(ms)) throw Error('Invalid card time.');
+  return ms / 86400000 + 25569;
+}
+
+function storedTime_(value, book) {
+  if (value === '' || typeof value === 'number') return value;
+  if (value instanceof Date) {
+    return serialTime_(Utilities.formatDate(value, book.getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm:ss'));
+  }
+  const parts = String(value).match(/^(\d{4}-\d{2}-\d{2}) (\d{1,2}):(\d{2}):(\d{2}) (AM|PM) E[DS]T$/);
+  if (!parts) throw Error('Unrecognized Eastern timestamp on the card.');
+  const hour = Number(parts[2]) % 12 + (parts[5] === 'PM' ? 12 : 0);
+  return serialTime_(parts[1]+' '+String(hour).padStart(2, '0')+':'+parts[3]+':'+parts[4]);
+}
+
+function altLimit_(price) {
+  if (!Number.isInteger(price) || Math.abs(price) < 100) return ['', ''];
+  const ticks = (price > 0 ? price - 100 : price + 100) - 5;
+  const worst = ticks >= 0 ? ticks + 100 : ticks - 100;
+  const probability = worst > 0 ? 100 / (worst + 100) : -worst / (100 - worst);
+  return [worst, probability];
+}
+
+function formatTimes_(sheet, first, rows) {
+  if (!rows.length) return;
+  const day = serialTime_(sheet.getName() + ' 00:00:00');
+  // Show the date only if the timestamp falls outside the slate date.
+  for (const col of [1, 11, 12]) {
+    const formats = rows.map(r => {
+      const value = r[col-1];
+      return [value === '' || Math.floor(value) === day ? 'h:mm AM/PM' : 'mmm d, h:mm AM/PM'];
+    });
+    sheet.getRange(first, col, rows.length, 1).setNumberFormats(formats);
+  }
+}
+
+function upgradeTimesAndAlts_(sheet, book) {
+  const count = sheet.getLastRow() - 1;
+  if (count < 1) return;
+  const rows = sheet.getRange(2, 1, count, 12).getValues();
+  for (const row of rows) {
+    for (const col of [0, 10, 11]) row[col] = storedTime_(row[col], book);
+    // Use the frozen alternate from this row, including on later retries.
+    const match = String(row[7]).match(/·\s*([+-]\d+)\s*$/);
+    [row[8], row[9]] = altLimit_(match ? Number(match[1]) : null);
+  }
+  sheet.getRange(2, 1, count, 1).setValues(rows.map(r => [r[0]]));
+  sheet.getRange(2, 9, count, 4).setValues(rows.map(r => r.slice(8, 12)));
+  formatTimes_(sheet, 2, rows);
+}
+
+function sortDay_(sheet) {
+  const count = sheet.getLastRow() - 1;
+  if (count > 1) {
+    // Sort whole rows, including private IDs, feedback and any partner columns.
+    sheet.getRange(2, 1, count, sheet.getLastColumn()).sort([
+      {column:1, ascending:true}, {column:2, ascending:true}, {column:3, ascending:true}
+    ]);
+  }
+  return sheet;
+}
+
 function ensureDay_(book, day) {
   let sheet = book.getSheetByName(day);
   if (!sheet) sheet = book.insertSheet(day);
-  const header = sheet.getRange(1, 1, 1, HEADERS.length);
-  let layoutChanged = false;
-  if (!sheet.getLastRow()) {
-    header.setValues([HEADERS]);
-    layoutChanged = true;
-  } else {
-    const current = JSON.stringify(header.getValues()[0]);
-    if (current === JSON.stringify(LEGACY_HEADERS)) {
-      migrateDay_(sheet, book);
-      layoutChanged = true;
-    } else if (current !== JSON.stringify(HEADERS)) {
-      throw Error('Headers changed.');
+  if (sheet.getLastRow()) {
+    const current = sheet.getRange(1, 1, 1, HEADERS.length).getValues()[0];
+    const same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
+    if (same(current, HEADERS)) return sheet;
+    const old = current.slice(0, PREVIOUS_HEADERS.length);
+    if (same(old, LEGACY_HEADERS) || same(old, PREVIOUS_HEADERS)) {
+      if (same(old, LEGACY_HEADERS)) migrateDay_(sheet, book);
+      // Inserting preserves partner feedback cells, notes and the hidden ID.
+      sheet.insertColumnsAfter(8, 2);
+    } else if (!same(current, [...PREVIOUS_HEADERS.slice(0,8), '', '', ...PREVIOUS_HEADERS.slice(8)])) {
+      throw Error('Unrecognized daily card headers.');
     }
+    // Also resumes an interrupted upgrade after the columns were inserted.
+    upgradeTimesAndAlts_(sheet, book);
   }
-  if (layoutChanged || sheet.getFrozenRows() === 0) {
-    header.setFontWeight('bold').setBackground('#214b56').setFontColor('#ffffff').setWrap(true);
-    sheet.setFrozenRows(1);
-    sheet.setColumnWidths(1, HEADERS.length, 105);
-    for (const col of [1, 3, 4, 8, 9, 10, 11]) sheet.setColumnWidth(col, 180);
-    sheet.hideColumns(HEADERS.length);
-    const count = sheet.getMaxRows() - 1;
-    if (count > 0) {
-      sheet.getRange(2, 5, count, 2).setNumberFormat('+0;-0;0');
-      sheet.getRange(2, 7, count, 1).setNumberFormat('0.00%');
-      sheet.getRange(2, 8, count, 1).setNumberFormat('@');
-    }
+  sheet.setFrozenRows(1);
+  sheet.setColumnWidths(1, HEADERS.length, 103);
+  for (const [col, width] of [[1,100],[2,108],[3,165],[4,140],[8,190],[13,180]]) {
+    sheet.setColumnWidth(col, width);
   }
+  sheet.hideColumns(HEADERS.length);
+  const count = sheet.getMaxRows() - 1;
+  if (count > 0) {
+    for (const col of [5,6,9]) sheet.getRange(2,col,count,1).setNumberFormat('+0;-0;0');
+    for (const col of [7,10]) sheet.getRange(2,col,count,1).setNumberFormat('0.0%');
+    sheet.getRange(2,8,count,1).setNumberFormat('@');
+  }
+  const header = sheet.getRange(1,1,1,HEADERS.length);
+  header.setFontWeight('bold').setBackground('#214b56').setFontColor('#ffffff').setWrap(true);
+  header.setValues([HEADERS]);  // Mark complete after all migration steps.
   return sheet;
 }
 
@@ -144,13 +215,16 @@ function doPost(e) {
     const book = SpreadsheetApp.openById(props.getProperty('sheetId'));
     lock = LockService.getScriptLock();
     lock.waitLock(16000);
-    let sheet = book.getSheetByName(data.day);
+    let sheet = book.getSheetByName(data.day) && ensureDay_(book, data.day);
     const known = new Set(sheet && sheet.getLastRow() > 1 ?
       sheet.getRange(2, HEADERS.length, sheet.getLastRow()-1, 1).getValues().flat() : []);
-    if (data.action === 'check') return json({ok:true, existing:data.ids.filter(id=>known.has(id))});
+    if (data.action === 'check') {
+      if (sheet) sortDay_(sheet);
+      return json({ok:true, existing:data.ids.filter(id=>known.has(id))});
+    }
     if (!Array.isArray(data.rows) || data.rows.length > 400) throw Error();
     // One range write with its identity column included, under the same lock as the read.
-    const stamp = iso => easternStamp_(new Date(iso));
+    const stamp = iso => serialTime_(Utilities.formatDate(new Date(iso), EASTERN, 'yyyy-MM-dd HH:mm:ss'));
     const safe = value => /^[=+@-]/.test(value) ? "'" + value : value;
     const values = [];
     for (const r of data.rows) {
@@ -161,19 +235,21 @@ function doPost(e) {
           !['Over','Under'].includes(r.side) || !Number.isFinite(r.line) ||
           !['PTS','REB','AST','3PM','PRA','BLK','STL'].includes(r.stat)) throw Error();
       values.push([stamp(r.start),safe(r.game),safe(r.player),r.side+' '+r.line+' '+r.stat,
-        r.odds,r.worst,r.breakeven,altLabel_(r),stamp(r.quoted),stamp(r.sent),'',r.id]);
+        r.odds,r.worst,r.breakeven,altLabel_(r),...altLimit_(r.side === 'Over' && r.alt && r.alt.line > r.line ? r.alt.odds : null),stamp(r.quoted),stamp(r.sent),'',r.id]);
       known.add(r.id);
     }
     if (values.length) {
-      sheet = ensureDay_(book, data.day);
+      sheet = sheet || ensureDay_(book, data.day);
       const first = sheet.getLastRow()+1;
       const last = first + values.length - 1;
       if (last > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), last - sheet.getMaxRows());
-      sheet.getRange(first,5,values.length,2).setNumberFormat('+0;-0;0');
-      sheet.getRange(first,7,values.length,1).setNumberFormat('0.00%');
+      for (const col of [5,6,9]) sheet.getRange(first,col,values.length,1).setNumberFormat('+0;-0;0');
+      for (const col of [7,10]) sheet.getRange(first,col,values.length,1).setNumberFormat('0.0%');
+      formatTimes_(sheet, first, values);
       sheet.getRange(first,1,values.length,HEADERS.length).setValues(values);
       SpreadsheetApp.flush();
     }
+    if (sheet) sortDay_(sheet);
     return json({ok:true, added:values.length});
   } catch (_) {
     return json({ok:false});
