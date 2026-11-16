@@ -33,7 +33,7 @@ test('the sheet creates daily tabs, freezes first delivery and feedback, and ref
     getSheetByName:day=>tabs.get(day),
     insertSheet(day){
       const sheet={rows:[],getName:()=>day,getLastColumn:()=>14,getLastRow(){return this.rows.length},getMaxRows:()=>1000,getFrozenRows:()=>1,
-        setFrozenRows(){}, setColumnWidths(){}, setColumnWidth(){}, hideColumns(){},
+        setFrozenRows(){}, setColumnWidths(){}, setColumnWidth(){}, getColumnWidth(){return 100}, hideColumns(){},
         getRange(r,c,n,w){const i=r-1,j=c-1;return {
           setFontWeight(){return this},setBackground(){return this},setFontColor(){return this},setWrap(){return this},
           getValues:()=>sheet.rows.slice(i,i+n).map(row=>row.slice(j,j+w)),
@@ -49,7 +49,7 @@ test('the sheet creates daily tabs, freezes first delivery and feedback, and ref
             });
             sheet.rows.splice(i,n,...sorted);
           },
-          setNumberFormats(){},setNumberFormat(){},
+          setNumberFormats(){},setNumberFormat(){},setFontColors(){},setFontWeights(){},setBackgrounds(){},
         }}};
       tabs.set(day,sheet);return sheet;
     }
@@ -78,6 +78,16 @@ test('the sheet creates daily tabs, freezes first delivery and feedback, and ref
   assert.equal(post({day:other,action:'append',rows:[over]}).added,1);
   assert.equal(tabs.get(other).rows[2][7],'Over 2.5 3PM  ·  +400');
   assert.deepEqual(tabs.get(other).rows[2].slice(8,10),[395,100/495]);
+  const original=tabs.get(other).rows[2].slice();
+  const edit=(cents)=>post({day:other,action:'append',rows:[],edits:[{id:over.id,cents}]});
+  assert.equal(edit(15).updated,1);
+  assert.deepEqual(tabs.get(other).rows[2],[...original.slice(0,5),-113,113/213,...original.slice(7)]);
+  assert.equal(edit(15).updated,0);
+  assert.equal(edit(10).updated,1);
+  assert.equal(tabs.get(other).rows[2][5],-108);
+  assert.equal(edit(7).ok,false);
+  for(const [quote,limit,label] of [[-110,-125,'High'],[102,-108,'Medium'],[105,100,'Low']])
+    assert.equal(ctx.cardConfidence_(quote,limit).label,label);
   const first={...over,id:'f'.repeat(64),start:'2026-11-14T18:00:00Z',player:'Earlier'};
   assert.equal(post({day:other,action:'append',rows:[first]}).added,1);
   assert.equal(tabs.get(other).rows[1][13],first.id);

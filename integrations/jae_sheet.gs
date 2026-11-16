@@ -112,13 +112,14 @@ function storedTime_(value, book) {
   return serialTime_(parts[1]+' '+String(hour).padStart(2, '0')+':'+parts[3]+':'+parts[4]);
 }
 
-function altLimit_(price) {
+function playLimit_(price,cents) {
   if (!Number.isInteger(price) || Math.abs(price) < 100) return ['', ''];
-  const ticks = (price > 0 ? price - 100 : price + 100) - 5;
+  const ticks = (price > 0 ? price - 100 : price + 100) - cents;
   const worst = ticks >= 0 ? ticks + 100 : ticks - 100;
   const probability = worst > 0 ? 100 / (worst + 100) : -worst / (100 - worst);
   return [worst, probability];
 }
+function altLimit_(price) { return playLimit_(price,5); }
 
 function formatTimes_(sheet, first, rows) {
   if (!rows.length) return;
@@ -156,7 +157,30 @@ function sortDay_(sheet) {
       {column:1, ascending:true}, {column:2, ascending:true}, {column:3, ascending:true}
     ]);
   }
+  formatConfidence_(sheet,count);
   return sheet;
+}
+
+// E and F are the frozen quote and main play-to price. Keep F numeric for the grader.
+function cardConfidence_(quote, limit) {
+  if (![quote,limit].every(x=>Number.isInteger(x) && Math.abs(x)>=100)) return null;
+  const ticks=x=>x-Math.sign(x)*100;
+  return ({
+    15: {label:'High',fill:'#166449',ink:'#ffffff',weight:'bold'},
+    10: {label:'Medium',fill:'#ffe4a3',ink:'#633d00',weight:'bold'},
+    5: {label:'Low',fill:'#edf0f3',ink:'#45515d',weight:'normal'}
+  })[ticks(quote)-ticks(limit)] || null;
+}
+
+function formatConfidence_(sheet,count) {
+  if (sheet.getColumnWidth(6)<134) sheet.setColumnWidth(6,134);
+  if (count<1) return;
+  const tiers=sheet.getRange(2,5,count,2).getValues().map(([quote,limit])=>cardConfidence_(quote,limit));
+  const prices=sheet.getRange(2,6,count,1);
+  prices.setNumberFormats(tiers.map(t=>[t ? '"'+t.label+' · "+0;"'+t.label+' · "-0;0' : '+0;-0;0']));
+  prices.setBackgrounds(tiers.map(t=>[t ? t.fill : null]));
+  prices.setFontColors(tiers.map(t=>[t ? t.ink : null]));
+  prices.setFontWeights(tiers.map(t=>[t ? t.weight : 'normal']));
 }
 
 function ensureDay_(book, day) {
@@ -220,13 +244,32 @@ function doPost(e) {
       sheet.getRange(2, HEADERS.length, sheet.getLastRow()-1, 1).getValues().flat() : []);
     if (data.action === 'check') {
       if (sheet) sortDay_(sheet);
-      return json({ok:true, existing:data.ids.filter(id=>known.has(id))});
+      return json({ok:true, confidenceEdits:true, existing:data.ids.filter(id=>known.has(id))});
     }
     if (!Array.isArray(data.rows) || data.rows.length > 400) throw Error();
     // One range write with its identity column included, under the same lock as the read.
     const stamp = iso => serialTime_(Utilities.formatDate(new Date(iso), EASTERN, 'yyyy-MM-dd HH:mm:ss'));
     const safe = value => /^[=+@-]/.test(value) ? "'" + value : value;
     const values = [];
+    const edits=data.edits || [];
+    if (!Array.isArray(edits) || edits.length>400) throw Error();
+    const changes=[];
+    const seenEdits=new Set();
+    const prior=edits.length && sheet && sheet.getLastRow()>1
+      ? sheet.getRange(2,5,sheet.getLastRow()-1,10).getValues() : [];
+    const byId=new Map(prior.map((row,i)=>[row[9],{row,index:i+2}]));
+    for (const edit of edits) {
+      if (!/^[a-f0-9]{64}$/.test(edit.id) || ![5,10,15].includes(edit.cents) || seenEdits.has(edit.id)) throw Error();
+      seenEdits.add(edit.id);
+      const stored=byId.get(edit.id);
+      if (!stored) {
+        if (!data.rows.some(r=>r.id===edit.id)) throw Error();
+        continue;
+      }
+      const [limit,prob]=playLimit_(stored.row[0],edit.cents);
+      if (limit==='') throw Error('Original price is unavailable.');
+      if (limit!==stored.row[1] || Math.abs(prob-Number(stored.row[2]))>1e-10) changes.push([stored.index,[limit,prob]]);
+    }
     for (const r of data.rows) {
       if (!/^[a-f0-9]{64}$/.test(r.id) || r.day !== data.day) throw Error();
       if (known.has(r.id)) continue;
@@ -238,6 +281,7 @@ function doPost(e) {
         r.odds,r.worst,r.breakeven,altLabel_(r),...altLimit_(r.side === 'Over' && r.alt && r.alt.line > r.line ? r.alt.odds : null),stamp(r.quoted),stamp(r.sent),'',r.id]);
       known.add(r.id);
     }
+    for (const [index,terms] of changes) sheet.getRange(index,6,1,2).setValues([terms]);
     if (values.length) {
       sheet = sheet || ensureDay_(book, data.day);
       const first = sheet.getLastRow()+1;
@@ -250,7 +294,7 @@ function doPost(e) {
       SpreadsheetApp.flush();
     }
     if (sheet) sortDay_(sheet);
-    return json({ok:true, added:values.length});
+    return json({ok:true, added:values.length, updated:changes.length});
   } catch (_) {
     return json({ok:false});
   } finally {

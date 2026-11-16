@@ -48,6 +48,7 @@ export default function({data, parentElement}) {
                 const saved = savedPlay(localStorage, pick.id);
                 select.options[0].text = saved ? 'Remove' : 'Save…';
                 select.value = saved ? String(saved.confidence_cents ?? 5) : '';
+                colorConfidence(select);
                 select.closest('tr').classList.toggle('saved-play', !!saved);
             }
         } catch { note.textContent = 'Allow site storage to save plays in this browser.'; }

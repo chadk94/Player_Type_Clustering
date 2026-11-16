@@ -2,20 +2,38 @@
 const PICK_PREFIX = 'nba-props.plays.v1.pick.';
 const SHARE_PREFIX = 'nba-props.plays.v1.share.';
 const PICK_EVENT = 'nba-props:plays-changed';
-export const CONFIDENCE_TIERS = new Map([[5,'Low'],[10,'Medium'],[15,'High']]);
+export const CONFIDENCE_TIERS = new Map([
+    [5,{label:'Low',fill:'#edf0f3',ink:'#45515d'}],
+    [10,{label:'Medium',fill:'#ffe4a3',ink:'#633d00'}],
+    [15,{label:'High',fill:'#166449',ink:'#ffffff'}],
+]);
+
+function colorConfidence(select) {
+    const tier=CONFIDENCE_TIERS.get(Number(select.value));
+    select.style.backgroundColor=tier?.fill || '';
+    select.style.color=tier?.ink || '';
+    select.style.fontWeight=Number(select.value)===15?'bold':'';
+}
 
 function confidenceSelect(label, allowRemove) {
     const select = document.createElement('select');
     select.setAttribute('aria-label', label);
     if (allowRemove) select.add(new Option('Save…', ''));
-    for (const [cents, tier] of CONFIDENCE_TIERS) select.add(new Option(tier+' · '+cents+'¢', String(cents)));
+    for (const [cents, tier] of CONFIDENCE_TIERS) select.add(new Option(tier.label+' · '+cents+'¢', String(cents)));
     return select;
 }
 
 export function saveConfidence(storage, pick, cents) {
     if (!CONFIDENCE_TIERS.has(cents)) throw new Error('Choose a valid confidence tier.');
     const saved = savedPlay(storage, pick.id) || pick;
-    storage.setItem(PICK_PREFIX + pick.id, JSON.stringify({...saved, confidence_cents:cents}));
+    storage.setItem(PICK_PREFIX + pick.id, JSON.stringify({...saved, confidence_cents:cents, confidence_edited:true}));
+}
+export function acknowledgeConfidence(storage, synced) {
+    for (const [id,cents] of Object.entries(synced)) {
+        const p=savedPlay(storage,id);
+        if (p && p.confidence_cents===cents && p.confidence_edited!==false)
+            storage.setItem(PICK_PREFIX+id,JSON.stringify({...p,confidence_edited:false}));
+    }
 }
 export function savedPlay(storage, id) {
     const raw = storage.getItem(PICK_PREFIX + id);

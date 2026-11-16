@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {setPick,savedPlay,setPickStatus,allPicks,saveConfidence} from '../play_storage.mjs';
+import {setPick,savedPlay,setPickStatus,allPicks,saveConfidence,acknowledgeConfidence} from '../play_storage.mjs';
 
 class Storage {
     getItem(k) { return this[k] ?? null; }
@@ -27,9 +27,12 @@ test('changing confidence on either page preserves the original terms and confir
     saveConfidence(storage,p,15);
     setPickStatus(storage,p.id,'Confirmed');
     saveConfidence(storage,{...p,odds:-130},10);
-    assert.deepEqual(allPicks(storage),[{...p,status:'Confirmed',confidence_cents:10}]);
+    acknowledgeConfidence(storage,{p:15});
+    assert.deepEqual(allPicks(storage),[{...p,status:'Confirmed',confidence_cents:10,confidence_edited:true}]);
+    acknowledgeConfidence(storage,{p:10});
+    assert.equal(savedPlay(storage,'p').confidence_edited,false);
     assert.throws(()=>saveConfidence(storage,p,9));
     setPick(storage,p,false);
     saveConfidence(storage,p,5);
-    assert.deepEqual(allPicks(storage),[{...p,confidence_cents:5}]);
+    assert.deepEqual(allPicks(storage),[{...p,confidence_cents:5,confidence_edited:true}]);
 });

@@ -15,6 +15,7 @@ test('Docs snapshot contains only the selected slate, saved terms and review sta
     assert.equal((html.match(/<th /g) || []).length, 7);
     assert.equal((html.match(/<td /g) || []).length, 14);
     assert.match(html, /Partner feedback<\/th>/);
+    assert.match(html, /background-color:#166449;color:#ffffff;[^>]*>High · 15¢/);
     assert.equal((html.match(/><br><\/td><\/tr>/g) || []).length, 2);
     assert.match(html, /Demo &lt;Wing&gt; &amp; Co.<br>A @ B/);
     assert.doesNotMatch(html, /Other slate|private-id|Demo <Wing>/);

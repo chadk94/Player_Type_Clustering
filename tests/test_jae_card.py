@@ -97,7 +97,7 @@ class JaeCardTests(TestCase):
         fd=dict(original,book='FanDuel')
         fd['id']=prop_id(fd)
         req=Mock(side_effect=[dict(existing=[]),dict(added=1)])
-        sent,_=send_card(self.day,[dict(original,confidence_cents=10),dict(fd,confidence_cents=15)],'test',req,self.fetch)
+        sent,_,_=send_card(self.day,[dict(original,confidence_cents=10),dict(fd,confidence_cents=15)],'test',req,self.fetch)
         self.assertIn('1 added',sent)
         frozen,=req.call_args.kwargs['rows']
         self.assertEqual((frozen['id'],frozen['book']),(fd['id'],'FanDuel'))
@@ -105,4 +105,13 @@ class JaeCardTests(TestCase):
         self.fetch.reset_mock()
         req=Mock(return_value=dict(existing=[original['id']]))
         self.assertIn('1 already sent',send_card(self.day,[fd],'test',req,self.fetch)[0])
+        self.fetch.assert_not_called()
+
+    def test_resending_an_edit_targets_original_row_without_requoting(self):
+        req=Mock(side_effect=[dict(existing=[self.pick['id']],confidenceEdits=True),dict(added=0,updated=1)])
+        p=dict(self.pick,confidence_cents=15,confidence_edited=True)
+        message,skipped,synced=send_card(self.day,[p],'test',req,self.fetch)
+        self.assertEqual(req.call_args.kwargs,dict(rows=[],edits=[dict(id=p['id'],cents=15)]))
+        self.assertEqual((skipped,synced),([],{p['id']:15}))
+        self.assertIn('1 updated',message)
         self.fetch.assert_not_called()

@@ -62,7 +62,9 @@ def clean_picks(day, picks, limit=MAX_PLAYS):
                       'odds','projected','edge','quoted','status')
             p = {k: raw[k] for k in fields}
             p['confidence_cents'] = raw.get('confidence_cents', 5)
+            p['confidence_edited'] = raw.get('confidence_edited', 'confidence_cents' in raw)
             if (p['day'] != day or p['book'] not in BOOKS or p['stat'] not in STATS
+                    or type(p['confidence_edited']) is not bool
                     or type(p['confidence_cents']) is not int or p['confidence_cents'] not in CONFIDENCE_TIERS
                     or p['side'] not in ('Over','Under') or p['status'] not in ('Review','Confirmed')
                     or type(p['player_id']) is not int or type(p['odds']) is not int or abs(p['odds']) < 100
@@ -101,6 +103,7 @@ def plays_workbook(day, picks):
         cell.font = Font(bold=True, color='FFFFFF')
         cell.fill = PatternFill('solid', fgColor='264A60')
     sheet.row_dimensions[2].height = 22
+    colors = {5: ('EDF0F3','45515D'), 10: ('FFE4A3','633D00'), 15: ('166449','FFFFFF')}
     for n, p in enumerate(sorted(picks, key=lambda p: p['status'] != 'Review'), start=3):
         values = [p['player'], p['game'], p['stat'], p['side'], p['line'], p['odds'], p['book'],
                   p['projected'], p['edge'] / 100, 'In review' if p['status'] == 'Review' else 'Confirmed',
@@ -112,6 +115,9 @@ def plays_workbook(day, picks):
         sheet.cell(n, 6).number_format = '+0;-0;0'
         sheet.cell(n, 8).number_format = '0.00'
         sheet.cell(n, 9).number_format = '0.00%'
+        fill,ink=colors[p['confidence_cents']]
+        sheet.cell(n, 11).fill = PatternFill('solid', fgColor=fill)
+        sheet.cell(n, 11).font = Font(color=ink, bold=p['confidence_cents']!=5)
         sheet.cell(n, 12).alignment = Alignment(wrap_text=True, vertical='top')
     sheet.freeze_panes = 'B3'
     sheet.auto_filter.ref = f'A2:L{sheet.max_row}'
@@ -234,7 +240,7 @@ def render_shortlist(ui):
                 reply['message'] = 'Google Sheet connected.'
             elif action.get('type') == 'send':
                 picks = clean_picks(day, action['picks'])
-                reply['message'], reply['skipped'] = send_card(day, picks, connection)
+                reply['message'], reply['skipped'], reply['synced'] = send_card(day, picks, connection)
             else:
                 raise ValueError('Unknown Jae card action.')
         except (KeyError, TypeError, ValueError) as exc:

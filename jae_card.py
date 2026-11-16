@@ -128,14 +128,14 @@ def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.
     return rows, skipped
 
 
-def sheet_request(connection, action, day, *, ids=(), rows=()):
+def sheet_request(connection, action, day, *, ids=(), rows=(), edits=()):
     """Use the private write key only for the owner's selected Google deployment."""
     import requests
     endpoint, separator, key = connection.partition('#')
     if (not separator or not re.fullmatch(r'https://script\.google\.com/macros/s/[\w-]{20,200}/exec', endpoint)
             or not re.fullmatch(r'[a-f0-9]{64}', key)):
         raise ValueError('Paste the connection from the Jae card menu in your Google Sheet.')
-    body = dict(key=key, action=action, day=day, ids=list(ids), rows=list(rows))
+    body = dict(key=key, action=action, day=day, ids=list(ids), rows=list(rows), edits=list(edits))
     try:
         response = requests.post(endpoint, json=body, timeout=(4,25), allow_redirects=False)
         if response.status_code in (302, 303):
@@ -156,14 +156,20 @@ def send_card(day, picks, connection, request=sheet_request, fetch=current_event
     # The same pick can be shortlisted at more than one book. Use its FanDuel
     # identity on the card so repeat sends and cross-book selections agree.
     unique = {}
+    source_ids = defaultdict(list)
+    # Prefer an explicit edit. If both are edits, use the tighter limit.
+    def priority(item):
+        return (not item.get('confidence_edited', False), item.get('confidence_cents', 5))
+
     for p in picks:
         if p['status'] == 'Confirmed':
+            source_id = p['id']
             if p['book'] != 'FanDuel':
                 p = dict(p, book='FanDuel')
                 p['id'] = prop_id(p)
+            source_ids[p['id']].append((source_id,p.get('confidence_cents',5)))
             prior = unique.get(p['id'])
-            # If two confirmed book rows describe the same FD play, honor the tighter price.
-            if prior is None or p.get('confidence_cents', 5) < prior.get('confidence_cents', 5):
+            if prior is None or priority(p) < priority(prior):
                 unique[p['id']] = p
     confirmed = list(unique.values())
     if not confirmed:
@@ -171,13 +177,31 @@ def send_card(day, picks, connection, request=sheet_request, fetch=current_event
     # Recognize immutable rows sent under another book before the FanDuel-only switch.
     aliases = {p['id']: {p['id']} | {prop_id(dict(p, book=b)) for b in BOOKS} for p in confirmed}
     all_ids = sorted(set().union(*aliases.values()))
-    sent = set(request(connection, 'check', day, ids=all_ids)['existing'])
+    check = request(connection, 'check', day, ids=all_ids)
+    sent = set(check['existing'])
     existing = {pid for pid, keys in aliases.items() if keys & sent}
     rows, skipped = card_quotes([p for p in confirmed if p['id'] not in existing], fetch)
-    added = 0
-    if rows:
-        reply = request(connection, 'append', day, rows=rows)
+    new_ids = {r['id'] for r in rows}
+    delivered = existing | new_ids
+    edits = []
+    for p in confirmed:
+        if not p.get('confidence_edited') or p['id'] not in delivered:
+            continue
+        matching = aliases[p['id']] & sent
+        if len(matching)>1:
+            raise ValueError('Multiple sent rows match this prop. Check the daily card before changing its limit.')
+        edits.append(dict(id=next(iter(matching),p['id']), cents=p['confidence_cents']))
+    if edits and not check.get('confidenceEdits'):
+        raise ValueError('The connected sheet needs the confidence update before sending these changes.')
+    added = updated = 0
+    if rows or edits:
+        reply = request(connection, 'append', day, rows=rows, **({'edits':edits} if edits else {}))
         added = reply['added']
         if type(added) is not int or not 0 <= added <= len(rows):
             raise ValueError('Google did not confirm the row count. Retry to check the sheet.')
-    return f'{added} added to {day} · {len(existing) + len(rows) - added} already sent.', skipped
+        updated = reply.get('updated',0) if not edits else reply.get('updated')
+        if type(updated) is not int or not 0 <= updated <= len(edits):
+            raise ValueError('Google did not confirm the confidence updates. Retry to check the sheet.')
+    synced = {source:cents for pid in delivered for source,cents in source_ids[pid]}
+    message = f'{added} added to {day} · {updated} updated · {len(delivered)-added-updated} already sent.'
+    return message, skipped, synced

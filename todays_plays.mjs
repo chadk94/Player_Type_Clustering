@@ -1,13 +1,16 @@
 export function googleDocsTable(day, picks, tiers) {
     const headings = ['Player / Game', 'Prop / Sportsbook', 'Projected', 'Edge', 'Status', 'Confidence', 'Partner feedback'];
     const rows = [headings];
+    const colors = [null];
     for (const status of ['Review', 'Confirmed']) {
         for (const p of picks.filter(p => p.day === day && p.status === status)) {
             const odds = (p.odds > 0 ? '+' : '') + p.odds;
             const cents = p.confidence_cents ?? 5;
+            const tier=tiers.get(cents);
+            colors.push(tier);
             rows.push([`${p.player}\n${p.game}`, `${p.side} ${p.line} ${p.stat} (${odds})\n${p.book}`,
                 p.projected.toFixed(2), p.edge.toFixed(2) + '%', status === 'Review' ? 'In review' : status,
-                tiers.get(cents)+' · '+cents+'¢', '']);
+                tier.label+' · '+cents+'¢', '']);
         }
     }
     const escape = value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
@@ -15,7 +18,11 @@ export function googleDocsTable(day, picks, tiers) {
     const htmlRows = rows.map((row, i) => {
         const tag = i === 0 ? 'th' : 'td';
         const color = i === 0 ? 'background:#e7eff4;' : '';
-        return '<tr>' + row.map(value => `<${tag} style="border:1px solid #a5b3be;padding:4px;text-align:left;vertical-align:top;${color}">${escape(value).replaceAll('\n', '<br>') || '<br>'}</${tag}>`).join('') + '</tr>';
+        return '<tr>' + row.map((value,col) => {
+            const fill=colors[i] && col===headings.indexOf('Confidence')
+                ? 'background-color:'+colors[i].fill+';color:'+colors[i].ink+';font-weight:bold;' : color;
+            return `<${tag} style="border:1px solid #a5b3be;padding:4px;text-align:left;vertical-align:top;${fill}">${escape(value).replaceAll('\n', '<br>') || '<br>'}</${tag}>`;
+        }).join('') + '</tr>';
     });
     return {
         html: '<p><b>' + escape(title) + '</b></p><table style="border-collapse:collapse">' + htmlRows.join('') + '</table>',
@@ -74,6 +81,7 @@ export default function({data, parentElement, setStateValue}) {
     const jaeReply = data.jae;
     if (jaeReply && jaeReply.nonce === ui.jaePending) {
         if (jaeReply.connected) localStorage.setItem(connectionKey, ui.jaeCandidate);
+        if (jaeReply.synced) acknowledgeConfidence(localStorage,jaeReply.synced);
         ui.jaeCandidate = null;
         ui.jaePending = null;
         ui.jaeFeedback = jaeReply;
@@ -158,7 +166,7 @@ export default function({data, parentElement, setStateValue}) {
         root.append(status);
         renderJae(rows.filter(p => p.status === 'Confirmed'), rows.length > 0);
         if (rows.length) {
-            root.append(make('p','Confidence sets how far past the current FanDuel price Jae can play the main line. Alternate overs have a 5¢ limit.'));
+            root.append(make('p','Send again after editing confidence to update the main play-to at its original FanDuel quote. Alternate overs have a 5¢ limit.'));
             const scroll=make('div'); scroll.className='play-table';
             const table=make('table'); table.setAttribute('aria-label','Saved player props');
             const header=table.createTHead().insertRow();
@@ -185,6 +193,7 @@ export default function({data, parentElement, setStateValue}) {
                 const confidence=confidenceSelect('Confidence for '+p.player+' '+prop+' ('+p.book+')', false);
                 confidence.title='Price movement allowed from the main FanDuel quote when sent';
                 confidence.value=String(p.confidence_cents ?? 5);
+                colorConfidence(confidence);
                 confidence.dataset.pickId=p.id;
                 confidence.onchange=()=>{
                     try {

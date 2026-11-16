@@ -42,6 +42,7 @@ class TodaysPlaysTests(unittest.TestCase):
                           'FanDuel', 4.1, 0.08, 'In review', 'Low · 5¢', None])
         self.assertEqual((sheet['A3'].data_type, sheet['F3'].data_type, sheet['I3'].number_format), ('s', 'n', '0.00%'))
         self.assertEqual((sheet['F4'].value, sheet['J4'].value, sheet['K4'].value), (-115, 'Confirmed', 'Medium · 10¢'))
+        self.assertEqual(sheet['K4'].fill.fgColor.rgb[-6:], 'FFE4A3')
         self.assertFalse(sheet.protection.sheet)
         sheet['L4'] = 'Check minutes'
         output = BytesIO()
