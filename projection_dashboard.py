@@ -308,16 +308,49 @@ def prior_team_rates():
     return season_rates(logs, expected_games=82)
 
 
-def team_projection_preview(ui, frame, event, book, api_key, team_rates):
+def load_team_game_lines(event, book, api_key):
     try:
         slate = sportsbook_slate_lines(book, api_key)
         matches = [row for row in slate if isinstance(row, dict) and row.get('id') == event['id']] if isinstance(slate, list) else []
-        try:
-            if len(matches) != 1:
-                raise ValueError('No unique game in slate')
-            targets = market_targets(matches[0], event, book)
-        except (ValueError, KeyError, TypeError, AttributeError):
-            targets = market_targets(sportsbook_game_lines(event['id'],book,api_key),event,book)
+        if len(matches) == 1:
+            try:
+                market_targets(matches[0], event, book)
+                return matches[0]
+            except (ValueError, KeyError, TypeError, AttributeError):
+                pass
+        return sportsbook_game_lines(event['id'], book, api_key)
+    except (OddsFeedError, ValueError, KeyError, TypeError, AttributeError):
+        return {}
+
+
+def player_market_snapshot(team, opponent, scheduled_start, book):
+    """Load this selection once. Slider reruns only read these timestamped markets."""
+    event, game_lines, props = None, {}, {}
+    try:
+        api_key = get_odds_api_key()
+        if not api_key:
+            raise OddsFeedError('Sportsbook feed access is not configured.')
+        event = next_matchup(sportsbook_events(api_key), team, opponent,
+                             scheduled_start=scheduled_start, time_tolerance=EVENT_TIME_TOLERANCE)
+        if event:
+            game_lines = load_team_game_lines(event, book, api_key)
+            payload = sportsbook_props(event['id'], book, api_key)
+            if (payload.get('id') != event['id'] or
+                    {payload.get('home_team'), payload.get('away_team')} != {event['home_team'], event['away_team']}):
+                raise OddsFeedError('Sportsbook matchup could not be verified.')
+            props = payload
+        return event, game_lines, props, ''
+    except OddsFeedError as exc:
+        return event, game_lines, props, str(exc)
+
+
+def team_projection_preview(ui, frame, event, book, api_key, team_rates):
+    return team_projection_from_lines(ui, frame, event, book, team_rates, load_team_game_lines(event, book, api_key))
+
+
+def team_projection_from_lines(ui, frame, event, book, team_rates, game_lines):
+    try:
+        targets = market_targets(game_lines, event, book)
     except (OddsFeedError,ValueError,KeyError,TypeError,AttributeError):
         ui.caption('Team points, assist, three-point and rebound adjustments unavailable: no usable current spread/total for this sportsbook and game. Existing model estimates are retained.')
         return frame
@@ -926,7 +959,6 @@ def render_live_dashboard(ui, roster):
     ui.caption('Player baselines reach 100% this season after 20 player appearances. Historical priors stay unchanged through eight appearances, then phase out; career three-point accuracy keeps at least 50% career weight. Rookies use actual rates from their first appearance.')
     @st.fragment
     def render_player_page():
-        probability_observations = []
         render_player_navigation()
         apply_pending_navigation(st.session_state, roster)
         team_col, player_col, opponent_col = ui.columns(3)
@@ -955,25 +987,21 @@ def render_live_dashboard(ui, roster):
             ui.caption(f'{game_label}: {team} vs {upcoming["Opponent"]} · {next_time:%b %d at %I:%M %p %Z}. The default keeps this matchup until one hour after scheduled tip-off. You can change the opponent for any preview.')
         else:
             ui.caption('The next regular-season opponent could not be verified. Choose an opponent manually.')
-        if opponent is None:
-            ui.info('Choose an opponent to view this player’s projection.')
-        else:
-            if upcoming and upcoming['Opponent'] == opponent:
-                matched_projections = project_for_game(team, opponent, upcoming['GameTimeUTC'])
-                team_players = matched_projections[matched_projections.Team.eq(team)]
-                notice = unmatched_minutes_message(approved_bundle, team, opponent, upcoming['GameTimeUTC'])
-                if notice:
-                    ui.warning(notice)
-            adjusted_on = ui.toggle('Apply opponent matchup adjustments',value=True,key='opponent_adjustments')
+        @st.fragment
+        def render_minutes_preview():
+            probability_observations = []
             baseline = team_players[team_players.Player.eq(player_name)]
             player_id = int(baseline.iloc[0].PLAYER_ID)
             automatic_minutes = baseline.iloc[0]['Projected minutes']
             default_minutes = min(48.,max(0.,float(automatic_minutes))) if pd.notna(automatic_minutes) else 0.
             slider_key = f'player_minutes_{SEASON}_{player_id}'
             flag_key = f'custom_minutes_{SEASON}_{player_id}'
-            st.session_state[slider_key] = round_projected_minutes(st.session_state.get(flag_key,default_minutes))
+            selected_minutes = round_projected_minutes(st.session_state.get(flag_key, default_minutes))
+            if st.session_state.get(slider_key) != selected_minutes:
+                st.session_state[slider_key] = selected_minutes
             custom_minutes = ui.slider('Projected minutes',min_value=0.,max_value=48.,step=0.5,
-                                       key=slider_key,format='%.1f min',on_change=mark_manual_minutes,args=(flag_key,slider_key))
+                                       key=slider_key,format='%.1f min',on_change=mark_manual_minutes,args=(flag_key,slider_key),
+                                       help='Recalculates this player using the loaded game and prices. Use Refresh live data for new prices.')
             ui.button('Use automatic minutes',key=f'reset_minutes_{player_id}',on_click=reset_manual_minutes,
                       args=(flag_key,slider_key))
             if flag_key in st.session_state:
@@ -983,8 +1011,6 @@ def render_live_dashboard(ui, roster):
                 ui.caption('Automatic minutes are unavailable. Adjust the slider to set your own minutes.')
             else:
                 ui.caption(f'Automatic setting: {automatic_minutes:.1f} minutes ({team_players.loc[team_players.Player.eq(player_name),"Minutes source"].iloc[0]}).')
-            scheduled_start = upcoming['GameTimeUTC'] if upcoming and upcoming['Opponent'] == opponent else None
-            team_matchups = player_team_matchups(team, opponent, scheduled_start)
             if flag_key in st.session_state:
                 adjusted = apply_matchup(baseline, roster, teams, prior_effects, current_effects, opponent)
             else:
@@ -1037,52 +1063,44 @@ def render_live_dashboard(ui, roster):
                 'Projected':[row[x] if adjusted_on else baseline.iloc[0][x] for x in stats]})
             rating_enabled = adjusted_on and row['Matchup status'] == 'Available'
             preview['Matchup rating'] = [player_matchup_rating(row, stat, rating_enabled) for stat in preview.Stat]
-            book_name = ui.selectbox('Sportsbook',list(BOOKS),key='projection_sportsbook')
             show_recent = ui.toggle('Show recent-role comparison', value=False, key='player_recent_role',
                                     help='Optional 10-appearance shot-volume/assist model. The current projection still drives edges and probabilities.')
             recent_source = None
-            book_key = BOOKS[book_name]
-            quotes = player_quotes({},player_name,book_key)
-            event = None
-            try:
-                api_key = get_odds_api_key()
-                if not api_key:
-                    raise OddsFeedError('Sportsbook feed access is not configured.')
-                event = next_matchup(sportsbook_events(api_key),team,opponent,
-                                     scheduled_start=scheduled_start,time_tolerance=EVENT_TIME_TOLERANCE)
-                if event is None:
+            # Even when feeds are slow, slider edits need only the loaded markets.
+            # Recheck tip-off and both quote timestamps against the current clock.
+            event = market_event if market_event and pd.Timestamp(market_event['commence_time']) > pd.Timestamp.now(tz='UTC') else None
+            quotes = player_quotes(props if event else {}, player_name, book_key)
+            if market_error:
+                ui.caption(market_error)
+            if event is None:
+                if not market_error:
                     ui.caption(f'No matching pregame sportsbook event is available for {team} vs {opponent}. Lines stay blank after tip-off; prices from a later rematch are not substituted.')
+            else:
+                full_team = team_matchups if adjusted_on else team_players
+                if flag_key in st.session_state:
+                    # Only this player's rates/minutes changed. Keep every teammate
+                    # in the same order for the normal team-target allocation.
+                    position = full_team.PLAYER_ID.tolist().index(player_id)
+                    replacement = adjusted if adjusted_on else baseline
+                    full_team = pd.concat([full_team.iloc[:position], replacement, full_team.iloc[position+1:]],
+                                          ignore_index=True)
+                market_team = team_projection_from_lines(ui, full_team, event, book_key, team_rates, game_lines)
+                recent_source = market_team
+                market_player = market_team[market_team.PLAYER_ID.eq(player_id)].iloc[0]
+                updated_stats = ['PTS','AST','FG3M','FG3A','OREB','DREB','REB','PRA']
+                market_values = market_player[updated_stats].astype(float).rename(index={'FG3M':'3PM'})
+                mapped = preview.Stat.map(market_values)
+                preview['Projected'] = mapped.where(preview.Stat.isin(market_values.index), preview.Projected)
+                # Market allocation returns a complete copy of the selected model
+                # row, including its matchup fields and adjustment provenance.
+                destination = market_team.loc[market_team.PLAYER_ID.eq(player_id)].copy()
+                if adjusted_on:
+                    adjusted = destination
                 else:
-                    full_team = team_matchups if adjusted_on else team_players
-                    if flag_key in st.session_state:
-                        # Only this player's rates/minutes changed. Keep every teammate
-                        # in the same order for the normal team-target allocation.
-                        position = full_team.PLAYER_ID.tolist().index(player_id)
-                        replacement = adjusted if adjusted_on else baseline
-                        full_team = pd.concat([full_team.iloc[:position], replacement, full_team.iloc[position+1:]],
-                                              ignore_index=True)
-                    market_team = team_projection_preview(ui,full_team,event,book_key,api_key,team_rates)
-                    recent_source = market_team
-                    market_player = market_team[market_team.PLAYER_ID.eq(player_id)].iloc[0]
-                    updated_stats = ['PTS','AST','FG3M','FG3A','OREB','DREB','REB','PRA']
-                    market_values = market_player[updated_stats].astype(float).rename(index={'FG3M':'3PM'})
-                    mapped = preview.Stat.map(market_values)
-                    preview['Projected'] = mapped.where(preview.Stat.isin(market_values.index), preview.Projected)
-                    # Market allocation returns a complete copy of the selected model
-                    # row, including its matchup fields and adjustment provenance.
-                    destination = market_team.loc[market_team.PLAYER_ID.eq(player_id)].copy()
-                    if adjusted_on:
-                        adjusted = destination
-                    else:
-                        baseline = destination
-                    payload = sportsbook_props(event['id'],book_key,api_key)
-                    if payload.get('id') != event['id'] or {payload.get('home_team'),payload.get('away_team')} != {event['home_team'],event['away_team']}:
-                        raise OddsFeedError('Sportsbook matchup could not be verified.')
-                    quotes = player_quotes(payload,player_name,book_key)
+                    baseline = destination
+                if props:
                     game_time = pd.Timestamp(event['commence_time']).tz_convert('America/Denver')
                     ui.caption(f'{book_name} via The Odds API · {team} vs {opponent} · {game_time:%b %d, %Y at %I:%M %p %Z}. Use Refresh live data for updated quotes; quotes older than 15 minutes are excluded when comparisons are loaded.')
-            except OddsFeedError as exc:
-                ui.caption(str(exc))
             preview['Change'] = preview.Projected - preview.Baseline
             comparison = compare_with_book(preview,quotes)
             final_player = (adjusted if adjusted_on else baseline).iloc[0].copy()
@@ -1156,7 +1174,26 @@ def render_live_dashboard(ui, roster):
                 ui.write('Team threes use expected FGA times a 50/50 mix of progressively blended team and opponent 3PA/FGA. Team attempts are allocated using normalized archetype-adjusted player attempt shares. Makes scale equally to preserve each player’s expected shooting percentage. Points and PRA already include the threes; no extra points are added. The player slider recalculates this preview, while game edges use the saved automatic team minutes. Changes to an external workbook must be imported and published before the app can use them.')
                 ui.write('Team rebounds use both teams’ expected misses, derived from market points and conversion rates with a 10-game prior. The opponent’s allowed offensive-rebound share uses the faster 5-game prior, phased out by 20 completed games; own rebound shares retain 10. Credited-player-rebound fractions account approximately for dead-ball/team rebounds and non-reboundable free throws. Each pool splits into offensive rebounds and opposing defensive rebounds. The two components are allocated separately using normalized archetype shares, then added for REB. PRA includes updated rebounds. Player matchup ratings retain the original archetype effect.')
                 ui.write('These are matchup estimates, not confirmed lineups or availability. The model does not adjust for pace, injuries, starters or home court. Last season’s box scores are assigned the approved current archetypes, preserving manual overrides. Only players with matched archetype labels contribute to the matchup samples; sample counts show that coverage.')
-        render_probability_tracking(ui, probability_observations, logs, 'player')
+            render_probability_tracking(ui, probability_observations, logs, 'player')
+
+        if opponent is None:
+            ui.info('Choose an opponent to view this player’s projection.')
+            render_probability_tracking(ui, [], logs, 'player')
+        else:
+            if upcoming and upcoming['Opponent'] == opponent:
+                matched_projections = project_for_game(team, opponent, upcoming['GameTimeUTC'])
+                team_players = matched_projections[matched_projections.Team.eq(team)]
+                notice = unmatched_minutes_message(approved_bundle, team, opponent, upcoming['GameTimeUTC'])
+                if notice:
+                    ui.warning(notice)
+            adjusted_on = ui.toggle('Apply opponent matchup adjustments',value=True,key='opponent_adjustments')
+            book_name = ui.selectbox('Sportsbook', list(BOOKS), key='projection_sportsbook')
+            book_key = BOOKS[book_name]
+            scheduled_start = upcoming['GameTimeUTC'] if upcoming and upcoming['Opponent'] == opponent else None
+            team_matchups = player_team_matchups(team, opponent, scheduled_start)
+            market_event, game_lines, props, market_error = player_market_snapshot(team, opponent, scheduled_start, book_key)
+            render_minutes_preview()
+
     with projection_tab:
         render_player_page()
 

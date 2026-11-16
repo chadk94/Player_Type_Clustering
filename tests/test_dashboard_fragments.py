@@ -142,6 +142,9 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertFalse(self.app.tabs)  # Only the changed tab emitted deltas.
 
         before = next(d.value for d in self.app.dataframe if 'Stat' in d.value and 'Projected' in d.value).set_index('Stat')
+        slider_fragment = self.fragment_for(self.app.slider[0])
+        self.assertNotEqual(slider_fragment, self.fragment_id)
+        self.fragment_id = slider_fragment
         self.app.slider[0].set_value(12.).run()
         self.assert_no_errors()
         after = next(d.value for d in self.app.dataframe if 'Stat' in d.value and 'Projected' in d.value).set_index('Stat')
@@ -209,8 +212,9 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
             (game_day, 'ATL@HOU', 'ATL'): {'submitted': True, 'partial': False,
                                           'players': {target: 'Questionable'}}})
         self.mock('get_odds_api_key', return_value='test-key')
-        self.mock('next_team_game', return_value={'Opponent':'HOU','GameTimeUTC':start})
-        self.mock('sportsbook_events', return_value=[event,other_event])
+        next_game = self.mock('next_team_game', return_value={'Opponent':'HOU','GameTimeUTC':start})
+        events = self.mock('sportsbook_events', return_value=[event,other_event])
+        game_lines = self.mock('sportsbook_game_lines', return_value={})
         self.mock('team_projection_preview', side_effect=lambda ui, rows, *args: rows)
         payload = {**event, 'bookmakers':[{'key':'fanduel','markets':[{
             'key':'player_points','last_update':now.isoformat(),'outcomes':[
@@ -219,7 +223,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
                 for side in ['Over','Under']]}]}]}
         payload['bookmakers'][0]['markets'].append({'key':'player_assists','last_update':now.isoformat(),
             'outcomes':[dict(description=target,name=side,point=2.,price=-110) for side in ['Over','Under']]})
-        self.mock('sportsbook_props', return_value=payload)
+        player_props = self.mock('sportsbook_props', return_value=payload)
         self.schedule.return_value = pd.DataFrame([
             dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
             for side,opp,venue in [('HOU','ATL','home'),('ATL','HOU','away'),
@@ -306,14 +310,25 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.fragment_id = None
         self.app.run()
         self.assert_no_errors()
-        counts = [m.call_count for m in (self.live,self.logs,self.effects,self.imported,self.schedule)]
-        self.fragment_id = self.fragment_for(self.app.selectbox(key='projection_player'))
+        feeds = (self.live, self.logs, self.effects, self.imported, self.schedule, next_game, events, game_lines, player_props)
+        counts = [m.call_count for m in feeds]
+        self.fragment_id = self.fragment_for(self.app.slider[0])
         self.app.slider[0].set_value(12.).run()
         self.assert_no_errors()
         row = self.probability_tracking.call_args.args[1][0]
         self.assertEqual(row['mode'],'Manual minutes')
         self.assertEqual(row['minutes'],12.)
-        self.assertEqual([m.call_count for m in (self.live,self.logs,self.effects,self.imported,self.schedule)],counts)
+        self.assertEqual([m.call_count for m in feeds], counts)
+
+        # Simulate the loaded prices expiring while the user continues adjusting minutes.
+        for market in payload['bookmakers'][0]['markets']:
+            market['last_update'] = (now - timedelta(minutes=16)).isoformat()
+        self.app.slider[0].set_value(13.).run()
+        self.assert_no_errors()
+        comparison = next(d.value for d in self.app.dataframe if 'Market status' in d.value)
+        self.assertTrue(comparison.loc[comparison.Stat.isin(['PTS','AST']), 'Market status'].str.startswith('Stale').all())
+        self.assertEqual(self.probability_tracking.call_args.args[1], [])
+        self.assertEqual([m.call_count for m in feeds], counts)
 
     def test_team_player_navigation_selects_player_and_exact_matchup(self):
         self.fragment_id = self.fragment_for(self.app.selectbox(key='projection_player'))
