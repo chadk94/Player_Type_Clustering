@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 import math
 import re
+from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
 from live_projections import name_key
@@ -33,8 +34,9 @@ def current_event(event_id, stats, alternate_stats):
     api_key = get_odds_api_key()
 
     def fetch(markets):
+        source_links = {'includeLinks': 'true'} if 'player_points_alternate' in markets else {}
         return read_feed(f'/events/{event_id}/odds', api_key, bookmakers='fanduel',
-                         markets=','.join(markets), oddsFormat='american')
+                         markets=','.join(markets), oddsFormat='american', **source_links)
 
     if alts:
         try:
@@ -44,9 +46,43 @@ def current_event(event_id, stats, alternate_stats):
     return fetch(base)
 
 
+def _fanduel_ids(outcome):
+    """Read the native market and selection IDs without visiting the betslip link."""
+    try:
+        url = urlsplit(outcome.get('link') or '')
+        if url.scheme != 'https' or not (url.hostname or '').endswith('.fanduel.com'):
+            return None, None
+        params = parse_qs(url.query)
+        return params.get('marketId', [None])[0], params.get('selectionId', [None])[0]
+    except (TypeError, ValueError):
+        return None, None
+
+
+def _points_milestone_prices(markets):
+    # The feed combines two native sections. In Player Points X+, a market is
+    # one threshold and its selections are players. A player's ordinary ladder
+    # is one market with a different selection for each threshold.
+    fixed = [rows for rows in markets.values()
+             if len({line for _, _, line, _, _ in rows}) == 1
+             and all(side == 'Over' and line % 1 == 0.5 for _, side, line, _, _ in rows)]
+    runner_lines = defaultdict(set)
+    for rows in fixed:
+        for player, _, line, _, runner in rows:
+            if runner:
+                runner_lines[player, runner].add(line)
+    preferred = defaultdict(lambda: defaultdict(set))
+    for rows in fixed:
+        multiple_players = len({row[0] for row in rows}) > 1
+        for player, side, line, odds, runner in rows:
+            if multiple_players or (runner and len(runner_lines[player, runner]) > 1):
+                preferred[player, 'PTS', side][line].add(odds)
+    return preferred
+
+
 def alternate_prices(event, now):
     """Collect fresh FanDuel alternate quotes by player, stat, side, and exact line."""
     prices = defaultdict(lambda: defaultdict(set))
+    point_markets = defaultdict(list)
     for book in event.get('bookmakers', []):
         if book.get('key') != 'fanduel':
             continue
@@ -73,7 +109,14 @@ def alternate_prices(event, now):
                         continue
                 except (TypeError, ValueError, KeyError):
                     continue
-                prices[name_key(outcome['description']), stat, side][line].add(int(odds))
+                player = name_key(outcome['description'])
+                prices[player, stat, side][line].add(int(odds))
+                if stat == 'PTS':
+                    market_id, runner = _fanduel_ids(outcome)
+                    if market_id:
+                        point_markets[market_id].append((player, side, line, int(odds), runner))
+    for key, milestones in _points_milestone_prices(point_markets).items():
+        prices[key].update(milestones)
     return prices
 
 

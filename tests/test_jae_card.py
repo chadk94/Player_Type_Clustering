@@ -6,6 +6,41 @@ from jae_card import card_quotes, send_card, worst_price
 
 
 class JaeCardTests(TestCase):
+    def test_points_x_plus_wins_over_the_same_line_in_a_player_ladder(self):
+        from jae_card import alternate_prices, next_over, shopping_prices
+
+        def offer(player, line, odds, market, selection, side='Over'):
+            return dict(name=side, description=player, point=line, price=odds,
+                        link=f'https://sportsbook.fanduel.com/addToBetslip?marketId={market}&selectionId={selection}')
+
+        player = self.pick['player']
+        pick = dict(self.pick, side='Over', line=6.5)
+        native_ten = offer(player, 9.5, 265, '42.10', '1001')
+        ladder = [
+            offer(player, 9.5, 300, '42.100', '2010'), offer(player, 10.5, 400, '42.100', '2011'),
+            native_ten, offer('Other Player', 9.5, 125, '42.10', '1002'),
+            offer(player, 14.5, 970, '42.15', '1001'),  # Only this player at 15+.
+            offer(player, 14.5, 920, '42.100', '2015'),
+            offer(player, 9.5, -325, '42.200', '3010', 'Under'),
+        ]
+        market = dict(key='player_points_alternate', last_update=self.now.isoformat(), outcomes=ladder)
+        self.event['bookmakers'][0]['markets'].append(market)
+        prices = alternate_prices(self.event, self.now)
+        self.assertEqual(next_over(pick, prices), {'line':9.5, 'odds':265})
+        self.assertEqual(shopping_prices(pick, prices)['offers'], [
+            {'line':9.5,'odds':265}, {'line':10.5,'odds':400}, {'line':14.5,'odds':970}])
+        self.assertEqual(prices['sample player','PTS','Under'][9.5], {-325})
+        ladder.append(dict(native_ten, price=270))
+        self.assertNotIn(9.5, [o['line'] for o in shopping_prices(pick, alternate_prices(self.event,self.now))['offers']])
+
+    def test_request_source_market_links_for_points_alternates(self):
+        from unittest.mock import patch
+        from jae_card import current_event
+        with patch('FanduelScrape.get_odds_api_key', return_value='test'), patch('jae_card.read_feed') as fetch:
+            current_event('a'*32, {'PTS'}, {'PTS'})
+        self.assertEqual(fetch.call_args.kwargs['includeLinks'], 'true')
+        self.assertIn('player_points_alternate', fetch.call_args.kwargs['markets'].split(','))
+
     def setUp(self):
         self.now = datetime.now(timezone.utc)
         self.start = self.now + timedelta(days=1)
