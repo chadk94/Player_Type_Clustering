@@ -79,7 +79,10 @@ def next_over(pick, prices):
     if pick['stat'] == '3PM':
         target = pick['line'] + 1
     else:
-        target = min((line for line in ladder if line > pick['line']), default=None)
+        available = sorted(line for line, odds in ladder.items() if line > pick['line'] and len(odds) == 1)
+        step = {'PTS': 5, 'REB': 2}.get(pick['stat'])
+        preferred = [line for line in available if step and (line + 0.5) % step == 0]
+        target = next(iter(preferred or available), None)
     odds = ladder.get(target, set())
     return {'line': target, 'odds': next(iter(odds)) if len(odds) == 1 else None}
 

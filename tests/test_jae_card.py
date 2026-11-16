@@ -115,3 +115,13 @@ class JaeCardTests(TestCase):
         self.assertEqual((skipped,synced),([],{p['id']:15}))
         self.assertIn('1 updated',message)
         self.fetch.assert_not_called()
+
+    def test_common_points_and_rebound_alt_milestones(self):
+        from jae_card import next_over
+        for stat, line, ladder, expected in [
+            ('PTS', 6.5, {7.5:{120},9.5:{180}}, 9.5),
+            ('REB', 3.5, {4.5:{120},5.5:{180}}, 5.5),
+            ('REB', 3.5, {4.5:{120},5.5:{150,180}}, 4.5),
+        ]:
+            result = next_over(dict(self.pick,stat=stat,side='Over',line=line),{('sample player',stat):ladder})
+            self.assertEqual(result,{'line':expected,'odds':next(iter(ladder[expected]))})

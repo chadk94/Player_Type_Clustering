@@ -14,6 +14,7 @@ function easternStamp_(date) {
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Jae card')
+    .addItem('Refresh pregame Kalshi quotes', 'refreshCardMarkets')
     .addItem('Set up or update daily tabs', 'setupCard')
     .addItem('Set deployed web app URL', 'setDeploymentUrl')
     .addItem('Show dashboard connection', 'showConnection').addToUi();
@@ -228,6 +229,151 @@ function altLabel_(r) {
     ? (odds > 0 ? '+' : '') + odds : 'Unavailable');
 }
 
+// Each public event is one stat, one game and one Eastern slate date.
+const PM_SERIES = {PTS:'KXNBAPTS', REB:'KXNBAREB', AST:'KXNBAAST', '3PM':'KXNBA3PT',
+  STL:'KXNBASTL', BLK:'KXNBABLK', PRA:'KXNBAPRA', DD:'KXNBA2D'};
+const PM_HEADERS = ['Kalshi alternate', 'Kalshi · 10+ REB', 'Kalshi · double-double', 'PM checked (ET)'];
+const PM_COL = 19;  // O:R belong to the existing grader.
+
+function marketName_(name) {
+  return String(name).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+}
+
+function marketEvent_(pick, stat) {
+  const teams = /^([A-Z]{3}) @ ([A-Z]{3})$/.exec(pick.game);
+  if (!teams || !PM_SERIES[stat]) return null;
+  return PM_SERIES[stat]+'-'+Utilities.formatDate(new Date(pick.start), EASTERN,'yyMMMdd').toUpperCase()+teams[1]+teams[2];
+}
+
+function marketAsks_(markets, event, player, side, stat) {
+  const asks = new Map();
+  for (const m of markets || []) {
+    if (m.event_ticker !== event || m.status !== 'active' || m.market_type !== 'binary') continue;
+    const match = stat === 'DD' ? [null,m.yes_sub_title,0] : /^(.+): (\d+)\+$/.exec(m.yes_sub_title);
+    if (!match || marketName_(match[1]) !== marketName_(player)) continue;
+    const n = Number(match[2]);
+    if (stat !== 'DD' && (!(n > 0) || m.strike_type !== 'greater' || Number(m.floor_strike) !== n-0.5)) continue;
+    // The NO ask is backed by the YES bid. Kalshi exposes depth on the YES book.
+    const price = Number(side === 'Over' ? m.yes_ask_dollars : m.no_ask_dollars);
+    const size = Number(side === 'Over' ? m.yes_ask_size_fp : m.yes_bid_size_fp);
+    if (!(price > 0 && price < 1 && size >= 1)) continue;
+    asks.set(n, asks.has(n) ? null : price);
+  }
+  return asks;
+}
+
+function marketAlt_(asks, pick) {
+  const over = pick.side === 'Over';
+  const step = {REB:2,PTS:5}[pick.stat] || 1;
+  const rungs = [...asks.keys()].filter(n => asks.get(n) && (over ? n-0.5 > pick.line : n-0.5 < pick.line))
+    .sort((a,b) => over ? a-b : b-a);
+  if (pick.stat === '3PM' && over) return rungs.find(n => n-0.5 === pick.line+1);
+  return rungs.find(n => n % step === 0) || rungs[0];
+}
+
+function marketPrice_(label, cost) {
+  if (!cost) return 'No buy quote';
+  const odds = Math.round(cost <= 0.5 ? 100*(1-cost)/cost : -100*cost/(1-cost));
+  const limit = altLimit_(odds)[0];
+  const signed = n => n > 0 ? '+'+n : String(n);
+  return label+' · '+Number((100*cost).toFixed(2))+'¢ ('+signed(odds)+') · to '+signed(limit);
+}
+
+function fetchCardMarkets_(picks) {
+  const pending = picks.filter(p => new Date(p.start).getTime() > Date.now() && PM_SERIES[p.stat]);
+  const events = new Set();
+  for (const p of pending) {
+    events.add(marketEvent_(p,p.stat));
+    if (p.stat === 'REB' && p.side === 'Over') events.add(marketEvent_(p,'DD'));
+  }
+  events.delete(null);
+  const names = [...events], books = new Map();
+  // No player names, prices, card IDs, or workbook credentials go to the exchange.
+  for (let i=0; i<names.length; i+=8) {
+    const group = names.slice(i,i+8);
+    try {
+      const responses = UrlFetchApp.fetchAll(group.map(event=>({
+        url:'https://api.elections.kalshi.com/trade-api/v2/markets?limit=1000&status=open&event_ticker='+event,
+        muteHttpExceptions:true
+      })));
+      responses.forEach((res,j)=>{
+        if (res.getResponseCode() !== 200) return;
+        const page = JSON.parse(res.getContentText());
+        if (Array.isArray(page.markets) && !page.cursor) books.set(group[j],page.markets);
+      });
+    } catch (_) { /* Record unavailability for this batch. Primary card delivery can proceed. */ }
+  }
+  const checked = new Date(), checkedEt = Utilities.formatDate(checked,EASTERN,'MMM d, h:mm a z');
+  const rows = new Map();
+  for (const p of pending) {
+    if (new Date(p.start) <= checked) continue;
+    const event = marketEvent_(p,p.stat);
+    const quotes = marketAsks_(books.get(event),event,p.player,p.side,p.stat);
+    const n = marketAlt_(quotes,p), over = p.side === 'Over';
+    const label = (over?'Yes ':'No ')+n+'+ '+p.stat+' ('+(over?'O':'U')+(n-0.5)+')';
+    const alt = books.has(event) ? marketPrice_(label,quotes.get(n)) : 'Feed unavailable';
+    let ten = '', dd = '';
+    if (p.stat === 'REB' && over) {
+      const doubleEvent = marketEvent_(p,'DD');
+      ten = books.has(event) ? marketPrice_('Yes 10+ REB',quotes.get(10)) : 'Feed unavailable';
+      dd = books.has(doubleEvent) ? marketPrice_('Yes DD',marketAsks_(books.get(doubleEvent),doubleEvent,p.player,'Over','DD').get(0)) : 'Feed unavailable';
+    }
+    rows.set(p.id,[alt,ten,dd,checkedEt]);
+  }
+  return rows;
+}
+
+function ensureMarketColumns_(sheet) {
+  const header = sheet.getRange(1,PM_COL,1,PM_HEADERS.length);
+  const current = header.getValues()[0];
+  if (sheet.getFrozenColumns() < 3) sheet.setFrozenColumns(3);
+  if (PM_HEADERS.every((v,i)=>current[i]===v)) return;
+  if (!header.isBlank()) throw Error('Columns S:V already contain another header.');
+  if (typeof prepareGradeColumns_ === 'function') prepareGradeColumns_(sheet);
+  sheet.setColumnWidth(PM_COL,320);
+  sheet.setColumnWidths(PM_COL+1,2,245);
+  sheet.setColumnWidth(PM_COL+3,155);
+  header.setFontWeight('bold').setBackground('#214b56').setFontColor('#ffffff').setWrap(true);
+  header.setNotes([['Pregame buy ask before fees. Play-to uses 5 American-odds ticks.',
+    'Separate comparison at 10 rebounds.', '10+ in any two of points, rebounds, assists, steals and blocks.',
+    'Snapshot time. Use Jae card → Refresh pregame Kalshi quotes for new prices.']]);
+  header.setValues([PM_HEADERS]);
+}
+
+function refreshCardMarkets() {
+  const book = SpreadsheetApp.getActiveSpreadsheet();
+  const active = book.getActiveSheet();
+  const sheet = /^\d{4}-\d{2}-\d{2}$/.test(active.getName()) ? active :
+    book.getSheetByName(Utilities.formatDate(new Date(),'America/Denver','yyyy-MM-dd'));
+  if (!sheet || sheet.getLastRow()<2) return;
+  const rows = sheet.getRange(2,1,sheet.getLastRow()-1,HEADERS.length).getValues();
+  const picks = [];
+  for (const r of rows) {
+    const prop = /^(Over|Under) (\d+(?:\.\d+)?) (\w+)$/.exec(r[3]);
+    if (!prop || !PM_SERIES[prop[3]] || !r[13] || !r[0]) continue;
+    const wall = new Date((storedTime_(r[0],book)-25569)*86400000+0.5).toISOString().slice(0,19);
+    const start = Utilities.parseDate(wall,EASTERN,"yyyy-MM-dd'T'HH:mm:ss");
+    picks.push({id:r[13],start,game:r[1],player:r[2],side:prop[1],line:Number(prop[2]),stat:prop[3]});
+  }
+  const quotes = fetchCardMarkets_(picks);
+  if (!quotes.size) { book.toast('No pregame plays to refresh.'); return; }
+  const lock = LockService.getScriptLock();
+  lock.waitLock(16000);
+  try {
+    ensureMarketColumns_(sheet);
+    const count = sheet.getLastRow()-1;
+    const ids = sheet.getRange(2,HEADERS.length,count,1).getValues();
+    const range = sheet.getRange(2,PM_COL,count,PM_HEADERS.length);
+    const previous = range.getValues();
+    range.setValues(ids.map(([id],i)=>quotes.get(id) || previous[i]));
+    SpreadsheetApp.flush();
+    const priced = [...quotes.values()].filter(r=>r.slice(0,3).some(v=>v.includes('¢'))).length;
+    const message = priced+' of '+quotes.size+' pregame plays have a Kalshi buy quote.';
+    console.log(message);
+    book.toast(message);
+  } finally { lock.releaseLock(); }
+}
+
 function doPost(e) {
   const json = value => ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON);
   let lock;
@@ -236,6 +382,8 @@ function doPost(e) {
     const props = PropertiesService.getUserProperties();
     if (!data.key || data.key !== props.getProperty('writeKey') ||
         !/^\d{4}-\d{2}-\d{2}$/.test(data.day) || !['check','append'].includes(data.action)) throw Error();
+    if (data.action === 'append' && (!Array.isArray(data.rows) || data.rows.length>400)) throw Error();
+    const marketRows = data.action === 'append' && data.rows.length ? fetchCardMarkets_(data.rows) : new Map();
     const book = SpreadsheetApp.openById(props.getProperty('sheetId'));
     lock = LockService.getScriptLock();
     lock.waitLock(16000);
@@ -290,7 +438,13 @@ function doPost(e) {
       for (const col of [5,6,9]) sheet.getRange(first,col,values.length,1).setNumberFormat('+0;-0;0');
       for (const col of [7,10]) sheet.getRange(first,col,values.length,1).setNumberFormat('0.0%');
       formatTimes_(sheet, first, values);
-      sheet.getRange(first,1,values.length,HEADERS.length).setValues(values);
+      if (marketRows.size) {
+        ensureMarketColumns_(sheet);
+        const combined = values.map(r=>[...r,'','','','',...(marketRows.get(r[13]) || ['','','',''])]);
+        sheet.getRange(first,1,values.length,PM_COL+PM_HEADERS.length-1).setValues(combined);
+      } else {
+        sheet.getRange(first,1,values.length,HEADERS.length).setValues(values);
+      }
       SpreadsheetApp.flush();
     }
     if (sheet) sortDay_(sheet);

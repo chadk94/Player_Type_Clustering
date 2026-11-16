@@ -32,7 +32,7 @@ test('the sheet creates daily tabs, freezes first delivery and feedback, and ref
   const book={
     getSheetByName:day=>tabs.get(day),
     insertSheet(day){
-      const sheet={rows:[],getName:()=>day,getLastColumn:()=>14,getLastRow(){return this.rows.length},getMaxRows:()=>1000,getFrozenRows:()=>1,
+      const sheet={rows:[],getName:()=>day,getLastColumn(){return this.rows[0]?.length || 0},getFrozenColumns:()=>0,setFrozenColumns(){},getLastRow(){return this.rows.length},getMaxRows:()=>1000,getFrozenRows:()=>1,
         setFrozenRows(){}, setColumnWidths(){}, setColumnWidth(){}, getColumnWidth(){return 100}, hideColumns(){},
         getRange(r,c,n,w){const i=r-1,j=c-1;return {
           setFontWeight(){return this},setBackground(){return this},setFontColor(){return this},setWrap(){return this},
@@ -49,6 +49,7 @@ test('the sheet creates daily tabs, freezes first delivery and feedback, and ref
             });
             sheet.rows.splice(i,n,...sorted);
           },
+          isBlank:()=>!sheet.rows.slice(i,i+n).some(row=>row.slice(j,j+w).some(Boolean)),setNotes(){},
           setNumberFormats(){},setNumberFormat(){},setFontColors(){},setFontWeights(){},setBackgrounds(){},
         }}};
       tabs.set(day,sheet);return sheet;
@@ -88,6 +89,15 @@ test('the sheet creates daily tabs, freezes first delivery and feedback, and ref
   assert.equal(edit(7).ok,false);
   for(const [quote,limit,label] of [[-110,-125,'High'],[102,-108,'Medium'],[105,100,'Low']])
     assert.equal(ctx.cardConfidence_(quote,limit).label,label);
+  ctx.UrlFetchApp={fetchAll:batch=>batch.map(()=>({getResponseCode:()=>200,getContentText:()=>'{"markets":[],"cursor":""}'}))};
+  const future='2099-11-16';
+  const futurePick={...over,day:future,start:future};
+  assert.equal(post({day:future,action:'append',rows:[futurePick]}).added,1);
+  const saved=tabs.get(future).rows[1];
+  assert.deepEqual(saved.slice(13,21),[over.id,'','','','','No buy quote','','']);
+  assert.deepEqual(tabs.get(future).rows[0].slice(18,22),['Kalshi alternate','Kalshi · 10+ REB','Kalshi · double-double','PM checked (ET)']);
+  assert.equal(post({day:future,action:'append',rows:[futurePick]}).added,0);
+  assert.equal(tabs.get(future).rows.length,2);
   const first={...over,id:'f'.repeat(64),start:'2026-11-14T18:00:00Z',player:'Earlier'};
   assert.equal(post({day:other,action:'append',rows:[first]}).added,1);
   assert.equal(tabs.get(other).rows[1][13],first.id);
@@ -143,4 +153,43 @@ test('backfill uses frozen odds, preserves precision and dates, and displays off
   const once=[...row];c.upgradeTimesAndAlts_(sheet,{});assert.deepEqual(row,once);
   assert.deepEqual(row.slice(-2),[feedback,id]);
   assert.equal(c.storedTime_('2027-03-15 3:30:00 PM EDT',{}),c.serialTime_('2027-03-15 15:30:00'));
+});
+
+test('public asks are date/game, player, market and side specific; PM unders use a lower winning boundary',()=>{
+  const ctx=vm.createContext({});vm.runInContext(src,ctx);
+  const event='KXNBAPTS-26NOV16CHICLE';
+  function market(n,extra={}) {return {market_type:'binary',status:'active',event_ticker:event,
+    yes_sub_title:'Sample Jones: '+n+'+',strike_type:'greater',floor_strike:n-.5,
+    yes_ask_dollars:'0.56',no_ask_dollars:'0.45',yes_ask_size_fp:'40',yes_bid_size_fp:'145',...extra};}
+  const data=[market(5),market(8),market(10),market(11),market(15),market(7,{floor_strike:7}),market(9,{yes_bid_size_fp:'0'}),
+    market(6,{yes_sub_title:'Other Jones: 6+'}),market(19,{status:'closed'}),market(20,{event_ticker:'OTHER'})];
+  const no=ctx.marketAsks_(data,event,'Sample Jones','Under','PTS');
+  assert.deepEqual([...no.keys()],[5,8,10,11,15]);
+  assert.equal(ctx.marketAlt_(no,{side:'Under',line:10.5,stat:'PTS'}),10);
+  assert.equal(ctx.marketPrice_('No 10+ PTS (U9.5)',no.get(10)),'No 10+ PTS (U9.5) · 45¢ (+122) · to +117');
+  const yes=ctx.marketAsks_(data,event,'Sample Jones','Over','PTS');
+  assert.equal(yes.get(10),.56);
+  assert.equal(ctx.marketAlt_(yes,{side:'Over',line:6.5,stat:'PTS'}),10);
+  assert.equal(ctx.marketAlt_(new Map([[5,.5],[6,.45]]),{side:'Over',line:3.5,stat:'REB'}),6);
+  assert.equal(ctx.marketAlt_(new Map([[5,.5]]),{side:'Over',line:3.5,stat:'REB'}),5);
+  assert.equal(ctx.marketAlt_(new Map([[6,.5]]),{side:'Over',line:5.5,stat:'REB'}),undefined);
+  assert.equal(ctx.marketPrice_('x',undefined),'No buy quote');
+});
+test('market lookup batches by public event and separates double-double from ten rebounds',()=>{
+  const requests=[];
+  const ctx=vm.createContext({Utilities:{formatDate:(d,t,fmt)=>fmt==='yyMMMdd'?'26Nov16':'checked'},
+    UrlFetchApp:{fetchAll(batch){requests.push(...batch);return batch.map(({url})=>{
+      const event=url.split('event_ticker=')[1],dd=event.startsWith('KXNBA2D-');
+      return {getResponseCode:()=>200,getContentText:()=>JSON.stringify({cursor:'',markets:[
+        {event_ticker:event,status:'active',market_type:'binary',yes_sub_title:dd?'Sample Smith':'Sample Smith: 10+',
+         strike_type:'greater',floor_strike:9.5,yes_ask_dollars:dd?'0.32':'0.31',yes_ask_size_fp:'20'}]})};
+    });}}});
+  vm.runInContext(src,ctx);
+  const p={id:'1',game:'CHI @ CLE',player:'Sample Smith',start:'2099-11-16T23:00:00Z',side:'Over',stat:'REB',line:7.5};
+  const rows=ctx.fetchCardMarkets_([p,{...p,id:'2'},{...p,id:'ended',start:'2001-01-01'}]);
+  assert.equal(rows.size,2);assert.equal(requests.length,2);
+  assert.match(rows.get('1')[0],/Yes 10\+ REB \(O9.5\) · 31¢/);
+  assert.match(rows.get('1')[1],/10\+ REB · 31¢/);assert.match(rows.get('1')[2],/Yes DD · 32¢/);
+  ctx.UrlFetchApp.fetchAll=()=>{throw Error('offline')};
+  assert.deepEqual(Array.from(ctx.fetchCardMarkets_([p]).get('1')),['Feed unavailable','Feed unavailable','Feed unavailable','checked']);
 });
