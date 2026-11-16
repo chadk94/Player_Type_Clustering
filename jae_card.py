@@ -10,14 +10,17 @@ from play_identity import prop_id
 from sportsbook_lines import BOOKS, MARKETS, TEAM_NAMES, OddsFeedError, american_probability, game_quotes, read_feed
 
 DENVER = ZoneInfo('America/Denver')
+CONFIDENCE_TIERS = {5: 'Low', 10: 'Medium', 15: 'High'}
 
 
-def worst_price(odds):
-    """Move five American price ticks against the bettor, counting even money once."""
+def worst_price(odds, cents=5):
+    """Move the selected number of price ticks against the bettor, counting even money once."""
     if type(odds) is not int or abs(odds) < 100:
         raise ValueError('Invalid American odds.')
+    if type(cents) is not int or cents not in CONFIDENCE_TIERS:
+        raise ValueError('Choose Low, Medium or High confidence.')
     ticks = odds - 100 if odds > 0 else odds + 100
-    ticks -= 5
+    ticks -= cents
     return ticks + 100 if ticks >= 0 else ticks - 100
 
 
@@ -117,7 +120,7 @@ def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.
                 skipped.append(f'{label} — unsupported price.')
                 continue
             price = int(raw_odds)
-            worst = worst_price(price)
+            worst = worst_price(price, p.get('confidence_cents', 5))
             rows.append(dict(id=p['id'], day=p['day'], start=start.isoformat(), game=game,
                              player=p['player'], stat=p['stat'], side=p['side'], line=p['line'],
                              book='FanDuel', alt=next_over(p, ladders), odds=price, worst=worst, breakeven=american_probability(worst),
@@ -158,7 +161,10 @@ def send_card(day, picks, connection, request=sheet_request, fetch=current_event
             if p['book'] != 'FanDuel':
                 p = dict(p, book='FanDuel')
                 p['id'] = prop_id(p)
-            unique[p['id']] = p
+            prior = unique.get(p['id'])
+            # If two confirmed book rows describe the same FD play, honor the tighter price.
+            if prior is None or p.get('confidence_cents', 5) < prior.get('confidence_cents', 5):
+                unique[p['id']] = p
     confirmed = list(unique.values())
     if not confirmed:
         raise ValueError('Confirm at least one play for this slate.')

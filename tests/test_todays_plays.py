@@ -32,21 +32,21 @@ class TodaysPlaysTests(unittest.TestCase):
 
     def test_workbook_contains_editable_feedback_and_numeric_saved_quotes(self):
         first = dict(self.pick(), player='=Literal name')
-        second = dict(self.pick(book='DraftKings'), status='Confirmed', odds=-115)
+        second = dict(self.pick(book='DraftKings'), status='Confirmed', odds=-115, confidence_cents=10)
         sheet = load_workbook(BytesIO(plays_workbook(self.day, [second, first]))).active
         self.assertIn(self.day, sheet['A1'].value)
-        self.assertEqual((sheet.auto_filter.ref, sheet.freeze_panes), ('A2:K4', 'B3'))
-        self.assertEqual(sheet['K2'].value, 'Partner feedback')
+        self.assertEqual((sheet.auto_filter.ref, sheet.freeze_panes), ('A2:L4', 'B3'))
+        self.assertEqual(sheet['L2'].value, 'Partner feedback')
         self.assertEqual([c.value for c in sheet[3]],
                          ['=Literal name', 'MIL @ NYK', 'AST', 'Under', 4.5, 107,
-                          'FanDuel', 4.1, 0.08, 'In review', None])
+                          'FanDuel', 4.1, 0.08, 'In review', 'Low · 5¢', None])
         self.assertEqual((sheet['A3'].data_type, sheet['F3'].data_type, sheet['I3'].number_format), ('s', 'n', '0.00%'))
-        self.assertEqual((sheet['F4'].value, sheet['J4'].value, sheet['K4'].value), (-115, 'Confirmed', None))
+        self.assertEqual((sheet['F4'].value, sheet['J4'].value, sheet['K4'].value), (-115, 'Confirmed', 'Medium · 10¢'))
         self.assertFalse(sheet.protection.sheet)
-        sheet['K4'] = 'Check minutes'
+        sheet['L4'] = 'Check minutes'
         output = BytesIO()
         sheet.parent.save(output)
-        self.assertEqual(load_workbook(output).active['K4'].value, 'Check minutes')
+        self.assertEqual(load_workbook(output).active['L4'].value, 'Check minutes')
         with self.assertRaises(ValueError):
             plays_workbook('2026-11-11', [first])
         with self.assertRaises(ValueError):

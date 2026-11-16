@@ -1,11 +1,13 @@
-export function googleDocsTable(day, picks) {
-    const headings = ['Player / Game', 'Prop / Sportsbook', 'Projected', 'Edge', 'Status', 'Partner feedback'];
+export function googleDocsTable(day, picks, tiers) {
+    const headings = ['Player / Game', 'Prop / Sportsbook', 'Projected', 'Edge', 'Status', 'Confidence', 'Partner feedback'];
     const rows = [headings];
     for (const status of ['Review', 'Confirmed']) {
         for (const p of picks.filter(p => p.day === day && p.status === status)) {
             const odds = (p.odds > 0 ? '+' : '') + p.odds;
+            const cents = p.confidence_cents ?? 5;
             rows.push([`${p.player}\n${p.game}`, `${p.side} ${p.line} ${p.stat} (${odds})\n${p.book}`,
-                p.projected.toFixed(2), p.edge.toFixed(2) + '%', status === 'Review' ? 'In review' : status, '']);
+                p.projected.toFixed(2), p.edge.toFixed(2) + '%', status === 'Review' ? 'In review' : status,
+                tiers.get(cents)+' · '+cents+'¢', '']);
         }
     }
     const escape = value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
@@ -109,7 +111,7 @@ export default function({data, parentElement, setStateValue}) {
                 const count = confirmed.length;
                 action = button(`Send ${count} confirmed ${count === 1 ? 'play' : 'plays'} to Jae`, () =>
                     requestJae('send', connection, confirmed));
-                action.title = 'Send at current FanDuel prices, with an alternate for overs. Card times are Eastern.';
+                action.title = 'Your confidence sets the main play-to price from the current FanDuel quote. Alternate overs have a 5¢ limit.';
                 action.className = 'jae-send';
                 bar.append(action);
             }
@@ -152,14 +154,15 @@ export default function({data, parentElement, setStateValue}) {
             a.game.localeCompare(b.game) || b.edge-a.edge);
         const review = rows.filter(p=>p.status==='Review');
         const status = make('p', rows.length ? review.length+' in review · '+(rows.length-review.length)+' confirmed'
-            : 'Check Save next to a prop in Top Sportsbook Edges to start this slate. You can copy your picks as a table or download them in Excel.');
+            : 'Choose a confidence level beside a prop in Top Sportsbook Edges to save it here.');
         root.append(status);
         renderJae(rows.filter(p => p.status === 'Confirmed'), rows.length > 0);
         if (rows.length) {
+            root.append(make('p','Confidence sets how far past the current FanDuel price Jae can play the main line. Alternate overs have a 5¢ limit.'));
             const scroll=make('div'); scroll.className='play-table';
             const table=make('table'); table.setAttribute('aria-label','Saved player props');
             const header=table.createTHead().insertRow();
-            for (const title of ['For Jae','Player','Game','Prop','Odds','Sportsbook','Projection','Edge','Actions']) {
+            for (const title of ['For Jae','Confidence','Player','Game','Prop','Odds','Sportsbook','Projection','Edge','Actions']) {
                 const th=make('th',title); th.scope='col'; header.append(th);
             }
             const body=table.createTBody();
@@ -179,6 +182,18 @@ export default function({data, parentElement, setStateValue}) {
                     } catch { storageFailure(); }
                 };
                 tr.insertCell().append(check);
+                const confidence=confidenceSelect('Confidence for '+p.player+' '+prop+' ('+p.book+')', false);
+                confidence.title='Price movement allowed from the main FanDuel quote when sent';
+                confidence.value=String(p.confidence_cents ?? 5);
+                confidence.dataset.pickId=p.id;
+                confidence.onchange=()=>{
+                    try {
+                        saveConfidence(localStorage,p,Number(confidence.value));
+                        notifyPicks(p.day);
+                        root.querySelector(`select[data-pick-id="${CSS.escape(p.id)}"]`)?.focus({preventScroll:true});
+                    } catch { storageFailure(); }
+                };
+                tr.insertCell().append(confidence);
                 for (const text of [p.player,p.game,prop,(p.odds>0?'+':'')+p.odds,p.book,p.projected.toFixed(2),p.edge.toFixed(2)+'%']) {
                     tr.insertCell().textContent=text;
                 }
@@ -200,7 +215,7 @@ export default function({data, parentElement, setStateValue}) {
             const feedback = make('div');
             feedback.setAttribute('role', 'status');
             const copy = button('Copy table for Google Docs', async () => {
-                const {html, text} = googleDocsTable(ui.day, rows);
+                const {html, text} = googleDocsTable(ui.day, rows, CONFIDENCE_TIERS);
                 feedback.replaceChildren();
                 try {
                     await navigator.clipboard.write([new ClipboardItem({

@@ -41,17 +41,19 @@ export default function({data, parentElement}) {
     const note = make('div');
     note.setAttribute('role', 'status');
     root.append(note);
-    const boxes = new Map();
+    const selectors = new Map();
     function updateChecks() {
         try {
-            for (const [input, pick] of boxes) {
-                input.checked = !!savedPlay(localStorage, pick.id);
-                input.closest('tr').classList.toggle('saved-play', input.checked);
+            for (const [select, pick] of selectors) {
+                const saved = savedPlay(localStorage, pick.id);
+                select.options[0].text = saved ? 'Remove' : 'Save…';
+                select.value = saved ? String(saved.confidence_cents ?? 5) : '';
+                select.closest('tr').classList.toggle('saved-play', !!saved);
             }
         } catch { note.textContent = 'Allow site storage to save plays in this browser.'; }
     }
     function render() {
-        boxes.clear();
+        selectors.clear();
         hide();
         body.replaceChildren();
         for (const [i, th] of [...headers.cells].slice(1).entries()) {
@@ -68,16 +70,16 @@ export default function({data, parentElement}) {
             const saveCell = tr.insertCell();
             const pick = row.pick;
             if (pick) {
-                const input = make('input'); input.type='checkbox';
-                input.setAttribute('aria-label', 'Save '+pick.player+' '+pick.side+' '+pick.line+' '+pick.stat+" to Today's Plays");
-                input.onchange = () => {
+                const select = confidenceSelect('Confidence for '+pick.player+' '+pick.side+' '+pick.line+' '+pick.stat, true);
+                select.onchange = () => {
                     try {
-                        setPick(localStorage, pick, input.checked);
-                        note.textContent = pick.player + (input.checked ? " saved to Today's Plays" : " removed from Today's Plays") + ' · '+pick.day;
+                        if (select.value) saveConfidence(localStorage, pick, Number(select.value));
+                        else setPick(localStorage, pick, false);
+                        note.textContent = pick.player + (select.value ? " saved to Today's Plays" : " removed from Today's Plays") + ' · '+pick.day;
                         notifyPicks(pick.day);
-                    } catch { input.checked=!input.checked; updateChecks(); note.textContent='Could not save this change. Check your browser storage.'; }
+                    } catch { updateChecks(); note.textContent='Could not save this change. Check your browser storage.'; }
                 };
-                boxes.set(input,pick);saveCell.append(input);
+                selectors.set(select,pick);saveCell.append(select);
             }
             for (const [i, label] of row.labels.entries()) {
                 const td = tr.insertCell();
@@ -100,7 +102,7 @@ export default function({data, parentElement}) {
             }
         }
     }
-    const saveHeader=make('th','Save');saveHeader.scope='col';headers.append(saveHeader);
+    const saveHeader=make('th','Save / confidence');saveHeader.scope='col';headers.append(saveHeader);
     data.columns.forEach((label, i) => {
         const th = make('th'), button = make('button', label);
         th.scope = 'col';

@@ -45,6 +45,16 @@ class JaeCardTests(TestCase):
         self.fetch.assert_called_once()
         self.assertEqual(list(written),[self.pick['id']])
 
+    def test_confidence_sets_play_to_from_the_fresh_side_price(self):
+        for cents, limit in [(5,-115),(10,-120),(15,-125)]:
+            self.assertEqual(worst_price(-110,cents),limit)
+            row, = card_quotes([dict(self.pick,confidence_cents=cents)],self.fetch,lambda:self.now)[0]
+            self.assertEqual(row['odds'],102)
+            self.assertEqual(row['worst'],-(98+cents))
+            self.assertAlmostEqual(row['breakeven'],(98+cents)/(198+cents))
+        with self.assertRaises(ValueError):
+            worst_price(-110,7)
+
     def test_stale_moved_or_started_held_for_review(self):
         for pick in [dict(self.pick,line=15.5),dict(self.pick,day='2020-01-01')]:
             rows, skipped=card_quotes([pick],self.fetch,lambda:self.now)
@@ -87,10 +97,11 @@ class JaeCardTests(TestCase):
         fd=dict(original,book='FanDuel')
         fd['id']=prop_id(fd)
         req=Mock(side_effect=[dict(existing=[]),dict(added=1)])
-        sent,_=send_card(self.day,[original,fd],'test',req,self.fetch)
+        sent,_=send_card(self.day,[dict(original,confidence_cents=10),dict(fd,confidence_cents=15)],'test',req,self.fetch)
         self.assertIn('1 added',sent)
         frozen,=req.call_args.kwargs['rows']
         self.assertEqual((frozen['id'],frozen['book']),(fd['id'],'FanDuel'))
+        self.assertEqual(frozen['worst'],-108)
         self.fetch.reset_mock()
         req=Mock(return_value=dict(existing=[original['id']]))
         self.assertIn('1 already sent',send_card(self.day,[fd],'test',req,self.fetch)[0])

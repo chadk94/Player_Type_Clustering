@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-from jae_card import send_card, sheet_request
+from jae_card import CONFIDENCE_TIERS, send_card, sheet_request
 from play_identity import prop_id
 from sportsbook_lines import BOOKS
 
@@ -61,7 +61,9 @@ def clean_picks(day, picks, limit=MAX_PLAYS):
             fields = ('id','day','event','game','book','player_id','player','stat','side','line',
                       'odds','projected','edge','quoted','status')
             p = {k: raw[k] for k in fields}
+            p['confidence_cents'] = raw.get('confidence_cents', 5)
             if (p['day'] != day or p['book'] not in BOOKS or p['stat'] not in STATS
+                    or type(p['confidence_cents']) is not int or p['confidence_cents'] not in CONFIDENCE_TIERS
                     or p['side'] not in ('Over','Under') or p['status'] not in ('Review','Confirmed')
                     or type(p['player_id']) is not int or type(p['odds']) is not int or abs(p['odds']) < 100
                     or any(not isinstance(p[k],str) or not 0 < len(p[k]) <= 120 for k in ('player','game','event'))
@@ -89,19 +91,20 @@ def plays_workbook(day, picks):
     wb = Workbook()
     sheet = wb.active
     sheet.title = "Today's Plays"
-    sheet.merge_cells('A1:K1')
+    sheet.merge_cells('A1:L1')
     sheet['A1'] = f"Today's Plays · {day}"
     sheet['A1'].font = Font(bold=True, size=16, color='17354A')
     sheet.row_dimensions[1].height = 30
     sheet.append(['Player', 'Game', 'Stat', 'Side', 'Line', 'Odds', 'Sportsbook',
-                  'Projected', 'Edge', 'Status', 'Partner feedback'])
+                  'Projected', 'Edge', 'Status', 'Confidence', 'Partner feedback'])
     for cell in sheet[2]:
         cell.font = Font(bold=True, color='FFFFFF')
         cell.fill = PatternFill('solid', fgColor='264A60')
     sheet.row_dimensions[2].height = 22
     for n, p in enumerate(sorted(picks, key=lambda p: p['status'] != 'Review'), start=3):
         values = [p['player'], p['game'], p['stat'], p['side'], p['line'], p['odds'], p['book'],
-                  p['projected'], p['edge'] / 100, 'In review' if p['status'] == 'Review' else 'Confirmed']
+                  p['projected'], p['edge'] / 100, 'In review' if p['status'] == 'Review' else 'Confirmed',
+                  confidence_label(p)]
         for column, value in enumerate(values, start=1):
             cell = sheet.cell(n, column, value)
             if isinstance(value, str):
@@ -109,10 +112,10 @@ def plays_workbook(day, picks):
         sheet.cell(n, 6).number_format = '+0;-0;0'
         sheet.cell(n, 8).number_format = '0.00'
         sheet.cell(n, 9).number_format = '0.00%'
-        sheet.cell(n, 11).alignment = Alignment(wrap_text=True, vertical='top')
+        sheet.cell(n, 12).alignment = Alignment(wrap_text=True, vertical='top')
     sheet.freeze_panes = 'B3'
-    sheet.auto_filter.ref = f'A2:K{sheet.max_row}'
-    for i, width in enumerate([25, 16, 9, 10, 10, 10, 18, 14, 12, 15, 44], start=1):
+    sheet.auto_filter.ref = f'A2:L{sheet.max_row}'
+    for i, width in enumerate([25, 16, 9, 10, 10, 10, 18, 14, 12, 15, 16, 44], start=1):
         sheet.column_dimensions[get_column_letter(i)].width = width
     output = BytesIO()
     wb.save(output)
@@ -188,6 +191,11 @@ def public_url(token):
 
 def label(p):
     return f"{p['player']} · {p['side']} {p['line']:g} {p['stat']} ({p['odds']:+d}) · {p['book']}"
+
+
+def confidence_label(p):
+    cents = p.get('confidence_cents', 5)
+    return f'{CONFIDENCE_TIERS[cents]} · {cents}¢'
 
 
 @lru_cache(maxsize=1)
@@ -278,7 +286,7 @@ def render_partner_review(ui, token):
         return
     ui.dataframe(pd.DataFrame([{'Player':p['player'],'Game':p['game'],'Prop':f"{p['side']} {p['line']:g} {p['stat']}",
         'Price':f"{p['odds']:+d}",'Book':p['book'],'Projected':round(p['projected'],2),
-        'Edge':f"{p['edge']:.2f}%",'Status':p['status']} for p in picks.values()]), hide_index=True,width='stretch')
+        'Edge':f"{p['edge']:.2f}%",'Confidence':confidence_label(p),'Status':p['status']} for p in picks.values()]), hide_index=True,width='stretch')
     ui.subheader('Partner feedback')
     if ui.session_state.pop('plays_comment_sent', False):
         ui.success('Feedback posted.')
