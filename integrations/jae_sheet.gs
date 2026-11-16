@@ -4,8 +4,9 @@ const LEGACY_HEADERS = ['Game time (Denver)', 'Game', 'Player', 'Prop', 'Sportsb
 
 const PREVIOUS_HEADERS = ['Game time (ET)', 'Game', 'Player', 'Prop', 'FanDuel odds', 'Worst odds',
   'Worst break-even %', 'Alternate over · FD odds', 'Quote time (ET)', 'Sent time (ET)', 'Partner feedback', 'Play ID'];
-const HEADERS = ['Tip-off (ET)', 'Game', 'Player', 'Prop', 'FanDuel odds', 'Play to', 'Break-even %',
+const LIMIT_HEADERS = ['Tip-off (ET)', 'Game', 'Player', 'Prop', 'FanDuel odds', 'Play to', 'Break-even %',
   'Alternate over · FD odds', 'Alt play to', 'Alt break-even %', 'Quoted (ET)', 'Sent (ET)', 'Partner feedback', 'Play ID'];
+const HEADERS = LIMIT_HEADERS.map((name,i)=> i===8 ? 'Alternate to shop' : i===9 ? 'Reserved' : name);
 const EASTERN = 'America/New_York';
 
 function easternStamp_(date) {
@@ -14,7 +15,6 @@ function easternStamp_(date) {
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Jae card')
-    .addItem('Refresh pregame Kalshi quotes', 'refreshCardMarkets')
     .addItem('Set up or update daily tabs', 'setupCard')
     .addItem('Set deployed web app URL', 'setDeploymentUrl')
     .addItem('Show dashboard connection', 'showConnection').addToUi();
@@ -120,7 +120,6 @@ function playLimit_(price,cents) {
   const probability = worst > 0 ? 100 / (worst + 100) : -worst / (100 - worst);
   return [worst, probability];
 }
-function altLimit_(price) { return playLimit_(price,5); }
 
 function formatTimes_(sheet, first, rows) {
   if (!rows.length) return;
@@ -141,9 +140,8 @@ function upgradeTimesAndAlts_(sheet, book) {
   const rows = sheet.getRange(2, 1, count, 12).getValues();
   for (const row of rows) {
     for (const col of [0, 10, 11]) row[col] = storedTime_(row[col], book);
-    // Use the frozen alternate from this row, including on later retries.
-    const match = String(row[7]).match(/·\s*([+-]\d+)\s*$/);
-    [row[8], row[9]] = altLimit_(match ? Number(match[1]) : null);
+    row[8] = savedAlt_(row[7]);
+    row[9] = '';
   }
   sheet.getRange(2, 1, count, 1).setValues(rows.map(r => [r[0]]));
   sheet.getRange(2, 9, count, 4).setValues(rows.map(r => r.slice(8, 12)));
@@ -192,7 +190,18 @@ function ensureDay_(book, day) {
     const same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
     if (same(current, HEADERS)) return sheet;
     const old = current.slice(0, PREVIOUS_HEADERS.length);
-    if (same(old, LEGACY_HEADERS) || same(old, PREVIOUS_HEADERS)) {
+    if (same(current,LIMIT_HEADERS)) {
+      const count = sheet.getLastRow()-1;
+      if (count>0) {
+        const original=sheet.getRange(2,8,count,1).getValues();
+        sheet.getRange(2,9,count,2).setValues(original.map(([label])=>[savedAlt_(label),'']));
+      }
+      const previous=sheet.getRange(1,19,1,4).getValues()[0];
+      if (previous[0]==='Kalshi alternate' && previous[3]==='PM checked (ET)') {
+        sheet.getRange(1,19,sheet.getLastRow(),4).clearContent();
+        sheet.hideColumns(19,4);
+      }
+    } else if (same(old, LEGACY_HEADERS) || same(old, PREVIOUS_HEADERS)) {
       if (same(old, LEGACY_HEADERS)) migrateDay_(sheet, book);
       // Inserting preserves partner feedback cells, notes and the hidden ID.
       sheet.insertColumnsAfter(8, 2);
@@ -200,19 +209,21 @@ function ensureDay_(book, day) {
       throw Error('Unrecognized daily card headers.');
     }
     // Also resumes an interrupted upgrade after the columns were inserted.
-    upgradeTimesAndAlts_(sheet, book);
+    if (!same(current,LIMIT_HEADERS)) upgradeTimesAndAlts_(sheet, book);
   }
   sheet.setFrozenRows(1);
   sheet.setColumnWidths(1, HEADERS.length, 103);
-  for (const [col, width] of [[1,100],[2,108],[3,165],[4,140],[8,190],[13,180]]) {
+  for (const [col, width] of [[1,100],[2,108],[3,165],[4,140],[9,385],[13,180]]) {
     sheet.setColumnWidth(col, width);
   }
+  sheet.hideColumns(8);  // Frozen FD alternate for the existing grader.
+  sheet.hideColumns(10);
   sheet.hideColumns(HEADERS.length);
   const count = sheet.getMaxRows() - 1;
   if (count > 0) {
-    for (const col of [5,6,9]) sheet.getRange(2,col,count,1).setNumberFormat('+0;-0;0');
-    for (const col of [7,10]) sheet.getRange(2,col,count,1).setNumberFormat('0.0%');
-    sheet.getRange(2,8,count,1).setNumberFormat('@');
+    for (const col of [5,6]) sheet.getRange(2,col,count,1).setNumberFormat('+0;-0;0');
+    for (const col of [7]) sheet.getRange(2,col,count,1).setNumberFormat('0.0%');
+    sheet.getRange(2,8,count,2).setNumberFormat('@');
   }
   const header = sheet.getRange(1,1,1,HEADERS.length);
   header.setFontWeight('bold').setBackground('#214b56').setFontColor('#ffffff').setWrap(true);
@@ -232,8 +243,10 @@ function altLabel_(r) {
 // Each public event is one stat, one game and one Eastern slate date.
 const PM_SERIES = {PTS:'KXNBAPTS', REB:'KXNBAREB', AST:'KXNBAAST', '3PM':'KXNBA3PT',
   STL:'KXNBASTL', BLK:'KXNBABLK', PRA:'KXNBAPRA', DD:'KXNBA2D'};
-const PM_HEADERS = ['Kalshi alternate', 'Kalshi · 10+ REB', 'Kalshi · double-double', 'PM checked (ET)'];
-const PM_COL = 19;  // O:R belong to the existing grader.
+function savedAlt_(label) {
+  const m = /^Over ([\d.]+) (\w+)\s*·\s*([+-]\d+)$/.exec(String(label).trim());
+  return m ? 'O'+m[1]+' '+m[2]+' · FD '+m[3] : '';
+}
 
 function marketName_(name) {
   return String(name).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -271,12 +284,36 @@ function marketAlt_(asks, pick) {
   return rungs.find(n => n % step === 0) || rungs[0];
 }
 
-function marketPrice_(label, cost) {
-  if (!cost) return 'No buy quote';
-  const odds = Math.round(cost <= 0.5 ? 100*(1-cost)/cost : -100*cost/(1-cost));
-  const limit = altLimit_(odds)[0];
-  const signed = n => n > 0 ? '+'+n : String(n);
-  return label+' · '+Number((100*cost).toFixed(2))+'¢ ('+signed(odds)+') · to '+signed(limit);
+function shopAlternate_(p, asks, ddAsk) {
+  const over = p.side === 'Over';
+  const fd = new Map();
+  const offers = p.shopping ? p.shopping.offers : (p.alt ? [p.alt] : []);
+  for (const offer of offers || []) {
+    if (Number.isFinite(offer.line) && Number.isInteger(offer.odds) && Math.abs(offer.odds)>=100)
+      fd.set(offer.line+0.5,offer.odds);
+  }
+  const all = new Map([...asks].filter(([,cost])=>cost));
+  for (const n of fd.keys()) if (!all.has(n)) all.set(n,true);
+  const shared = new Map([...asks].filter(([n,cost])=>cost && fd.has(n)));
+  const sharedN = marketAlt_(shared,p);
+  const fdDouble = p.shopping && p.shopping.double;
+  const useDD = sharedN===undefined && over && p.stat==='REB' && p.line>=7.5 && p.line<=9.5 &&
+    Number.isInteger(fdDouble) && Math.abs(fdDouble)>=100 && ddAsk>0;
+  const n = sharedN===undefined ? marketAlt_(all,p) : sharedN;
+  if (!useDD && n===undefined) return {label:'No alternate quoted',alt:null};
+  const cost = useDD ? ddAsk : asks.get(n), odds = useDD ? fdDouble : fd.get(n);
+  const signed = v => v>0 ? '+'+v : String(v);
+  const prices = [];
+  if (odds) prices.push({cost:odds>0 ? 100/(odds+100) : -odds/(100-odds),text:'FD '+signed(odds)});
+  if (cost) {
+    const american = Math.round(cost<=0.5 ? 100*(1-cost)/cost : -100*cost/(1-cost));
+    prices.push({cost,text:'Kalshi '+Number((100*cost).toFixed(2))+'¢ ('+signed(american)+')'});
+  }
+  const label = useDD ? 'Double-double · Yes' : (Number.isInteger(n) ?
+    (over ? n+'+ '+p.stat : 'U'+(n-0.5)+' '+p.stat+' (No '+n+'+)') :
+    ((over?'Over ':'Under ')+(n-0.5)+' '+p.stat));
+  return {label:[label,...prices.sort((a,b)=>a.cost-b.cost).map(x=>x.text)].join(' · '),
+    alt:!useDD && over && odds ? {line:n-0.5,odds} : null};
 }
 
 function fetchCardMarkets_(picks) {
@@ -284,7 +321,7 @@ function fetchCardMarkets_(picks) {
   const events = new Set();
   for (const p of pending) {
     events.add(marketEvent_(p,p.stat));
-    if (p.stat === 'REB' && p.side === 'Over') events.add(marketEvent_(p,'DD'));
+    if (p.shopping && p.shopping.double && p.stat === 'REB' && p.side === 'Over') events.add(marketEvent_(p,'DD'));
   }
   events.delete(null);
   const names = [...events], books = new Map();
@@ -303,75 +340,16 @@ function fetchCardMarkets_(picks) {
       });
     } catch (_) { /* Record unavailability for this batch. Primary card delivery can proceed. */ }
   }
-  const checked = new Date(), checkedEt = Utilities.formatDate(checked,EASTERN,'MMM d, h:mm a z');
-  const rows = new Map();
+  const checked = new Date(), rows = new Map();
   for (const p of pending) {
     if (new Date(p.start) <= checked) continue;
     const event = marketEvent_(p,p.stat);
-    const quotes = marketAsks_(books.get(event),event,p.player,p.side,p.stat);
-    const n = marketAlt_(quotes,p), over = p.side === 'Over';
-    const label = (over?'Yes ':'No ')+n+'+ '+p.stat+' ('+(over?'O':'U')+(n-0.5)+')';
-    const alt = books.has(event) ? marketPrice_(label,quotes.get(n)) : 'Feed unavailable';
-    let ten = '', dd = '';
-    if (p.stat === 'REB' && over) {
-      const doubleEvent = marketEvent_(p,'DD');
-      ten = books.has(event) ? marketPrice_('Yes 10+ REB',quotes.get(10)) : 'Feed unavailable';
-      dd = books.has(doubleEvent) ? marketPrice_('Yes DD',marketAsks_(books.get(doubleEvent),doubleEvent,p.player,'Over','DD').get(0)) : 'Feed unavailable';
-    }
-    rows.set(p.id,[alt,ten,dd,checkedEt]);
+    const asks = marketAsks_(books.get(event),event,p.player,p.side,p.stat);
+    const doubleEvent = marketEvent_(p,'DD');
+    const dd = marketAsks_(books.get(doubleEvent),doubleEvent,p.player,'Over','DD').get(0);
+    rows.set(p.id,shopAlternate_(p,asks,dd));
   }
   return rows;
-}
-
-function ensureMarketColumns_(sheet) {
-  const header = sheet.getRange(1,PM_COL,1,PM_HEADERS.length);
-  const current = header.getValues()[0];
-  if (sheet.getFrozenColumns() < 3) sheet.setFrozenColumns(3);
-  if (PM_HEADERS.every((v,i)=>current[i]===v)) return;
-  if (!header.isBlank()) throw Error('Columns S:V already contain another header.');
-  if (typeof prepareGradeColumns_ === 'function') prepareGradeColumns_(sheet);
-  sheet.setColumnWidth(PM_COL,320);
-  sheet.setColumnWidths(PM_COL+1,2,245);
-  sheet.setColumnWidth(PM_COL+3,155);
-  header.setFontWeight('bold').setBackground('#214b56').setFontColor('#ffffff').setWrap(true);
-  header.setNotes([['Pregame buy ask before fees. Play-to uses 5 American-odds ticks.',
-    'Separate comparison at 10 rebounds.', '10+ in any two of points, rebounds, assists, steals and blocks.',
-    'Snapshot time. Use Jae card → Refresh pregame Kalshi quotes for new prices.']]);
-  header.setValues([PM_HEADERS]);
-}
-
-function refreshCardMarkets() {
-  const book = SpreadsheetApp.getActiveSpreadsheet();
-  const active = book.getActiveSheet();
-  const sheet = /^\d{4}-\d{2}-\d{2}$/.test(active.getName()) ? active :
-    book.getSheetByName(Utilities.formatDate(new Date(),'America/Denver','yyyy-MM-dd'));
-  if (!sheet || sheet.getLastRow()<2) return;
-  const rows = sheet.getRange(2,1,sheet.getLastRow()-1,HEADERS.length).getValues();
-  const picks = [];
-  for (const r of rows) {
-    const prop = /^(Over|Under) (\d+(?:\.\d+)?) (\w+)$/.exec(r[3]);
-    if (!prop || !PM_SERIES[prop[3]] || !r[13] || !r[0]) continue;
-    const wall = new Date((storedTime_(r[0],book)-25569)*86400000+0.5).toISOString().slice(0,19);
-    const start = Utilities.parseDate(wall,EASTERN,"yyyy-MM-dd'T'HH:mm:ss");
-    picks.push({id:r[13],start,game:r[1],player:r[2],side:prop[1],line:Number(prop[2]),stat:prop[3]});
-  }
-  const quotes = fetchCardMarkets_(picks);
-  if (!quotes.size) { book.toast('No pregame plays to refresh.'); return; }
-  const lock = LockService.getScriptLock();
-  lock.waitLock(16000);
-  try {
-    ensureMarketColumns_(sheet);
-    const count = sheet.getLastRow()-1;
-    const ids = sheet.getRange(2,HEADERS.length,count,1).getValues();
-    const range = sheet.getRange(2,PM_COL,count,PM_HEADERS.length);
-    const previous = range.getValues();
-    range.setValues(ids.map(([id],i)=>quotes.get(id) || previous[i]));
-    SpreadsheetApp.flush();
-    const priced = [...quotes.values()].filter(r=>r.slice(0,3).some(v=>v.includes('¢'))).length;
-    const message = priced+' of '+quotes.size+' pregame plays have a Kalshi buy quote.';
-    console.log(message);
-    book.toast(message);
-  } finally { lock.releaseLock(); }
 }
 
 function doPost(e) {
@@ -425,8 +403,9 @@ function doPost(e) {
           !Number.isFinite(r.breakeven) || r.breakeven <= 0 || r.breakeven >= 1 ||
           !['Over','Under'].includes(r.side) || !Number.isFinite(r.line) ||
           !['PTS','REB','AST','3PM','PRA','BLK','STL'].includes(r.stat)) throw Error();
+      const offer = marketRows.get(r.id) || shopAlternate_(r,new Map(),null);
       values.push([stamp(r.start),safe(r.game),safe(r.player),r.side+' '+r.line+' '+r.stat,
-        r.odds,r.worst,r.breakeven,altLabel_(r),...altLimit_(r.side === 'Over' && r.alt && r.alt.line > r.line ? r.alt.odds : null),stamp(r.quoted),stamp(r.sent),'',r.id]);
+        r.odds,r.worst,r.breakeven,altLabel_({...r,alt:offer.alt}),offer.label,'',stamp(r.quoted),stamp(r.sent),'',r.id]);
       known.add(r.id);
     }
     for (const [index,terms] of changes) sheet.getRange(index,6,1,2).setValues([terms]);
@@ -435,16 +414,10 @@ function doPost(e) {
       const first = sheet.getLastRow()+1;
       const last = first + values.length - 1;
       if (last > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), last - sheet.getMaxRows());
-      for (const col of [5,6,9]) sheet.getRange(first,col,values.length,1).setNumberFormat('+0;-0;0');
-      for (const col of [7,10]) sheet.getRange(first,col,values.length,1).setNumberFormat('0.0%');
+      for (const col of [5,6]) sheet.getRange(first,col,values.length,1).setNumberFormat('+0;-0;0');
+      for (const col of [7]) sheet.getRange(first,col,values.length,1).setNumberFormat('0.0%');
       formatTimes_(sheet, first, values);
-      if (marketRows.size) {
-        ensureMarketColumns_(sheet);
-        const combined = values.map(r=>[...r,'','','','',...(marketRows.get(r[13]) || ['','','',''])]);
-        sheet.getRange(first,1,values.length,PM_COL+PM_HEADERS.length-1).setValues(combined);
-      } else {
-        sheet.getRange(first,1,values.length,HEADERS.length).setValues(values);
-      }
+      sheet.getRange(first,1,values.length,HEADERS.length).setValues(values);
       SpreadsheetApp.flush();
     }
     if (sheet) sortDay_(sheet);

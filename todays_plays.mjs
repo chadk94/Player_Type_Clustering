@@ -119,7 +119,7 @@ export default function({data, parentElement, setStateValue}) {
                 const count = confirmed.length;
                 action = button(`Send ${count} confirmed ${count === 1 ? 'play' : 'plays'} to Jae`, () =>
                     requestJae('send', connection, confirmed));
-                action.title = 'Your confidence sets the main play-to price from the current FanDuel quote. Alternate overs have a 5¢ limit.';
+                action.title = 'Confidence sets the play-to from the original FanDuel quote.';
                 action.className = 'jae-send';
                 bar.append(action);
             }
@@ -166,7 +166,7 @@ export default function({data, parentElement, setStateValue}) {
         root.append(status);
         renderJae(rows.filter(p => p.status === 'Confirmed'), rows.length > 0);
         if (rows.length) {
-            root.append(make('p','Send again after editing confidence to update the main play-to at its original FanDuel quote. Alternate overs have a 5¢ limit.'));
+            root.append(make('p','Send again after editing confidence to update the play-to from the original FanDuel quote. The card shows one alternate to shop.'));
             const scroll=make('div'); scroll.className='play-table';
             const table=make('table'); table.setAttribute('aria-label','Saved player props');
             const header=table.createTHead().insertRow();

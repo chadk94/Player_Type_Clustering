@@ -88,7 +88,7 @@ class JaeCardTests(TestCase):
         self.assertIsNone(row()['alt']['odds'])
         from jae_card import next_over
         self.assertEqual(next_over(dict(pick,stat='PTS',line=14.5),
-                         {('sample player','PTS'):{19.5:{180},24.5:{400}}}),{'line':19.5,'odds':180})
+                         {('sample player','PTS','Over'):{19.5:{180},24.5:{400}}}),{'line':19.5,'odds':180})
 
     def test_cross_book_saves_use_one_fanduel_id_and_recognize_legacy_rows(self):
         from play_identity import prop_id
@@ -123,5 +123,16 @@ class JaeCardTests(TestCase):
             ('REB', 3.5, {4.5:{120},5.5:{180}}, 5.5),
             ('REB', 3.5, {4.5:{120},5.5:{150,180}}, 4.5),
         ]:
-            result = next_over(dict(self.pick,stat=stat,side='Over',line=line),{('sample player',stat):ladder})
+            result = next_over(dict(self.pick,stat=stat,side='Over',line=line),{('sample player',stat,'Over'):ladder})
             self.assertEqual(result,{'line':expected,'odds':next(iter(ladder[expected]))})
+
+    def test_unders_only_use_fresh_same_side_fd_alternates(self):
+        from jae_card import alternate_prices, shopping_prices
+        p = dict(self.pick, line=10.5)
+        market = dict(key='player_points_alternate', last_update=self.now.isoformat(), outcomes=[
+            dict(name=s, description=p['player'], point=9.5, price=o) for s,o in [('Over',-150),('Under',125)]])
+        self.event['bookmakers'][0]['markets'].append(market)
+        get = lambda: shopping_prices(p,alternate_prices(self.event,self.now))
+        self.assertEqual(get()['offers'],[{'line':9.5, 'odds':125}])
+        market['last_update'] = (self.now - timedelta(minutes=16)).isoformat()
+        self.assertEqual(get()['offers'],[])

@@ -78,7 +78,7 @@ test('the sheet creates daily tabs, freezes first delivery and feedback, and ref
   const over={...row,id:'c'.repeat(64),day:other,side:'Over',stat:'3PM',line:1.5,alt:{line:2.5,odds:400}};
   assert.equal(post({day:other,action:'append',rows:[over]}).added,1);
   assert.equal(tabs.get(other).rows[2][7],'Over 2.5 3PM  ·  +400');
-  assert.deepEqual(tabs.get(other).rows[2].slice(8,10),[395,100/495]);
+  assert.deepEqual(tabs.get(other).rows[2].slice(8,10),['3+ 3PM · FD +400','']);
   const original=tabs.get(other).rows[2].slice();
   const edit=(cents)=>post({day:other,action:'append',rows:[],edits:[{id:over.id,cents}]});
   assert.equal(edit(15).updated,1);
@@ -94,8 +94,9 @@ test('the sheet creates daily tabs, freezes first delivery and feedback, and ref
   const futurePick={...over,day:future,start:future};
   assert.equal(post({day:future,action:'append',rows:[futurePick]}).added,1);
   const saved=tabs.get(future).rows[1];
-  assert.deepEqual(saved.slice(13,21),[over.id,'','','','','No buy quote','','']);
-  assert.deepEqual(tabs.get(future).rows[0].slice(18,22),['Kalshi alternate','Kalshi · 10+ REB','Kalshi · double-double','PM checked (ET)']);
+  assert.equal(saved[13],over.id);
+  assert.deepEqual(saved.slice(8,10),['3+ 3PM · FD +400','']);
+  assert.equal(tabs.get(future).rows[0][8],'Alternate to shop');
   assert.equal(post({day:future,action:'append',rows:[futurePick]}).added,0);
   assert.equal(tabs.get(future).rows.length,2);
   const first={...over,id:'f'.repeat(64),start:'2026-11-14T18:00:00Z',player:'Earlier'};
@@ -127,13 +128,6 @@ test('legacy tab migration converts actual wall times and keeps feedback and pla
   assert.deepEqual(rows[1].slice(10),[notes,id]);
 });
 
-test('play-to limits cross even money and missing alternates have no limit',()=>{
-  const c=vm.createContext({});vm.runInContext(src,c);
-  for(const [raw,odds,p] of [[400,395,100/495],[102,-103,103/203],[-150,-155,155/255],[105,100,.5]]) {
-    assert.deepEqual(Array.from(c.altLimit_(raw)),[odds,p]);
-  }
-  assert.deepEqual(Array.from(c.altLimit_(null)),['','']);
-});
 test('backfill uses frozen odds, preserves precision and dates, and displays off-slate dates',()=>{
   const c=vm.createContext({});vm.runInContext(src,c);
   const id='x',feedback='keep feedback';
@@ -148,7 +142,7 @@ test('backfill uses frozen odds, preserves precision and dates, and displays off
   c.upgradeTimesAndAlts_(sheet,{});
   assert.equal(row[0],c.serialTime_('2026-11-15 00:10:40'));
   assert.equal(row[11],c.serialTime_('2026-11-15 12:10:00'));
-  assert.deepEqual(row.slice(8,10),[395,100/495]);
+  assert.deepEqual(row.slice(8,10),['O2.5 3PM · FD +400','']);
   assert.deepEqual(cols,{1:'h:mm AM/PM',11:'mmm d, h:mm AM/PM',12:'h:mm AM/PM'});
   const once=[...row];c.upgradeTimesAndAlts_(sheet,{});assert.deepEqual(row,once);
   assert.deepEqual(row.slice(-2),[feedback,id]);
@@ -166,14 +160,15 @@ test('public asks are date/game, player, market and side specific; PM unders use
   const no=ctx.marketAsks_(data,event,'Sample Jones','Under','PTS');
   assert.deepEqual([...no.keys()],[5,8,10,11,15]);
   assert.equal(ctx.marketAlt_(no,{side:'Under',line:10.5,stat:'PTS'}),10);
-  assert.equal(ctx.marketPrice_('No 10+ PTS (U9.5)',no.get(10)),'No 10+ PTS (U9.5) · 45¢ (+122) · to +117');
+  assert.equal(ctx.shopAlternate_({side:'Under',line:10.5,stat:'PTS',shopping:{offers:[{line:9.5,odds:125}]}},no).label,
+    'U9.5 PTS (No 10+) · FD +125 · Kalshi 45¢ (+122)');
   const yes=ctx.marketAsks_(data,event,'Sample Jones','Over','PTS');
   assert.equal(yes.get(10),.56);
   assert.equal(ctx.marketAlt_(yes,{side:'Over',line:6.5,stat:'PTS'}),10);
   assert.equal(ctx.marketAlt_(new Map([[5,.5],[6,.45]]),{side:'Over',line:3.5,stat:'REB'}),6);
   assert.equal(ctx.marketAlt_(new Map([[5,.5]]),{side:'Over',line:3.5,stat:'REB'}),5);
   assert.equal(ctx.marketAlt_(new Map([[6,.5]]),{side:'Over',line:5.5,stat:'REB'}),undefined);
-  assert.equal(ctx.marketPrice_('x',undefined),'No buy quote');
+  assert.equal(ctx.shopAlternate_({stat:'PTS',line:11.5,side:'Under'},new Map()).label,'No alternate quoted');
 });
 test('market lookup batches by public event and separates double-double from ten rebounds',()=>{
   const requests=[];
@@ -185,11 +180,14 @@ test('market lookup batches by public event and separates double-double from ten
          strike_type:'greater',floor_strike:9.5,yes_ask_dollars:dd?'0.32':'0.31',yes_ask_size_fp:'20'}]})};
     });}}});
   vm.runInContext(src,ctx);
-  const p={id:'1',game:'CHI @ CLE',player:'Sample Smith',start:'2099-11-16T23:00:00Z',side:'Over',stat:'REB',line:7.5};
+  const p={id:'1',game:'CHI @ CLE',player:'Sample Smith',start:'2099-11-16T23:00:00Z',side:'Over',stat:'REB',line:7.5,shopping:{offers:[{line:8.5,odds:130},{line:9.5,odds:185}],double:195}};
   const rows=ctx.fetchCardMarkets_([p,{...p,id:'2'},{...p,id:'ended',start:'2001-01-01'}]);
   assert.equal(rows.size,2);assert.equal(requests.length,2);
-  assert.match(rows.get('1')[0],/Yes 10\+ REB \(O9.5\) · 31¢/);
-  assert.match(rows.get('1')[1],/10\+ REB · 31¢/);assert.match(rows.get('1')[2],/Yes DD · 32¢/);
+  assert.equal(rows.get('1').label,'10+ REB · Kalshi 31¢ (+223) · FD +185');
+  assert.deepEqual({...rows.get('1').alt},{line:9.5,odds:185});
+  const dd=ctx.shopAlternate_(p,new Map(),.32);
+  assert.equal(dd.label,'Double-double · Yes · Kalshi 32¢ (+213) · FD +195');
+  assert.equal(dd.alt,null);
   ctx.UrlFetchApp.fetchAll=()=>{throw Error('offline')};
-  assert.deepEqual(Array.from(ctx.fetchCardMarkets_([p]).get('1')),['Feed unavailable','Feed unavailable','Feed unavailable','checked']);
+  assert.equal(ctx.fetchCardMarkets_([p]).get('1').label,'10+ REB · FD +185');
 });

@@ -24,10 +24,12 @@ def worst_price(odds, cents=5):
     return ticks + 100 if ticks >= 0 else ticks - 100
 
 
-def current_event(event_id, stats, over_stats):
+def current_event(event_id, stats, alternate_stats):
     from FanduelScrape import get_odds_api_key
     base = [key for key, stat in MARKETS.items() if stat in stats]
-    alts = [key + '_alternate' for key, stat in MARKETS.items() if stat in over_stats]
+    alts = [key + '_alternate' for key, stat in MARKETS.items() if stat in alternate_stats]
+    if 'REB' in alternate_stats:
+        alts.append('player_double_double')
     api_key = get_odds_api_key()
 
     def fetch(markets):
@@ -42,15 +44,16 @@ def current_event(event_id, stats, over_stats):
     return fetch(base)
 
 
-def alternate_overs(event, now):
-    """Index current one-sided FanDuel ladders separately from paired main markets."""
+def alternate_prices(event, now):
+    """Collect fresh FanDuel alternate quotes by player, stat, side, and exact line."""
     prices = defaultdict(lambda: defaultdict(set))
     for book in event.get('bookmakers', []):
         if book.get('key') != 'fanduel':
             continue
         for market in book.get('markets', []):
             key = market.get('key', '')
-            if not key.endswith('_alternate') or (stat := MARKETS.get(key[:-10])) is None:
+            stat = 'DD' if key == 'player_double_double' else MARKETS.get(key.removesuffix('_alternate'))
+            if not stat or (stat != 'DD' and not key.endswith('_alternate')):
                 continue
             try:
                 updated = market.get('last_update') or book.get('last_update')
@@ -60,22 +63,24 @@ def alternate_overs(event, now):
             except (AttributeError, TypeError, ValueError):
                 continue
             for outcome in market.get('outcomes', []):
-                if outcome.get('name') != 'Over' or not outcome.get('description'):
+                side = outcome.get('name')
+                if side not in (('Yes',) if stat == 'DD' else ('Over','Under')) or not outcome.get('description'):
                     continue
                 try:
-                    line, odds = float(outcome['point']), float(outcome['price'])
+                    line = 0.0 if stat == 'DD' else float(outcome['point'])
+                    odds = float(outcome['price'])
                     if not math.isfinite(line) or line < 0 or not odds.is_integer() or abs(odds) < 100:
                         continue
                 except (TypeError, ValueError, KeyError):
                     continue
-                prices[name_key(outcome['description']), stat][line].add(int(odds))
+                prices[name_key(outcome['description']), stat, side][line].add(int(odds))
     return prices
 
 
 def next_over(pick, prices):
     if pick['side'] != 'Over':
         return None
-    ladder = prices.get((name_key(pick['player']), pick['stat']), {})
+    ladder = prices.get((name_key(pick['player']), pick['stat'], 'Over'), {})
     if pick['stat'] == '3PM':
         target = pick['line'] + 1
     else:
@@ -85,6 +90,15 @@ def next_over(pick, prices):
         target = next(iter(preferred or available), None)
     odds = ladder.get(target, set())
     return {'line': target, 'odds': next(iter(odds)) if len(odds) == 1 else None}
+
+
+def shopping_prices(pick, ladders):
+    name, stat, side = name_key(pick['player']), pick['stat'], pick['side']
+    ladder = ladders.get((name, stat, side), {})
+    offers = [{'line':line, 'odds':next(iter(prices))} for line, prices in sorted(ladder.items())
+              if len(prices) == 1 and (line > pick['line'] if side == 'Over' else line < pick['line'])]
+    double = ladders.get((name, 'DD', 'Yes'), {}).get(0, set()) if stat == 'REB' and side == 'Over' else set()
+    return {'offers': offers, 'double': next(iter(double)) if len(double) == 1 else None}
 
 
 def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.utc)):
@@ -98,14 +112,14 @@ def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.
         try:
             if not re.fullmatch(r'[a-fA-F0-9]{32}', event_id):
                 raise ValueError('unrecognized event')
-            event = fetch(event_id, {p['stat'] for p in group}, {p['stat'] for p in group if p['side'] == 'Over'})
+            event = fetch(event_id, {p['stat'] for p in group}, {p['stat'] for p in group})
             now = clock()
             start = datetime.fromisoformat(event['commence_time'].replace('Z', '+00:00'))
             if event['id'] != event_id or start <= now:
                 raise ValueError('event unavailable or already started')
             game = f"{TEAM_NAMES[event['away_team']]} @ {TEAM_NAMES[event['home_team']]}"
             quotes = game_quotes(event, [p['player'] for p in group], 'fanduel', now)
-            ladders = alternate_overs(event, now)
+            ladders = alternate_prices(event, now)
         except (OddsFeedError, ValueError, TypeError, KeyError, AttributeError):
             skipped.extend(f"{p['player']} {p['side']} {p['line']:g} {p['stat']} (FanDuel) — game or quote unavailable." for p in group)
             continue
@@ -126,7 +140,7 @@ def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.
             worst = worst_price(price, p.get('confidence_cents', 5))
             rows.append(dict(id=p['id'], day=p['day'], start=start.isoformat(), game=game,
                              player=p['player'], stat=p['stat'], side=p['side'], line=p['line'],
-                             book='FanDuel', alt=next_over(p, ladders), odds=price, worst=worst, breakeven=american_probability(worst),
+                             book='FanDuel', alt=next_over(p, ladders), shopping=shopping_prices(p,ladders), odds=price, worst=worst, breakeven=american_probability(worst),
                              quoted=quote['Updated UTC'], sent=now.isoformat()))
     return rows, skipped
 
