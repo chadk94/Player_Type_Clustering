@@ -1,0 +1,104 @@
+"""Read the owner's private NBA-model approvals without changing baseline minutes."""
+from datetime import datetime, timezone
+from hashlib import sha256
+import json
+from pathlib import Path
+import re
+
+import requests
+import streamlit as st
+
+
+def read_feed(connection):
+    url, _, key = connection.partition('#')
+    if not re.fullmatch(r'https://script.google.com/macros/s/[A-Za-z0-9_-]+/exec', url) or not re.fullmatch(r'[a-f0-9]{64}', key):
+        raise ValueError('Use the private minutes connection from the NBA model.')
+    try:
+        response = requests.post(url, json={'action':'minutes_read','key':key}, timeout=(4,12), allow_redirects=False)
+        if response.status_code in (302,303):
+            location = response.headers.get('Location','')
+            if not location.startswith('https://script.googleusercontent.com/'):
+                raise ValueError('Google needs the owner to finish connecting the minutes feed.')
+            response = requests.get(location, timeout=(4,12), allow_redirects=False)
+        response.raise_for_status()
+        answer = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        raise ValueError('The private minutes feed could not be reached.') from exc
+    if not answer.get('ok'):
+        raise ValueError('The private minutes connection was rejected. Reconnect the NBA model.')
+    snapshot = answer.get('snapshot')
+    if snapshot is None:
+        return {'schema':'nba_minutes_feed_v1','bundles':[]}
+    if not isinstance(snapshot, str) or sha256(snapshot.encode()).hexdigest() != answer.get('digest'):
+        raise ValueError('Minutes failed the transfer check. Waiting for a complete update.')
+    data = json.loads(snapshot)
+    if data.get('schema') != 'nba_minutes_feed_v1' or not isinstance(data.get('bundles'), list):
+        raise ValueError('The minutes feed returned an unsupported format.')
+    return data
+
+
+def validate_feed(feed, roster, season):
+    from approved_minutes import digest, validate_bundle
+    games, approvals, dates = [], [], set()
+    for raw in feed['bundles']:
+        bundle = validate_bundle(raw, roster, season)
+        day = bundle['games'][0]['game_date']
+        if day in dates:
+            raise ValueError('The minutes feed returned duplicate dates.')
+        dates.add(day)
+        games.extend(bundle['games'])
+        approvals.extend(bundle['approvals'])
+    if not games:
+        return None
+    result = dict(schema='nba_linked_minutes_v1', games=games, approvals=approvals)
+    result['bundle_id'] = digest(result)
+    return result
+
+
+@st.cache_resource
+def connection_component():
+    from streamlit.components.v2 import component
+    return component('nba_minutes_connection', js=Path(__file__).with_suffix('.mjs').read_text())
+
+
+@st.fragment(run_every='60s')
+def render_sync(roster, season):
+    state = st.session_state.setdefault('nba_minutes_link', {})
+    reply = connection_component()(data={'connected':bool(state.get('connection'))},
+        key='nba_minutes_connection', default={'connection':None}, height='content',
+        on_connection_change=lambda: None).connection
+    if not reply or not reply.get('ready'):
+        st.stop()
+    connection = reply.get('connection')
+    first_restore = not state.get('ready')
+    changed = state.get('connection') != connection
+    previous_id = (state.get('bundle') or {}).get('bundle_id')
+    now = datetime.now(timezone.utc)
+    if changed:
+        state.clear()
+        state['connection'] = connection
+    state['ready'] = True
+    if reply.get('error'):
+        st.caption(reply['error'])
+    if connection and (changed or now.timestamp()-state.get('checked',0) >= 55):
+        try:
+            data = read_feed(connection)
+            state['bundle'] = validate_feed(data, roster, season)
+            state['published_at'] = data.get('published_at')
+            state['error'] = None
+            state['success_at'] = now.strftime('%I:%M %p UTC')
+        except (ValueError, KeyError, TypeError) as exc:
+            state['error'] = str(exc)
+        state['checked'] = now.timestamp()
+    if state.get('error'):
+        note = ' Using the last verified approvals.' if state.get('bundle') else ''
+        st.warning('Automatic minutes sync needs attention. '+state['error']+note)
+    if connection and state.get('bundle'):
+        n = len(state['bundle']['approvals'])
+        st.caption(f"NBA model linked · {n} approved team rotations · Last checked {state.get('success_at')}.")
+    elif connection and not state.get('error'):
+        st.info('NBA model linked. Approve both teams in a game to sync its minutes.')
+    current_id = (state.get('bundle') or {}).get('bundle_id')
+    if first_restore or changed or previous_id != current_id:
+        # Only an actual rotation change refreshes projections. Timer checks stay in this panel.
+        st.rerun()

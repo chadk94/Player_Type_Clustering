@@ -717,7 +717,7 @@ def render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
                      on_select=lambda: queue_player_selection(widget_key, player_rows, game, book_name),
                      selection_mode=['single-row', 'single-cell'])
         send_player_navigation()
-        ui.caption('Zero-minute players are excluded from totals. Approved game minutes retain their exact 240-minute allocation. Other minute sources round individually to 0.5. Importing a new approved file recalculates matching games; the local NBA model does not sync automatically.')
+        ui.caption('Approved game minutes retain their exact 240-minute allocation. A linked NBA model updates matching games automatically after approval. Other minute sources round individually to 0.5.')
     with ui.expander('Where the assist and three-point targets come from'):
         inputs = ['Market team total', 'Expected team FGM', 'Expected team FGA', 'Team 3PA target', 'Team assist rate', 'Team three attempt rate']
         if set(inputs).issubset(final):

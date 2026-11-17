@@ -147,6 +147,15 @@ def game_minutes_caption(projections, teams):
 
 def render_import(ui, roster, season):
     import streamlit as st
+    from minutes_sync import render_sync
+    render_sync(roster, season)
+    linked = st.session_state.get('nba_minutes_link', {})
+    if linked.get('connection'):
+        if linked.get('error') and not linked.get('bundle'):
+            st.stop()
+        bundle = linked.get('bundle')
+        apply_bundle_change(st.session_state, bundle)
+        return bundle
     from approved_minutes_storage import new_state, update_upload, accept_reply, storage_component
     state = st.session_state.setdefault('minutes_import_state', new_state(season))
     def clear_saved():
@@ -180,11 +189,15 @@ def render_import(ui, roster, season):
         if warnings: ui.warning('Approved with injury-report limitations: '+' · '.join(warnings))
     else:
         ui.warning('No approved minutes file is loaded. Projections use workbook/season-average minutes. Open Import Approved Minutes to use your game rotations.')
-    identifier = (bundle or {}).get('bundle_id')
-    if st.session_state.get('approved_minutes_bundle') != identifier:
-        st.session_state['approved_minutes_bundle'] = identifier
-        st.session_state.pop('team_projection_snapshots', None)
-        # A new approval supersedes the previous preview slider edits.
-        for key in list(st.session_state):
-            if key.startswith('custom_minutes_'): st.session_state.pop(key, None)
+    apply_bundle_change(st.session_state, bundle)
     return bundle
+
+
+def apply_bundle_change(state, bundle):
+    identifier = (bundle or {}).get('bundle_id')
+    if state.get('approved_minutes_bundle') != identifier:
+        state['approved_minutes_bundle'] = identifier
+        state.pop('team_projection_snapshots', None)
+        # A new approval supersedes the previous preview slider edits.
+        for key in list(state):
+            if key.startswith('custom_minutes_'): state.pop(key, None)
