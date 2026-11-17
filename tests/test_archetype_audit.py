@@ -6,6 +6,7 @@ from archetype_model import (assign_named_roles, named_roles, validate_named_rol
 from season_pipeline import ROOT, apply_overrides, load_rules
 from matchup_projections import assign_game_archetypes, matchup_effects
 from audit_archetypes import build_audit
+from tests.override_history import october_rules
 
 
 class ArchetypeAuditTests(unittest.TestCase):
@@ -29,7 +30,7 @@ class ArchetypeAuditTests(unittest.TestCase):
 
     def test_ausar_and_jrue_changes_preserve_all_existing_manual_rules(self):
         import hashlib
-        rules = load_rules()
+        rules = october_rules()
         # Later approvals may add overrides; the original rules must still match
         # the historical digest after removing only those newly added entries.
         later = pd.concat([pd.read_csv(ROOT/'data/audit'/filename) for filename in

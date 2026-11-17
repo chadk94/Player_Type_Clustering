@@ -9,6 +9,7 @@ import pandas as pd
 from archetype_model import load_reviews, named_roles
 from preseason_bootstrap import bootstrap
 from season_pipeline import ROOT, apply_overrides, apply_roster_rules, load_rules
+from tests.override_history import october_rules
 
 
 class LeagueArchetypeTests(unittest.TestCase):
@@ -33,7 +34,8 @@ class LeagueArchetypeTests(unittest.TestCase):
 
     def test_manual_rules_and_reference_observations_unchanged(self):
         manifest = json.loads((ROOT/'data/audit/league_coverage_manifest.json').read_text())
-        self.assertEqual(hashlib.sha256((ROOT/'archetype_overrides.json').read_bytes()).hexdigest(),
+        october_bytes = (json.dumps(october_rules(), indent=2, ensure_ascii=False) + '\n').encode()
+        self.assertEqual(hashlib.sha256(october_bytes).hexdigest(),
                          manifest['manual_override_file_sha256'])
         for filename,digest in manifest['reference_sha256'].items():
             self.assertEqual(hashlib.sha256((ROOT/'references'/filename).read_bytes()).hexdigest(),digest)
@@ -50,6 +52,33 @@ class LeagueArchetypeTests(unittest.TestCase):
         result = apply_overrides(frame,'off',rules)
         self.assertEqual(result.iloc[0].Cluster,6)  # Overrides the new review's 2.
         self.assertEqual(result.iloc[0].AssignmentSource,'manual_override')
+
+    def test_november_approvals_change_only_the_six_approved_sides(self):
+        approvals = pd.read_csv(ROOT/'data/audit/provisional_roles_approved_2026-11-17.csv')
+        self.assertEqual(set(zip(approvals.PLAYER_NAME, approvals.Side, approvals.Applied)), {
+            ('Bogdan Bogdanović', 'Off', 'Catch & Shoot Wing'),
+            ('Javon Small', 'Off', 'Primary Ball Handler'),
+            ('Max Strus', 'Def', 'Non-POA Wing'),
+            ('Josh Dix', 'Def', 'Non-POA Wing'),
+            ('Ryan Conwell', 'Off', 'Catch & Shoot Wing'),
+            ('Noa Essengue', 'Def', 'Big Wing Defender'),
+        })
+        roster = pd.read_csv(ROOT/'preseason_archetypes.csv').set_index('PLAYER_ID')
+        reviewed = pd.read_csv(ROOT/'archetype_league_reviews.csv').set_index('PLAYER_ID')
+        exports = {side: pd.read_csv(ROOT/name).set_index('PLAYER_ID') for side, name in
+                   [('Off', 'player_clusters_detailed.csv'), ('Def', 'def_player_clusters_detailed.csv')]}
+        for row in approvals.itertuples():
+            player = roster.loc[row.PLAYER_ID]
+            original = reviewed.loc[row.PLAYER_ID]
+            side = row.Side
+            self.assertEqual(player.PLAYER_NAME, row.PLAYER_NAME)
+            self.assertEqual(original[side+'Archetype'], row.Previous)
+            self.assertEqual(player[side+'Archetype'], row.Applied)
+            self.assertEqual(player[side+'AssignmentSource'], 'manual_override')
+            other = 'Def' if side == 'Off' else 'Off'
+            self.assertEqual(player[other+'Archetype'], original[other+'Archetype'])
+            detail = exports[side].loc[row.PLAYER_ID]
+            self.assertEqual((detail.Archetype, detail.AssignmentSource), (row.Applied, 'manual_override'))
 
     def test_regeneration_keeps_zero_minute_roles_without_fabricating_features(self):
         expected = pd.read_csv(ROOT/'preseason_archetypes.csv').set_index('PLAYER_ID')

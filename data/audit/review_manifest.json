@@ -2,10 +2,10 @@
   "reviewed_players": 100,
   "missing_named_roles": 0,
   "manual_override_counts": {
-    "OFF": 81,
-    "DEF": 143
+    "OFF": 84,
+    "DEF": 146
   },
-  "manual_override_file_sha256": "516b20a38e1445ba8fbde8d7fc2a04f63cb3dbbeba8f92fbabef3615843f40db",
+  "manual_override_file_sha256": "0be22566154b6d54b79613aa8f41ee8ee9906cb485bf6c62f675a65c65c0e93a",
   "additional_reference_reviews": 90,
   "low_minute_reviews": 33,
   "league_coverage_reviews": 176,
@@ -18,5 +18,5 @@
   "additional_players_with_changed_roles": 336,
   "unchanged_workbook_minutes": true,
   "named_eligible_players": 285,
-  "role_policy_version": "c8e9479cb6306a0c95e41c1f89650b1aad63387a2a64089388edceead6ec6664"
+  "role_policy_version": "9e2c6e13275003e772b3a878420215b7b7088bca7576bd4633453cc116b8f1de"
 }

@@ -67,7 +67,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1631159,Leonard Miller,CHI,False,,Spot-Up Role Player,,Big Wing Defender,analyst_review,analyst_review
 1643637,Jaylin Sellers,CHI,False,,Spot-Up Role Player,,Non POA Guard,analyst_review,analyst_review
 1641722,Jordan Hawkins,CHI,False,,Catch & Shoot Wing,,Non-POA Wing,analyst_review,analyst_review
-1642855,Noa Essengue,CHI,False,,Spot-Up Role Player,,Non-POA Wing,analyst_review,analyst_review
+1642855,Noa Essengue,CHI,False,,Spot-Up Role Player,,Big Wing Defender,analyst_review,manual_override
 1630172,Patrick Williams,CHI,False,,Catch & Shoot Wing,,Big Wing Defender,analyst_review,analyst_review
 1643591,Tobe Awaka,CHI,False,,Athletic Roll Man,,Turtles,analyst_review,analyst_review
 1628380,Zach Collins,CHI,False,,Traditional Center,,Turtles,analyst_review,analyst_review
@@ -149,7 +149,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1631106,Tari Eason,HOU,True,Uncategorized,Spot-Up Role Player,Long Wing/Secondary POA,High Stock + D,analyst_review,analyst_review
 203500,Steven Adams,HOU,True,Traditional Center,Traditional Center,Cluster 10 (unnamed),Turtles,analyst_review,analyst_review
 203935,Marcus Smart,HOU,False,Catch & Shoot Wing,Secondary Playmaker,POA Defender,POA Defender,analyst_review,manual_override
-203992,Bogdan Bogdanović,HOU,False,,Secondary Playmaker,,Non-POA Wing,analyst_review,analyst_review
+203992,Bogdan Bogdanović,HOU,False,,Catch & Shoot Wing,,Non-POA Wing,manual_override,analyst_review
 1643570,Bruce Thornton,HOU,False,,Secondary Playmaker,,Non POA Guard,analyst_review,analyst_review
 203991,Clint Capela,HOU,False,,Athletic Roll Man,,Rim Protector,analyst_review,analyst_review
 1642384,Isaiah Crawford,HOU,False,,Spot-Up Role Player,,Non-POA Wing,analyst_review,analyst_review
@@ -182,7 +182,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1641711,Gradey Dick,LAC,False,,Catch & Shoot Wing,,Non-POA Wing,analyst_review,analyst_review
 1629618,Jalen Pickett,LAC,False,,Spot-Up Role Player,Non POA Guard,Non POA Guard,manual_override,manual_override
 1641757,Jordan Miller,LAC,False,,Spot-Up Role Player,,Non-POA Wing,analyst_review,analyst_review
-1629622,Max Strus,LAC,False,,Catch & Shoot Wing,,Non POA Guard,analyst_review,analyst_review
+1629622,Max Strus,LAC,False,,Catch & Shoot Wing,,Non-POA Wing,analyst_review,manual_override
 1643568,Nick Martinelli,LAC,False,,Traditional Center,,Non-POA Wing,manual_override,manual_override
 1642530,Yuki Kawamura,LAC,False,,Primary Ball Handler,,Non POA Guard,analyst_review,analyst_review
 1629029,Luka Dončić,LAL,False,High Usage Wing,Primary Ball Handler,Big Wing Defender,Big Wing Defender,analyst_review,analyst_review
@@ -208,7 +208,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1631200,Kris Murray,MEM,True,Uncategorized,Spot-Up Role Player,Non-POA Wing,Non-POA Wing,analyst_review,analyst_review
 1642366,Quinten Post,MEM,False,,Stretch Big,,Turtles,analyst_review,analyst_review
 1642942,Jahmai Mashack,MEM,False,,Spot-Up Role Player,Pesky Guard,Pesky Guard,analyst_review,manual_override
-1642914,Javon Small,MEM,False,,Secondary Playmaker,,Non POA Guard,analyst_review,analyst_review
+1642914,Javon Small,MEM,False,,Primary Ball Handler,,Non POA Guard,manual_override,analyst_review
 1643510,Karim Lopez,MEM,False,,Spot-Up Role Player,,Non-POA Wing,analyst_review,analyst_review
 1642877,Micah Peavy,MEM,False,,Spot-Up Role Player,,Long Wing/Secondary POA,analyst_review,analyst_review
 1641765,Olivier-Maxence Prosper,MEM,False,,Spot-Up Role Player,,Big Wing Defender,analyst_review,analyst_review
@@ -225,7 +225,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1642352,Keshad Johnson,MIA,False,,Catch & Shoot Wing,,Non-POA Wing,analyst_review,analyst_review
 1642066,Myron Gardner,MIA,False,,Spot-Up Role Player,,Non-POA Wing,manual_override,manual_override
 1630208,Nick Richards,MIA,False,,Athletic Roll Man,,Turtles,analyst_review,analyst_review
-1643553,Ryan Conwell,MIA,False,,Spot-Up Role Player,,Non POA Guard,analyst_review,analyst_review
+1643553,Ryan Conwell,MIA,False,,Catch & Shoot Wing,,Non POA Guard,manual_override,analyst_review
 1631323,Simone Fontecchio,MIA,False,,Catch & Shoot Wing,,Non-POA Wing,analyst_review,analyst_review
 1643621,Tre Donaldson,MIA,False,,Spot-Up Role Player,,Non POA Guard,analyst_review,analyst_review
 1642884,Vladislav Goldin,MIA,False,,Traditional Center,,Turtles,analyst_review,analyst_review
@@ -296,7 +296,7 @@ PLAYER_ID,Player,Team,In original 100,Previous offense,Offense,Previous defense,
 1631119,Jaylin Williams,OKC,False,Catch & Shoot Wing,Stretch Big,Rim Protector,Turtles,analyst_review,analyst_review
 1642892,Bennett Stirtz,OKC,False,,Spot-Up Role Player,,Non POA Guard,manual_override,manual_override
 1642964,Brooks Barnhizer,OKC,False,,Spot-Up Role Player,,Non-POA Wing,analyst_review,analyst_review
-1643717,Josh Dix,OKC,False,,Spot-Up Role Player,,Non POA Guard,analyst_review,analyst_review
+1643717,Josh Dix,OKC,False,,Spot-Up Role Player,,Non-POA Wing,analyst_review,manual_override
 1629026,Kenrich Williams,OKC,False,,Spot-Up Role Player,Turtles,Turtles,analyst_review,manual_override
 1642260,Nikola Topić,OKC,False,,Primary Ball Handler,,Non POA Guard,analyst_review,analyst_review
 1642923,Otega Oweh,OKC,False,,Spot-Up Role Player,,Non POA Guard,analyst_review,analyst_review
