@@ -105,7 +105,7 @@ def render_tabs_comparison(ui,roster,games):
             key='tabs_minutes_browser',on_result_change=lambda:_remember_browser_result(roster,games))
         value=result.result
         st.session_state['tabs_browser_last_result']=value
-        ui.caption('Keep TabsNBA and this app open in Chrome. The connector checks every 30 seconds. Timestamp-only updates stay in this panel; changed minutes or availability refresh projections. Select All games and clear Tabs filters for full coverage.')
+        ui.caption('Keep TabsNBA and this app open in Chrome. Connector 0.2.0 works in either Projections or Props view and checks every 30 seconds. Timestamp-only updates stay in this panel; changed minutes or availability refresh projections. Select All games and clear Tabs filters for full coverage.')
         if not value or not isinstance(value,dict) or not value.get('ok'):
             ui.info('Waiting for a current Tabs comparison. Missing data remains unchecked.')
             return None

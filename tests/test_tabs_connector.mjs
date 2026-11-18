@@ -45,6 +45,52 @@ test('default after news, midnight and year boundaries retain correct date',()=>
     assert.equal(s.slate_date,'2026-12-31');assert.equal(s.source_updated_at,'2027-01-01T06:57:00.000Z');
 });
 
+function propsDoc(options={}) {
+    let view='props', current=doc(options);
+    const clicks=[], scroll={isConnected:true,scrollLeft:420,scrollTop:160};
+    const focus={isConnected:true,focus:()=>{page.activeElement=focus;}};
+    const buttons=Object.fromEntries(['proj','props'].map(name=>[name,{
+        getAttribute:()=>String(view===name),
+        click:()=>{clicks.push(name);view=name;page.activeElement=null;
+            scroll.scrollLeft=0;scroll.scrollTop=0;page.defaultView.scrollY=0;}
+    }]));
+    const page={get body(){return view==='proj'?current.body:{innerText:'Props table has no full rotation'};},
+        activeElement:focus,defaultView:{scrollX:0,scrollY:700,scrollTo:({left,top})=>{
+            page.defaultView.scrollX=left;page.defaultView.scrollY=top;}},
+        querySelector:key=>key.includes('data-v="props"')?buttons.props:key.includes('data-v="proj"')?buttons.proj:current.querySelector(key),
+        querySelectorAll:key=>key==='.scroll'?[scroll]:view==='proj'?current.querySelectorAll(key):[]};
+    return {page,clicks,scroll,focus,view:()=>view,update:next=>{current=doc(next);}};
+}
+
+test('Props reads the full fresh rotation including OUT rows and restores view, focus and scroll',()=>{
+    const source=propsDoc();
+    const captureProps=()=>context.tabsCapture(source.page,new Date('2026-11-18T01:05:00Z'));
+    const first=captureProps();
+    assert.deepEqual(JSON.parse(JSON.stringify(first)),JSON.parse(JSON.stringify(capture(doc()))));
+    assert.equal(first.rows[1].status,'Out');
+    assert.deepEqual(source.clicks,['proj','props']);
+    assert.equal(source.view(),'props');assert.equal(source.page.activeElement,source.focus);
+    assert.equal(source.scroll.scrollLeft,420);assert.equal(source.scroll.scrollTop,160);
+    assert.equal(source.page.defaultView.scrollY,700);
+    // A newer publication / scenario is captured, not a cached prior rotation.
+    source.update({minutes:'32.0',scenario:'Default',published:'6:04 PM MST'});
+    const second=captureProps();
+    assert.equal(second.rows[0].minutes,32);assert.equal(second.scenario,'Default');
+    assert.equal(second.source_updated_at,'2026-11-18T01:04:00.000Z');
+    assert.equal(source.view(),'props');
+});
+
+test('Props restores the selected view even when edited, stale or incomplete data is rejected',()=>{
+    for (const options of [{edited:true},{published:'2:00 PM MST'},{missingChips:true},{empty:true},{minutes:'NaN'}]) {
+        const source=propsDoc(options);
+        assert.throws(()=>context.tabsCapture(source.page,new Date('2026-11-18T01:05:00Z')));
+        assert.equal(source.view(),'props');assert.deepEqual(source.clicks,['proj','props']);
+        assert.equal(source.scroll.scrollLeft,420);assert.equal(source.page.defaultView.scrollY,700);
+    }
+    assert.deepEqual(JSON.parse(JSON.stringify(context.tabsCapture(doc(),new Date('2026-11-18T01:05:00Z')))),
+        JSON.parse(JSON.stringify(capture(doc()))));
+});
+
 test('only changed snapshots update Python; disconnect clears; cleanup stops polling',()=>{
     const handlers={},requests=[],saved=[],timers=new Map();let tid=0;
     globalThis.location={origin:'https://cktest2.streamlit.app'};

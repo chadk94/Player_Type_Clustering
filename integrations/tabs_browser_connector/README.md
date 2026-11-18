@@ -1,8 +1,8 @@
 # Tabs minutes comparison
 
-This Chrome extension reads the **displayed** TabsNBA projections and chosen If/Then scenario.
-The prop app compares those minutes with your own approved minutes. It never edits either site's
-minutes, projections, prices, rankings or saved plays.
+This Chrome extension reads the TabsNBA projection table and chosen If/Then scenario,
+whether you are browsing **Projections or Props**. The prop app compares those minutes with
+your own approved minutes. It never edits either site's minutes or saved plays.
 
 ## Connection
 
@@ -16,8 +16,13 @@ minutes, projections, prices, rankings or saved plays.
    Sportsbook Edges, choose **TabsNBA → Browser connection**. Choose **All games**, clear
    player/team/position filters and turn off Showdown CPT in Tabs for full-slate coverage.
 
-The model checks the displayed source every 30 seconds. Tabs itself determines when its
-projections update; this does not force a refresh, click any controls or bypass membership.
+The model checks the source every 30 seconds. In Props view, the connector briefly renders
+the full Projections table and restores Props synchronously, before the browser paints.
+This includes players with no prop lines and explicit OUT rows, which Props omits. Filters,
+the If/Then scenario, personal edits and scroll position are preserved. Every check reads the
+current full table; it does not keep stale minutes connected by relabeling an old snapshot.
+Tabs itself determines when its projections update; this does not force a network refresh
+or bypass membership.
 Only changed comparisons refresh the app's flags. Missing players remain unchecked. Only an
 explicitly displayed OUT row becomes a zero-minute comparison. Its source/scenario remains
 visible; it does not become an injury override in your model.
@@ -26,7 +31,8 @@ Personal minute/boost edits on Tabs suspend the independent browser comparison. 
 instead export a CSV and use **CSV upload**, which reads the separate **Tabs Min** column.
 CSV imports require the selected scenario and visible publication time and do not auto-refresh.
 Publication timestamps over two hours old cannot clear the minutes check. Closing the connected
-Tabs tab, changing away from projections, or losing access clears the comparison on the next check.
+Tabs tab, leaving the projections page entirely, or losing access clears the comparison on the
+next check. Switching between its Projections and Props views keeps the comparison connected.
 
 ## Access and privacy
 

@@ -1,4 +1,4 @@
-/* Read the rendered projections only. No network calls, clicks, cookies or page state. */
+/* Read projection controls only. No network calls, cookies or hidden application state. */
 function tabsSnapshot(doc, now = new Date()) {
     const text = doc.body.innerText;
     if (text.includes('No projections yet'))
@@ -66,8 +66,37 @@ function tabsSnapshot(doc, now = new Date()) {
         scope:scope?.options[scope.selectedIndex]?.textContent?.trim()||'Displayed players',rows};
 }
 
+function tabsCapture(doc, now = new Date()) {
+    const props = doc.querySelector('[aria-label="View"] button[data-v="props"]');
+    if (props?.getAttribute('aria-pressed') !== 'true') return tabsSnapshot(doc, now);
+    const projections = doc.querySelector('[aria-label="View"] button[data-v="proj"]');
+    if (!projections) throw Error('Tabs view controls have changed; minutes could not be verified.');
+    const win = doc.defaultView;
+    const x = win?.scrollX, y = win?.scrollY, focus = doc.activeElement;
+    const scrollers = [...doc.querySelectorAll('.scroll')].map(element=>({element,
+        left:element.scrollLeft,top:element.scrollTop}));
+    // Props omits players without lines and OUT players. Read the complete projection
+    // table through Tabs' own view controls, then restore Props in this same task,
+    // before the browser paints. Never change filters, scenario or minute inputs.
+    // Do not await here or substitute an older snapshot on failure: new publication
+    // times and availability changes must come from the fresh full table.
+    try {
+        projections.click();
+        if (projections.getAttribute('aria-pressed') !== 'true')
+            throw Error('Tabs could not open its full minutes table. Comparison remains unchecked.');
+        return tabsSnapshot(doc, now);
+    } finally {
+        props.click();
+        for (const {element,left,top} of scrollers) {
+            if (element.isConnected) {element.scrollLeft=left;element.scrollTop=top;}
+        }
+        if (focus?.isConnected && doc.activeElement !== focus) focus.focus({preventScroll:true});
+        if (win && (win.scrollX !== x || win.scrollY !== y)) win.scrollTo({left:x,top:y,behavior:'instant'});
+    }
+}
+
 if (typeof chrome !== 'undefined' && chrome.runtime) chrome.runtime.onMessage.addListener((message,_sender,reply)=>{
     if (message?.type!=='tabs-minutes-capture-v1') return;
-    try {reply({ok:true,snapshot:tabsSnapshot(document)});}
+    try {reply({ok:true,snapshot:tabsCapture(document)});}
     catch(error) {reply({ok:false,error:String(error.message).slice(0,250)});}
 });

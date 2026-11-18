@@ -1607,8 +1607,10 @@ Own-player, opponent, teammate-absence, and possible-return risks remain separat
 does not blur their different effects on an Over or Under.
 
 - **Minutes:** TabsNBA is the default independent comparison, via the prepared Chrome connector
-  or a private CSV upload. The connector reads only the displayed unedited projection table,
-  preserves the selected If/Then scenario, and refreshes the shared projection snapshot only
+  or a private CSV upload. Connector 0.2.0 reads the full unedited projection table in either
+  Projections or Props view. In Props it renders Projections briefly and restores Props before
+  the browser paints, preserving filters, scroll position and the selected If/Then scenario.
+  It refreshes the shared projection snapshot only
   when its contents change. The connection appears above the tabs so every page uses it.
   The CSV reads **Tabs Min**, never **My Min** or fantasy-platform player IDs. Match player,
   team, opponent and Eastern slate date; explicit browser OUT rows can supply zero, while

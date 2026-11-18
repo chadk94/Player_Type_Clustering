@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Tabs minutes comparison",
-  "version": "0.1.0",
-  "description": "Compare the displayed TabsNBA minutes with your own prop-model minutes.",
+  "version": "0.2.0",
+  "description": "Compare TabsNBA minutes with your prop-model minutes while browsing Projections or Props.",
   "permissions": ["storage"],
   "host_permissions": ["https://app.tabsnba.com/*", "https://cktest2.streamlit.app/*"],
   "background": {"service_worker": "background.js"},
