@@ -5,14 +5,18 @@ import json
 import math
 import pandas as pd
 from import_minutes import TEAM_IDS
-from roster_membership import roster_on_date
+from roster_membership import roster_on_date, roster_for_approved_games
+
+
+class RosterProfileError(ValueError):
+    """A structurally valid rotation cannot yet be projected safely."""
 
 
 def digest(value):
     return sha256(json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
 
 
-def validate_bundle(content, roster, season):
+def validate_bundle(content, roster, season, *, allow_roster_moves=False, check_profiles=True):
     """Reject incomplete/tampered exports and unmatched positive-minute players."""
     try:
         bundle = json.loads(content) if isinstance(content, (str, bytes)) else content
@@ -35,6 +39,11 @@ def validate_bundle(content, roster, season):
         if len(dates) != 1: raise ValueError('Import one approved game day at a time')
         game_roster = roster_on_date(roster, season, next(iter(dates)))
         known = {int(r.PLAYER_ID):int(r.TEAM_ID) for r in game_roster.itertuples()}
+        if allow_roster_moves and check_profiles:
+            from live_projections import name_key
+            aliases = {int(r.PLAYER_ID): {name_key(getattr(r, col, '')) for col in
+                       ('PLAYER_NAME', 'WorkbookPlayerName')} - {''}
+                       for r in game_roster.itertuples()}
         seen = set(); all_players = set()
         for record in records:
             key = (record['game_key'], record['team_id']); team = record['team_id']
@@ -59,8 +68,12 @@ def validate_bundle(content, roster, season):
                 if player['starter']:
                     starters += 1
                     if minutes < 8: raise ValueError('Approved starters need at least eight minutes')
-                if minutes > 0 and known.get(pid) != team:
-                    raise ValueError(f"{record['team']}: {player['player_name']} ({pid}) needs a matching prop-model roster profile before import")
+                if check_profiles:
+                    if allow_roster_moves and pid in known:
+                        if name_key(player['player_name']) not in aliases[pid]:
+                            raise RosterProfileError(f"{record['team']}: {player['player_name']} ({pid}) does not match the name on its prop-model profile")
+                    elif minutes > 0 and known.get(pid) != team:
+                        raise RosterProfileError(f"{record['team']}: {player['player_name']} ({pid}) needs a matching prop-model roster profile before import")
                 total += minutes
             if abs(total-240) > 1e-6 or starters != 5:
                 raise ValueError('Every approved team needs 240 minutes and five starters')
@@ -82,13 +95,28 @@ def for_matchup(bundle, roster, team, opponent, start):
     if len(matches) != 1: return {}
     key = matches[0]['game_key']
     year = game_day.year - (game_day.month < 7)
-    roster = roster_on_date(roster, f'{year}-{(year + 1) % 100:02d}', game_day)
+    roster = roster_for_approved_games(roster, f'{year}-{(year + 1) % 100:02d}', game_day, bundle)
     # A prop-only roster player is explicitly inactive in the approved rotation.
     result = {int(p.PLAYER_ID):0. for p in roster[roster.TEAM_ID.isin(ids)].itertuples()}
     for record in bundle['approvals']:
         if record['game_key'] == key:
             result.update({p['player_id']:float(p['minutes']) for p in record['players'] if p['player_id'] in result})
     return result
+
+
+def blocked_matchup_message(bundle, team, opponent, start):
+    """Never substitute fallback minutes for a rejected game approval."""
+    if not bundle or start is None or team not in TEAM_IDS or opponent not in TEAM_IDS:
+        return ''
+    timestamp = pd.Timestamp(start)
+    if timestamp.tzinfo is None:
+        return ''
+    day = str(timestamp.tz_convert('America/New_York').date())
+    ids = {TEAM_IDS[team], TEAM_IDS[opponent]}
+    for game in bundle.get('blocked_games', []):
+        if game['game_date'] == day and {game['away_team_id'], game['home_team_id']} == ids:
+            return f"{team} vs {opponent}: projections paused for this game. {game['reason']}. Other games remain available."
+    return ''
 
 
 def unmatched_minutes_message(bundle, team, opponent, start):

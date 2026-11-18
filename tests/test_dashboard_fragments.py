@@ -167,6 +167,28 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assert_no_errors()
         self.assertEqual(self.app.slider[0].value, 24.)
 
+    def test_linked_roster_move_is_selectable_with_approved_minutes(self):
+        from test_linked_minutes_resilience import slate, TIP
+        from minutes_sync import validate_feed
+        clock = self.mock('datetime', wraps=datetime)
+        clock.now.return_value = datetime(2026,11,18,12,tzinfo=timezone.utc)
+        raw = slate(self.roster)
+        self.imported.return_value = validate_feed(dict(bundles=[raw]), self.roster, '2026-27')
+        self.mock('next_team_game', return_value={'Opponent':'LAL','GameTimeUTC':TIP})
+        refresh = next(b for b in self.app.button if b.label == 'Refresh live data')
+        self.fragment_id = self.fragment_for(refresh)
+        refresh.click().run()
+        self.assert_no_errors()
+        select = self.app.selectbox(key='projection_team')
+        self.fragment_id = self.fragment_for(select)
+        select.select('UTA').run()
+        self.assert_no_errors()
+        self.assertIn('Kobe Bufkin',self.app.selectbox(key='projection_player').options)
+        self.app.selectbox(key='projection_player').select('Kobe Bufkin').run()
+        self.assert_no_errors()
+        self.assertEqual(self.app.slider[0].value,40.)
+        self.assertTrue(any('Approved game minutes' in c.value for c in self.app.caption))
+
     def test_recent_role_toggle_preserves_player_model_and_reuses_snapshot(self):
         main = next(d.value for d in self.app.dataframe if 'Book implied total' in d.value and 'Projected' in d.value)
         counts = [m.call_count for m in (self.live,self.logs,self.effects,self.imported)]

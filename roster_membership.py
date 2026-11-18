@@ -32,3 +32,24 @@ def roster_on_date(roster, season, game_day):
             if 'TEAM_ABBREVIATION' in result:
                 result.loc[mask, 'TEAM_ABBREVIATION'] = team
     return result
+
+
+def roster_for_approved_games(roster, season, game_day, bundle):
+    """Use identity-verified linked approvals for membership on that slate only.
+
+    Always pass the source roster, not yesterday's derived game roster. The
+    authenticated NBA-model approval is the owner's roster for this exact game;
+    player history, labels, manual overrides and baseline minutes are untouched.
+    """
+    result = roster_on_date(roster, season, game_day)
+    if not bundle or bundle.get('schema') != 'nba_linked_minutes_v1':
+        return result
+    destinations = {p['player_id']: a['team_id'] for a in bundle['approvals']
+                    if a['game_date'] == str(game_day) for p in a['players']}
+    teams = result.PLAYER_ID.map(destinations)
+    changed = teams.notna() & teams.ne(result.TEAM_ID)
+    if changed.any():
+        result = result.copy()
+        result.loc[changed, 'TEAM_ID'] = teams[changed].astype(int)
+        result.loc[changed, 'TEAM_ABBREVIATION'] = teams[changed].map({v:k for k,v in TEAM_IDS.items()})
+    return result

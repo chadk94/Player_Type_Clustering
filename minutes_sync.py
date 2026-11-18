@@ -38,19 +38,30 @@ def read_feed(connection):
 
 
 def validate_feed(feed, roster, season):
-    from approved_minutes import digest, validate_bundle
-    games, approvals, dates = [], [], set()
+    from approved_minutes import digest, validate_bundle, RosterProfileError
+    games, approvals, blocked, dates = [], [], [], set()
     for raw in feed['bundles']:
-        bundle = validate_bundle(raw, roster, season)
+        # Verify the complete original checksum and rotation constraints before
+        # isolating profile problems. Never split an unverified payload.
+        bundle = validate_bundle(raw, roster, season, check_profiles=False)
         day = bundle['games'][0]['game_date']
         if day in dates:
             raise ValueError('The minutes feed returned duplicate dates.')
         dates.add(day)
-        games.extend(bundle['games'])
-        approvals.extend(bundle['approvals'])
-    if not games:
+        for game in bundle['games']:
+            records = [a for a in bundle['approvals'] if a['game_key'] == game['game_key']]
+            candidate = dict(schema='nba_approved_slate_v1', games=[game], approvals=records)
+            candidate['bundle_id'] = digest(candidate)
+            try:
+                validate_bundle(candidate, roster, season, allow_roster_moves=True)
+            except RosterProfileError as exc:
+                blocked.append({**game, 'reason': str(exc)})
+                continue
+            games.append(game)
+            approvals.extend(records)
+    if not games and not blocked:
         return None
-    result = dict(schema='nba_linked_minutes_v1', games=games, approvals=approvals)
+    result = dict(schema='nba_linked_minutes_v1', games=games, approvals=approvals, blocked_games=blocked)
     result['bundle_id'] = digest(result)
     return result
 
@@ -93,6 +104,12 @@ def render_sync(roster, season):
     if state.get('error'):
         note = ' Using the last verified approvals.' if state.get('bundle') else ''
         st.warning('Automatic minutes sync needs attention. '+state['error']+note)
+    blocked = (state.get('bundle') or {}).get('blocked_games', [])
+    if blocked:
+        st.warning(f'{len(blocked)} game(s) need a roster profile check. Only those games are paused; verified games remain available.')
+        with st.expander('Minutes sync details'):
+            for game in blocked:
+                st.write(f"{game['game_date']}: {game['reason']}")
     if connection and state.get('bundle'):
         n = len(state['bundle']['approvals'])
         st.caption(f"NBA model linked · {n} approved team rotations · Last checked {state.get('success_at')}.")

@@ -1507,6 +1507,25 @@ The NBA model publishes while its minutes-review page is open. A newly saved app
 
 The private relay uses separate read/write credentials, authenticated HTTPS and checksums. It stores approvals outside the partner workbook. Credentials, game rotations and private relay code are not published to this repository. The existing importer validates roster membership, starters, dates, exclusions and minute totals before a received snapshot can replace current projections.
 
+Linked approvals now resolve roster membership by NBA player ID plus the matching
+profile/workbook name. An approved game rotation may put a known player on a new
+team without requiring a code release for each roster move. That membership applies
+only to the approved slate date; statistical history, archetypes, manual overrides
+and baseline workbook minutes stay intact. For example, Kobe Bufkin's existing
+profile can accompany his approved Utah rotation even though the preseason roster
+lists New Orleans. This is the owner's game roster, not an inferred transaction date.
+
+The full source checksum, both team approvals, 240-minute totals, five starters,
+duplicate-player checks and out-player exclusions are still validated first.
+A truly missing positive-minute profile or an identity conflict pauses only that
+game, with its reason shown in **Minutes sync details** and on each projection page.
+Other verified games continue loading. A rejected game cannot reuse an old projection
+snapshot or silently fall back to season-average minutes. A later corrected approval
+is checked on the next minute poll and resumes that game automatically. Structural
+or transfer failures still retain the last verified session snapshot, or pause
+numerical projections if none has been verified. Manual JSON uploads retain their
+existing strict roster validation.
+
 ### Sportsbook Edges review flags — November 18
 
 `edge_review.py` appends review evidence and scenario values without replacing model means,

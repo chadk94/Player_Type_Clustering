@@ -12,7 +12,7 @@ import streamlit as st
 
 from live_projections import (CompletedTeamCache, ESPN, STAT_NAMES, build_projections, fetch_json, load_live_state, match_player_stats, name_key, regular_season_matchups, next_from_matchups, round_projected_minutes)
 from archetype_fallback import build_archetype_priors
-from roster_membership import roster_on_date
+from roster_membership import roster_on_date, roster_for_approved_games
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import bundled_box_rows, load_game_logs
 from matchup_projections import (assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS,
@@ -46,7 +46,7 @@ from points_tracking import snapshot as probability_snapshot, render_probability
 from opponent_selection import render_opponent_selector
 from player_navigation import (apply_pending_navigation, selected_game_context,
                                render_player_navigation, queue_player_selection, send_player_navigation)
-from approved_minutes import render_import, for_matchup, projection_gaps, game_minutes_caption, unmatched_minutes_message
+from approved_minutes import render_import, for_matchup, projection_gaps, game_minutes_caption, unmatched_minutes_message, blocked_matchup_message
 from import_minutes import TEAM_IDS
 from schedule_feed import load_daily_schedule, ScheduleMemory
 from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
@@ -509,6 +509,10 @@ def set_edge_stats(selected):
 
 
 def team_game_projection(ui, game, book_name, schedule, now, snapshots, team_rates, game_frames, approved_bundle=None):
+    blocked = blocked_matchup_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
+    if blocked:
+        ui.warning(blocked)
+        return
     snapshot_key = (game['key'], BOOKS[book_name], POLICY_VERSION, MATCHUP_POLICY_VERSION, SHOOTING_POLICY_VERSION, PLAYER_RATE_POLICY_VERSION, ASSIST_POLICY_VERSION)
     order = [game['Away'], game['Home']]
     base, before = game_frames(*order, game['GameTimeUTC'])
@@ -819,7 +823,9 @@ def render_archetypes_page(ui, roster):
 
 @st.fragment
 def render_live_dashboard(ui, roster):
-    roster = roster_on_date(apply_roster_rules(roster), SEASON, datetime.now(ZoneInfo('America/New_York')).date())
+    source_roster = apply_roster_rules(roster)
+    today = datetime.now(ZoneInfo('America/New_York')).date()
+    roster = roster_on_date(source_roster, SEASON, today).copy()
     roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)
     ui.title(f'🏀 Player Stat Projections ({SEASON})')
     ui.caption(f'Your workbook minutes for each team’s first {OPENING_GAMES} games; season-average minutes from game {OPENING_GAMES + 1}. Counts include completed regular-season team games, not player appearances. Imported approved minutes take priority for matching games.')
@@ -834,6 +840,8 @@ def render_live_dashboard(ui, roster):
         render_archetypes_page(ui, roster)
     with details_panel:
         approved_bundle = render_import(ui, roster, SEASON)
+        roster = roster_for_approved_games(source_roster, SEASON, today, approved_bundle).copy()
+        roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)
         if ui.button('Refresh live data'):
             public_team_cache.clear()
             live_state.clear()
@@ -910,8 +918,11 @@ def render_live_dashboard(ui, roster):
         game_projection_cache = {}
         @lru_cache(maxsize=64)
         def project_for_game(team, opponent, start):
+            blocked = blocked_matchup_message(approved_bundle, team, opponent, start)
+            if blocked:
+                raise ValueError(blocked)
             day = pd.Timestamp(start).tz_convert('America/New_York').date()
-            game_roster = roster_on_date(roster, SEASON, day)
+            game_roster = roster_for_approved_games(source_roster, SEASON, day, approved_bundle)
             minutes = for_matchup(approved_bundle, game_roster, team, opponent, start)
             moved = game_roster.loc[game_roster.TEAM_ID.ne(roster.TEAM_ID), ['PLAYER_ID', 'TEAM_ID']]
             if not minutes and moved.empty:
@@ -1205,6 +1216,10 @@ def render_live_dashboard(ui, roster):
             render_probability_tracking(ui, [], logs, 'player')
         else:
             if upcoming and upcoming['Opponent'] == opponent:
+                blocked = blocked_matchup_message(approved_bundle, team, opponent, upcoming['GameTimeUTC'])
+                if blocked:
+                    ui.warning(blocked)
+                    return
                 matched_projections = project_for_game(team, opponent, upcoming['GameTimeUTC'])
                 team_players = matched_projections[matched_projections.Team.eq(team)]
                 notice = unmatched_minutes_message(approved_bundle, team, opponent, upcoming['GameTimeUTC'])
@@ -1245,6 +1260,10 @@ def render_live_dashboard(ui, roster):
                 for fixture in schedule.loc[schedule.Venue.eq('home')].itertuples():
                     home, away = abbreviations[fixture.TEAM_ID], fixture.Opponent
                     start = pd.Timestamp(fixture.GameTimeUTC)
+                    blocked = blocked_matchup_message(approved_bundle, away, home, start)
+                    if blocked:
+                        ui.warning(blocked)
+                        continue
                     _, before = game_frames(away, home, start)
                     if before.empty:
                         continue
@@ -1362,7 +1381,7 @@ def render_live_dashboard(ui, roster):
             games = scheduled_book_games(edge_events,edge_schedule,now=now)
             source = ui.selectbox('Minutes comparison source',['TabsNBA','RotoWire public'],key='edges_minutes_source')
             if source=='TabsNBA':
-                st.session_state['tabs_minutes_reference']=render_tabs_comparison(ui,roster_on_date(roster,SEASON,edge_date),games)
+                st.session_state['tabs_minutes_reference']=render_tabs_comparison(ui,roster_for_approved_games(source_roster,SEASON,edge_date,approved_bundle),games)
             if not games:
                 ui.info('No upcoming regular-season games with a verified sportsbook event were found for this date. Choose another date. Lines are never substituted from a different game.')
             else:
@@ -1377,6 +1396,10 @@ def render_live_dashboard(ui, roster):
                     ui.info('Select a game to see its top edges.')
                 else:
                     game = by_id[game_id]
+                    blocked = blocked_matchup_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
+                    if blocked:
+                        ui.warning(blocked)
+                        return
                     game_projections, combined = game_frames(game['Away'], game['Home'], game['GameTimeUTC'])
                     ui.caption(game_minutes_caption(game_projections, [game['Away'], game['Home']]))
                     notice = unmatched_minutes_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
