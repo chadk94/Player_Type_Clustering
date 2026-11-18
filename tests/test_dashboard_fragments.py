@@ -109,6 +109,7 @@ class DashboardFragmentTests(unittest.TestCase):
                     owner.storage = runner._fragment_storage
                 else:
                     runner._fragment_storage = owner.storage
+                runner._requests.on_scriptrunner_ready()
 
             def request_rerun(runner, data):
                 return super().request_rerun(replace(data, fragment_id=owner.fragment_id))
@@ -132,7 +133,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         return result
 
     def fragment_for(self, widget):
-        return self.app.session_state._state._get_widget_metadata(widget.id).fragment_id
+        return self.app._session_state._state._get_widget_metadata(widget.id).fragment_id
 
     def assert_no_errors(self):
         self.assertFalse(self.app.exception, [e.message for e in self.app.exception])
@@ -499,7 +500,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         # mutating the approved rotation or reusing a blended cache entry.
         connector.return_value=references.assign(source_updated_at=(now-pd.Timedelta(hours=3)).isoformat())
         self.fragment_id=None
-        for key in list(self.app.session_state.filtered_state):
+        for key in list(self.app.session_state):
             if key.startswith('custom_minutes_'):del self.app.session_state[key]
         self.app.run()
         self.assert_no_errors()
@@ -679,8 +680,11 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         player_id = self.roster.set_index('PLAYER_NAME').loc[selected,'PLAYER_ID']
         self.assertGreaterEqual(load_prior_season_minutes('2026-27')[player_id],500.)
         history = prior_season_profiles(self.logs.return_value[0],self.roster).set_index('PLAYER_ID').loc[player_id]
-        logs = assign_game_archetypes(self.logs.return_value[0],self.roster)
-        cluster = self.roster.set_index('PLAYER_NAME').loc[selected,'DefCluster']
+        # Include the supplemental roster profiles and approved overrides used
+        # by the dashboard when independently calculating the matchup group.
+        effective_roster = dashboard.apply_roster_rules(dashboard.add_roster_profiles(self.roster, dashboard.SEASON))
+        logs = assign_game_archetypes(self.logs.return_value[0],effective_roster)
+        cluster = effective_roster.set_index('PLAYER_NAME').loc[selected,'DefCluster']
         group = logs[logs.MIN.ge(5) & logs.DefCluster.eq(cluster)].sort_values(['GAME_DATE','GAME_ID','ESPN_PLAYER_ID'])
         for stat in ['STL','BLK']:
             exposure = appearances*24

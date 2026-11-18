@@ -4,7 +4,10 @@ export default function({data,parentElement,setStateValue}) {
     // One listener across rerenders; heartbeats do not rerun the dashboard.
     window.nbaTabsBridgeCleanup?.();
     const canonical=value=>value && typeof value==='object' ? (Array.isArray(value) ? value.map(canonical) : Object.fromEntries(Object.keys(value).sort().map(key=>[key,canonical(value[key])]))) : value;
-    const fingerprint=value=>JSON.stringify(canonical(value?.snapshot ? {...value.snapshot,observed_at:null} : value));
+    const fingerprint=value=>JSON.stringify(canonical(value?.snapshot ? {
+        ...value.snapshot,observed_at:null,
+        rows:[...(value.snapshot.rows||[])].sort((a,b)=>JSON.stringify(canonical(a)).localeCompare(JSON.stringify(canonical(b))))
+    } : value));
     let last=fingerprint(data.previous),waiting=null,timeout,disposed=false;
     function publish(value) {
         const hash=fingerprint(value);

@@ -834,7 +834,7 @@ def render_archetypes_page(ui, roster):
     ui.download_button('Download archetypes CSV', selected.to_csv(index=False), 'preseason_archetypes.csv', 'text/csv')
 
 
-@st.fragment
+@st.fragment(key='projection_dashboard')
 def render_live_dashboard(ui, roster):
     source_roster = apply_roster_rules(add_roster_profiles(roster, SEASON))
     today = datetime.now(ZoneInfo('America/New_York')).date()

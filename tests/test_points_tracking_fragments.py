@@ -35,6 +35,7 @@ class TrackingFragmentTests(unittest.TestCase):
                     owner.storage = runner._fragment_storage
                 else:
                     runner._fragment_storage = owner.storage
+                runner._requests.on_scriptrunner_ready()
 
             def request_rerun(runner, data):
                 return super().request_rerun(replace(data, fragment_id=owner.fragment_id))
@@ -71,7 +72,7 @@ preview()
 
     def run_button(self, key):
         button = self.app.button(key=key)
-        self.fragment_id = self.app.session_state._state._get_widget_metadata(button.id).fragment_id
+        self.fragment_id = self.app._session_state._state._get_widget_metadata(button.id).fragment_id
         button.click().run()
         self.assertFalse(self.app.exception, [e.message for e in self.app.exception])
 

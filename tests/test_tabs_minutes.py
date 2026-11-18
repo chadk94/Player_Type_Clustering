@@ -1,9 +1,11 @@
 import copy
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
 from tabs_minutes import parse_tabs_minutes, parse_tabs_browser_snapshot
+import tabs_minutes
 from edge_review import minute_reference
 
 NOW=pd.Timestamp('2026-11-18T00:00:00Z')
@@ -98,5 +100,49 @@ class TabsTests(unittest.TestCase):
                 parse_tabs_browser_snapshot(browser()|changes,ROSTER,[GAME],NOW)
         b=browser();b['rows'][1]['minutes']=18
         with self.assertRaises(ValueError):parse_tabs_browser_snapshot(b,ROSTER,[GAME],NOW)
+
+    def test_timestamp_and_row_order_updates_refresh_source_without_rebuilding_dashboard(self):
+        original=browser()
+        refs,_=parse_tabs_browser_snapshot(original,ROSTER,[GAME],NOW)
+        fresh=original|dict(observed_at=(NOW+pd.Timedelta(seconds=30)).isoformat(),
+                            source_updated_at=NOW.isoformat(),rows=list(reversed(original['rows'])))
+        state={'tabs_minutes_reference':refs,'tabs_minutes_browser':{'result':{'ok':True,'snapshot':fresh}}}
+        real_parse=parse_tabs_browser_snapshot
+        with patch.object(tabs_minutes.st,'session_state',state), \
+             patch.object(tabs_minutes,'parse_tabs_browser_snapshot',side_effect=lambda s,r,g:real_parse(s,r,g,NOW+pd.Timedelta(minutes=1))), \
+             patch.object(tabs_minutes.st,'rerun') as rerun:
+            tabs_minutes._remember_browser_result(ROSTER,[GAME])
+            rerun.assert_not_called()
+        self.assertEqual(state['tabs_minutes_reference'].source_updated_at.unique().tolist(),[NOW.isoformat()])
+        self.assertEqual(state['tabs_browser_last_result']['snapshot'],fresh)
+
+    def test_freshness_recovery_changes_eligibility_even_with_identical_minutes(self):
+        refs,_=self.parse()
+        stale=refs.assign(source_updated_at=(NOW-pd.Timedelta(hours=3)).isoformat())
+        self.assertNotEqual(tabs_minutes._reference_signature(refs,NOW),
+                            tabs_minutes._reference_signature(stale,NOW))
+
+    def test_real_minutes_out_scenario_disconnect_and_stale_changes_refresh_projections(self):
+        original=browser()
+        refs,_=parse_tabs_browser_snapshot(original,ROSTER,[GAME],NOW)
+        cases=[]
+        for field,value in [('minutes',20),('status','Out')]:
+            changed=copy.deepcopy(original)
+            changed['rows'][0][field]=value
+            if field=='status':changed['rows'][0]['minutes']=0
+            cases.append({'ok':True,'snapshot':changed})
+        cases.extend([{'ok':True,'snapshot':original|{'scenario':'Default'}},
+                      {'ok':True,'snapshot':original|{'rows':original['rows'][:1]}},
+                      {'ok':True,'snapshot':original|{'source_updated_at':(NOW-pd.Timedelta(hours=3)).isoformat()}},
+                      {'ok':False,'error':'Source tab closed'}])
+        real_parse=parse_tabs_browser_snapshot
+        for result in cases:
+            with self.subTest(result=result):
+                state={'tabs_minutes_reference':refs,'tabs_minutes_browser':{'result':result}}
+                with patch.object(tabs_minutes.st,'session_state',state), \
+                     patch.object(tabs_minutes,'parse_tabs_browser_snapshot',side_effect=lambda s,r,g:real_parse(s,r,g,NOW)), \
+                     patch.object(tabs_minutes.st,'rerun') as rerun:
+                    tabs_minutes._remember_browser_result(ROSTER,[GAME])
+                    rerun.assert_called_once_with(scope='projection_dashboard')
 
 if __name__=='__main__':unittest.main()

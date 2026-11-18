@@ -96,8 +96,9 @@ class TodaysPlaysTests(unittest.TestCase):
         token=publish(self.day,self.owner,[p])
         app=AppTest.from_string(f"import streamlit as st\nfrom todays_plays import render_partner_review\nrender_partner_review(st, '{token}')").run()
         self.assertEqual([b.label for b in app.button],['Refresh shared list','Post feedback'])
-        app.text_input[0].set_value('Partner').run()
-        app.text_area[0].set_value('Minutes look right').run()
+        # Form edits are buffered in the browser until the submit button.
+        app.text_input[0].set_value('Partner')
+        app.text_area[0].set_value('Minutes look right')
         app.button[1].click().run()
         self.assertFalse(app.exception)
         self.assertEqual(read_board(token)['notes'][0]['note'],'Minutes look right')

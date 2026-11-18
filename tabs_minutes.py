@@ -54,22 +54,58 @@ def _browser_component(runtime):
         js=Path(__file__).with_name('tabs_browser_bridge.mjs').read_text())
 
 
-def _remember_browser_result():
+def _reference_signature(refs, as_of=None):
+    """Projection inputs, excluding heartbeat/publication times and row order."""
+    if refs is None:
+        return None
+    columns=sorted(set(refs.columns)-{'updated_at','source_updated_at'})
+    inputs=refs[columns].copy()
+    now=pd.Timestamp(as_of if as_of is not None else pd.Timestamp.now(tz='UTC'))
+    # Crossing the freshness boundary changes eligibility even when allocations
+    # are identical, so restored/stale comparisons must refresh every page.
+    for clock in ('updated_at','source_updated_at'):
+        age=(now-pd.to_datetime(refs[clock],utc=True,errors='coerce')).dt.total_seconds()
+        inputs[clock+'_fresh']=age.between(0,SOURCE_MAX_AGE_HOURS*3600)
+    rows=inputs.sort_values(['Team','Opponent','PLAYER_ID']).to_json(orient='split',index=False)
+    return rows, tuple(sorted(refs.attrs.get('incomplete_teams',[])))
+
+
+def _refresh_dashboard():
+    # A named callback rerun replaces the small panel's normal rerun. The fixed
+    # Streamlit scheduler coalesces any overlapping child-widget events.
+    st.rerun(scope='projection_dashboard')
+
+
+def _remember_browser_result(roster, games):
     state=st.session_state.get('tabs_minutes_browser',{})
-    st.session_state['tabs_browser_last_result']=state.get('result') if isinstance(state,dict) else None
+    value=state.get('result') if isinstance(state,dict) else None
+    st.session_state['tabs_browser_last_result']=value
+    refs=None
+    if isinstance(value,dict) and value.get('ok'):
+        try:
+            refs,_=parse_tabs_browser_snapshot(value['snapshot'],roster,games)
+        except (ValueError,TypeError,KeyError,OverflowError):
+            pass
+    changed=_reference_signature(refs)!=_reference_signature(st.session_state.get('tabs_minutes_reference'))
+    st.session_state['tabs_minutes_reference']=refs
+    # Renew freshness without rebuilding the league for a publication-time-only
+    # update. Real minutes/status/scenario/coverage changes still update all pages.
+    if changed:
+        _refresh_dashboard()
 
 
+@st.fragment
 def render_tabs_comparison(ui,roster,games):
     with ui.expander('TabsNBA minutes comparison',expanded=False):
-        mode=ui.radio('Tabs connection',['Browser connection','CSV upload'],horizontal=True,key='tabs_minutes_mode')
+        mode=ui.radio('Tabs connection',['Browser connection','CSV upload'],horizontal=True,key='tabs_minutes_mode',on_change=_refresh_dashboard)
         ui.caption('Fresh, complete rotations blend 50/50 with your minutes, including healthy-player zeroes. Explicit Tabs OUT statuses stay at zero. Players omitted from a complete 240-minute browser rotation count as zero for that source. Team minutes stay at 240; your saved rotation is preserved.')
         if mode=='CSV upload':return render_tabs_upload(ui,roster,games)
         previous=st.session_state.get('tabs_browser_last_result')
         result=_browser_component(st.runtime.get_instance())(data={'previous':previous},
-            key='tabs_minutes_browser',on_result_change=_remember_browser_result)
+            key='tabs_minutes_browser',on_result_change=lambda:_remember_browser_result(roster,games))
         value=result.result
         st.session_state['tabs_browser_last_result']=value
-        ui.caption('Connect one TabsNBA tab using the Chrome extension, and keep it open alongside this app in Chrome. Reads the displayed players and selected If/Then scenario every 30 seconds; select All games and clear filters in Tabs for full coverage. Only changed comparisons refresh the flags. Tabs controls when its projections update.')
+        ui.caption('Keep TabsNBA and this app open in Chrome. The connector checks every 30 seconds. Timestamp-only updates stay in this panel; changed minutes or availability refresh projections. Select All games and clear Tabs filters for full coverage.')
         if not value or not isinstance(value,dict) or not value.get('ok'):
             ui.info('Waiting for a current Tabs comparison. Missing data remains unchecked.')
             return None
@@ -153,16 +189,16 @@ def render_tabs_upload(ui, roster, games):
     """Session-only import; paid data is not bundled, cached globally or published."""
     with ui.container():
         ui.caption('Fresh, complete Tabs rotations blend with your minutes. This CSV is a snapshot; it does not automatically refresh the Tabs website. Missing or stale coverage retains your minutes and stays unchecked.')
-        upload=ui.file_uploader('TabsNBA projections CSV',type=['csv'],key='tabs_minutes_csv')
+        upload=ui.file_uploader('TabsNBA projections CSV',type=['csv'],key='tabs_minutes_csv',on_change=_refresh_dashboard)
         if upload is None:
             ui.info('Export your selected scenario from TabsNBA, then upload it here. Missing Tabs comparisons remain unchecked.')
             return None
         try:day=export_day(upload.name)
         except ValueError as exc:ui.warning(str(exc));return None
-        scenario=ui.text_input('Tabs scenario used for this export',placeholder='Default, or POR: Avdija OUT',key='tabs_minutes_scenario')
+        scenario=ui.text_input('Tabs scenario used for this export',placeholder='Default, or POR: Avdija OUT',key='tabs_minutes_scenario',on_change=_refresh_dashboard)
         left,right=ui.columns(2)
-        with left:published_day=ui.date_input('Tabs update date',value=day,key='tabs_minutes_updated_day')
-        with right:published_time=ui.time_input('Tabs updated time (Denver)',value=None,key='tabs_minutes_updated_time')
+        with left:published_day=ui.date_input('Tabs update date',value=day,key='tabs_minutes_updated_day',on_change=_refresh_dashboard)
+        with right:published_time=ui.time_input('Tabs updated time (Denver)',value=None,key='tabs_minutes_updated_time',on_change=_refresh_dashboard)
         ui.caption('Use the Last updated time shown on Tabs, not the download time. Without it, freshness is unchecked; snapshots older than two hours cannot clear the minutes check. Out players omitted from the export are not assumed to have zero minutes.')
         if not scenario.strip():
             ui.info('Enter the selected If/Then scenario, or Default if none was selected. The CSV does not record it.')

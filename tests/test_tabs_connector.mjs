@@ -58,6 +58,8 @@ test('only changed snapshots update Python; disconnect clears; cleanup stops pol
         const cleanup=render({data:{previous:{ok:true,snapshot}},parentElement:{querySelector:k=>k==='button'?button:status},setStateValue:(_key,value)=>saved.push(value)});
         reply({ok:true,snapshot:{...snapshot,observed_at:'2026-11-18T01:05:30Z'}});
         assert.equal(saved.length,0);assert.match(status.textContent,/Connected/);
+        button.onclick();reply({ok:true,snapshot:{...snapshot,rows:[...snapshot.rows].reverse()}});
+        assert.equal(saved.length,0); // Sorting Tabs does not rerun the dashboard.
         button.onclick();reply({ok:true,snapshot:{...snapshot,scenario:'Default'}});assert.equal(saved.length,1);
         button.onclick();reply({ok:false,error:'Source tab closed'});assert.equal(saved.length,2);assert.equal(saved.at(-1).ok,false);
         cleanup();assert.equal(timers.size,0);assert.equal(handlers.message,undefined);
