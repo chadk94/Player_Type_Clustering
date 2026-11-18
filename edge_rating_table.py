@@ -1,4 +1,4 @@
-"""Edge-ranked sportsbook tables with opponent-specific evidence on each rating."""
+"""Edge-ranked tables with one-click confidence controls and matchup evidence."""
 from collections import defaultdict
 from functools import lru_cache
 from math import isfinite
@@ -12,6 +12,7 @@ from points_probability import PROBABILITY_COLUMNS
 from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT
 from todays_plays import edge_pick
 
+EDGE_TABLE_UI_VERSION = 'checkboxes_v1'
 
 # Match the component statistics used by apply_matchup, including the attempts
 # effect on made threes. Keep the two rebound populations separate.
@@ -149,11 +150,12 @@ def table_payload(edges, columns, roster, effects, team, game, book, day):
 
 
 @lru_cache(maxsize=1)
-def _component(runtime):
-    return st.components.v2.component('sportsbook_edge_table', html='<section></section>',
+def _component(runtime, ui_version):
+    # A control release must replace the registered frontend, even in a warm session.
+    return st.components.v2.component('sportsbook_edge_table_' + ui_version, html='<section></section>',
         css=Path(__file__).with_suffix('.css').read_text(), js=Path(__file__).with_name('play_storage.mjs').read_text()+'\n'+Path(__file__).with_suffix('.mjs').read_text())
 
 
 def render_edge_table(edges, columns, roster, effects, team, game, book, day):
-    _component(st.runtime.get_instance())(data=table_payload(edges, columns, roster, effects, team, game, book, day),
+    _component(st.runtime.get_instance(), EDGE_TABLE_UI_VERSION)(data=table_payload(edges, columns, roster, effects, team, game, book, day),
                                           key='sportsbook_edge_table_' + team)
