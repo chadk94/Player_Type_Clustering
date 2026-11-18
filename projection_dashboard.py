@@ -1373,7 +1373,7 @@ def render_live_dashboard(ui, roster):
                         selected_stats.append(stat)
             plays_only = ui.checkbox('Only show plays above 5% edge',value=True,key='edges_plays_only')
             review_view = ui.pills('Play review',REVIEW_VIEWS,default='All plays',selection_mode='single',key='edges_review_view') or 'All plays'
-            ui.caption('🟠 MIN: minutes risk · 🟣 ROLE: recent role works against the bet · 🔵 Q: availability could hurt this bet · ? Unchecked. Click a badge for details. More robust requires all checks and more than 5% edge in each stress test; it is not a calibrated win-confidence score.')
+            ui.caption('🟠 Minutes risk: playing time could weaken the bet · Gray Minutes unverified: minutes check pending · 🟣 ROLE: recent role works against the bet · 🔵 Q: availability could hurt this bet · ? Unchecked. Click a badge for details. More robust requires all checks and more than 5% edge in each stress test; it is not a calibrated win-confidence score.')
             ui.button('Refresh review checks',key='edges_review_refresh',help='Read any completed background minutes and passing updates. Your model projections stay unchanged.')
             show_recent = ui.toggle('Show recent-role comparison', value=False, key='edges_recent_role',
                                     help='Compare recent shot volume and assists beside the current model. Rankings and the 5% rule stay unchanged.')

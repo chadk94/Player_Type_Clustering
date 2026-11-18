@@ -12,7 +12,7 @@ from points_probability import PROBABILITY_COLUMNS
 from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT
 from todays_plays import edge_pick
 
-EDGE_TABLE_UI_VERSION = 'readable_type_v2'
+EDGE_TABLE_UI_VERSION = 'plain_minutes_v3'
 
 # Match the component statistics used by apply_matchup, including the attempts
 # effect on made threes. Keep the two rebound populations separate.
@@ -34,11 +34,46 @@ HEADER_HELP = {
     'Edge %':'Projection gap from the juice-adjusted book total, ranked highest first. This is not win probability or expected return.',
     'Good-to minutes':'Minutes at which this side still clears 5% edge: lower limit for an Over, upper limit for an Under. Tested in half-minute steps through 48.',
     'Matchup rating':'1 = poor, 3 = average, 5 = excellent. Click a rating for archetype matchup evidence.',
-    'Review flags':'MIN = minutes risk; ROLE = recent-role risk; Q = availability risk; ? = unchecked. Click a badge for details.',
+    'Review flags':'Minutes unverified = no completed minutes check; Minutes risk = playing time could weaken the bet; ROLE = recent-role risk; Q = availability risk; ? = unchecked. Click a badge for details.',
     'Book line (Over)':'Sportsbook line followed by the Over price. Under prices appear in the next column.',
     'Exp. P(over)':'Experimental probability of going Over, conditional on playing. Whole-number lines can push.',
     'Exp. P(under)':'Experimental probability of going Under, conditional on playing. Whole-number lines can push.',
 }
+
+
+def minutes_popup(row):
+    """Describe the existing stress test; never imply its minutes came from a source."""
+    def finite(value):
+        return isinstance(value, (int, float)) and isfinite(value)
+
+    reference = row.get('Reference minutes')
+    original = row.get('Projected minutes')
+    has_reference = finite(reference)
+    if has_reference and finite(original):
+        summary = (f'Your projection uses {original:g} minutes. '
+                   f'{row.get("Reference source", "The comparison source")} has {reference:g} minutes.')
+    else:
+        summary = 'We haven’t verified your minutes against another source.'
+    minutes = row.get('Minutes test minutes')
+    value, edge = row.get('Minutes test projection'), row.get('Minutes test edge %')
+    side = row.get('Play')
+    units = {'PTS':'points', 'REB':'rebounds', 'AST':'assists', '3PM':'threes',
+             'STL':'steals', 'BLK':'blocks', 'PRA':'points + rebounds + assists'}.get(row.get('Stat'), row.get('Stat', ''))
+    if all(finite(x) for x in (minutes, value, edge)) and side in ('Over', 'Under'):
+        edge_label = f'{edge:.2f}' if round(edge, 1) == PLAY_THRESHOLD_PCT and edge != PLAY_THRESHOLD_PCT else f'{edge:.1f}'.rstrip('0').rstrip('.')
+        if edge_label == '-0':
+            edge_label = '0'
+        summary += (f' If he plays {minutes:g} minutes, we still project {value:.2f} {units}, '
+                    f'leaving a {edge_label}% {side} edge.')
+        if edge <= PLAY_THRESHOLD_PCT:
+            summary += f' That no longer clears your {PLAY_THRESHOLD_PCT:g}% cutoff.'
+        if not has_reference:
+            summary += ' The minutes check is still pending.'
+    else:
+        summary += ' We couldn’t complete the minutes stress test. The minutes check is still pending.'
+    technical = str(row.get('Minutes detail', 'Minutes review unavailable.'))
+    technical += '\nThe tested minutes are a what-if scenario, not a new minutes forecast.'
+    return dict(detail=summary, technical=technical)
 
 
 def role_popup(row):
@@ -137,9 +172,11 @@ def table_payload(edges, columns, roster, effects, team, game, book, day):
         for flag,title,color in [('Minutes','MIN','minutes'),('Role','ROLE','role'),('Injury','Q','injury')]:
             status=row.get(flag+' flag')
             if status in ('MIN','ROLE','Q','Unchecked'):
-                badges.append(dict(label=title if status!='Unchecked' else title+'?',
+                label = ('Minutes unverified' if status == 'Unchecked' else 'Minutes risk') if flag == 'Minutes' else (title if status != 'Unchecked' else title+'?')
+                popup = minutes_popup(row) if flag == 'Minutes' else role_popup(row) if flag == 'Role' else dict(detail=row.get(flag+' detail','Unchecked'))
+                badges.append(dict(label=label,
                     color=color if status!='Unchecked' else 'unchecked',
-                    **(role_popup(row) if flag == 'Role' else dict(detail=row.get(flag+' detail','Unchecked')))))
+                    **popup))
         if not badges and 'Review group' in row:
             badges.append(dict(label='✓' if row.get('Robust play') else 'Review',color='clear' if row.get('Robust play') else 'unchecked',detail=row.get('Review detail','')))
         output.append(dict(pick=edge_pick(row, game, book, day), values=values, labels=labels, styles=comparison_style(raw),

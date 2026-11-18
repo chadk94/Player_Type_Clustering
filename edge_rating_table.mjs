@@ -44,7 +44,7 @@ export default function({data, parentElement}) {
         tip.classList.toggle('role-popup', !!technical);
         tip.setAttribute('role', technical ? 'dialog' : 'tooltip');
         if (technical) {
-            tip.setAttribute('aria-label', 'Recent role review');
+            tip.setAttribute('aria-label', 'Play review details');
             const details = make('details');
             details.append(make('summary', 'Technical details'), make('div', technical));
             details.ontoggle = position;

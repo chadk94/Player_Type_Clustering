@@ -27,6 +27,7 @@ def unavailable_review(edges):
         out[kind+' test projection']=np.nan;out[kind+' test edge %']=np.nan
     out['Robust play']=False;out['Review group']='Unchecked';out['Review flags']='? Unchecked'
     out['Reference minutes']=np.nan;out['Minutes difference']=np.nan;out['Reference source']='Unavailable'
+    out['Minutes test minutes']=np.nan
     out['Rebound trend %']=np.nan
     return out
 
@@ -296,7 +297,7 @@ warnings are a screening rule, not a numerical in/out forecast.
         record.update({'Minutes detail':'Independent current-game minutes unavailable.',
             'Role detail':evidence.get(pid,{}).get('detail','Recent role history unavailable.'),
             'Injury detail':'Current, complete injury report unavailable.',
-            'Minutes test projection':np.nan,'Minutes test edge %':np.nan,
+            'Minutes test minutes':np.nan,'Minutes test projection':np.nan,'Minutes test edge %':np.nan,
             'Recent test projection':np.nan,'Recent test edge %':np.nan,
             'Rebound trend %':np.nan,
             'Combined test projection':np.nan,'Combined test edge %':np.nan,
@@ -318,7 +319,7 @@ warnings are a screening rule, not a numerical in/out forecast.
             tested=scenario_projection(team,minute_case)
             value=float(tested.loc[tested.PLAYER_ID.eq(pid),stat].iloc[0])
             edge=side_edge(value,row['Book implied total'],side)
-            record.update({'Minutes test projection':value,'Minutes test edge %':edge})
+            record.update({'Minutes test minutes':target,'Minutes test projection':value,'Minutes test edge %':edge})
             adverse_diff=(row['Projected minutes']-float(reference.minutes))*(1 if side=='Over' else -1) if reference is not None else 0.
             record['Minutes flag']='MIN' if edge<=PLAY_THRESHOLD_PCT or adverse_diff>=CONFIG['minutes_disagreement'] else ('Clear' if reference is not None else 'Unchecked')
             record['Minutes detail']+=f'\nTest at {target:g} min: {value:.2f} {row.Stat}, {edge:+.1f}% {side} edge. Other active minutes redistribute proportionally to total 240, capped at 48; excluded players stay out.'

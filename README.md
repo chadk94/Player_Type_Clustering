@@ -1545,8 +1545,13 @@ probabilities, rankings, review flags, or saved plays.
 probabilities, prices, EV or existing edge ordering. `edge_review.json` holds the initial,
 unvalidated sensitivity thresholds. The default **All plays** view retains every eligible
 row; **More robust plays**, **Waiting on news**, and **Needs review / unchecked** only filter
-visibility. Click the compact orange **MIN**, purple **ROLE** and blue **Q** badges for evidence.
+visibility. Click the orange **Minutes risk**, purple **ROLE** and blue **Q** badges for evidence.
 A gray question mark means a check is unavailable, never that it passed.
+The gray **Minutes unverified** badge explains when an independent comparison is missing,
+shows the what-if minutes, projected stat and remaining directional edge, and keeps the
+check pending. The rotation redistribution and source timestamps sit under **Technical details**.
+The display uses the actual tested minutes, including a more adverse reference when available;
+the test is not presented as another source's forecast. Projections and review thresholds are unchanged.
 
 - **Minutes:** TabsNBA is the default independent comparison, via the prepared Chrome connector
   or a private CSV upload. The connector reads only the displayed unedited projection table,
