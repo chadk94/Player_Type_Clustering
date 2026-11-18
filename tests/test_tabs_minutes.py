@@ -42,6 +42,24 @@ class TabsTests(unittest.TestCase):
         refs,details=self.parse(CSV.replace(b'Robert Williams',b'Wrong Team'))
         self.assertTrue(refs.empty);self.assertEqual(len(details['unmatched']),1)
 
+    def test_unmatched_zero_reserve_does_not_block_complete_rotation(self):
+        snapshot=browser()
+        snapshot['rows'].append(dict(Player='Unknown Reserve',Team='POR',Opp='MIN',minutes=0,status='Out'))
+        refs,details=parse_tabs_browser_snapshot(snapshot,ROSTER,[GAME],NOW)
+        self.assertEqual(refs.attrs['incomplete_teams'],[])
+        self.assertEqual(details['unmatched'][0]['Minutes'],0)
+        self.assertEqual(refs.PLAYER_ID.tolist(),[1,2])
+        snapshot['rows'][-1].update(minutes=5,status='Projected')
+        refs,_=parse_tabs_browser_snapshot(snapshot,ROSTER,[GAME],NOW)
+        self.assertEqual(refs.attrs['incomplete_teams'],['POR'])
+
+    def test_philon_suffix_alias_is_scoped_to_his_team(self):
+        roster=pd.DataFrame([dict(PLAYER_ID=1642889,PLAYER_NAME='Labaron Philon',TEAM_ABBREVIATION='PHI')])
+        game=dict(Away='PHI',Home='ORL',GameTimeUTC=GAME['GameTimeUTC'])
+        data=b'Player,Team,Opp,Tabs Min\nLabaron Philon Jr.,PHI,ORL,3.5\n'
+        refs,_=self.parse(data,roster=roster,games=[game])
+        self.assertEqual(refs.PLAYER_ID.tolist(),[1642889])
+
     def test_csv_invalid_and_duplicate_rows_fail_closed(self):
         for content in [CSV.replace(b',19,',b',nan,'),CSV.replace(b',19,',b',49,'),CSV.replace(b',19,',b',-1,'),
                         CSV+CSV.splitlines()[-1]+b'\n']:

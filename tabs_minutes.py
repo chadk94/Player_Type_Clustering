@@ -15,7 +15,8 @@ import streamlit as st
 from live_projections import name_key
 
 # Tabs uses the short name; resolve only this known alias on the same team.
-ALIASES = {('POR','robert williams'):'robert williams iii'}
+ALIASES = {('POR','robert williams'):'robert williams iii',
+           ('PHI','labaron philon jr'):'labaron philon'}
 SOURCE_MAX_AGE_HOURS = 2
 
 
@@ -127,7 +128,7 @@ def parse_tabs_minutes(content, filename, roster, games, captured_at, scenario, 
         key=ALIASES.get((team,r.match_name),r.match_name)
         ids=names.get((team,key),set())
         if len(ids)!=1:
-            unmatched.append(dict(Player=r.Player,Team=team,Opponent=opponent,Reason='No unique matching profile on this team'))
+            unmatched.append(dict(Player=r.Player,Team=team,Opponent=opponent,Minutes=float(r['Tabs Min']),Reason='No unique matching profile on this team'))
             continue
         rows.append(dict(PLAYER_ID=next(iter(ids)),Team=team,Opponent=opponent,game_date=day.isoformat(),
             minutes=float(r['Tabs Min']),source='TabsNBA',updated_at=capture.isoformat(),independent=True,
@@ -136,7 +137,9 @@ def parse_tabs_minutes(content, filename, roster, games, captured_at, scenario, 
     columns=['PLAYER_ID','Team','Opponent','game_date','minutes','source','updated_at','independent','scenario',
              'source_updated_at','source_max_age_hours','requires_source_timestamp','source_mode']
     result=pd.DataFrame(rows,columns=columns)
-    result.attrs['incomplete_teams'] = sorted({row['Team'] for row in unmatched})
+    # Unmatched reserves with explicit zero minutes contribute no allocation.
+    # Every positive own player still needs a matched reference in minutes_plan.
+    result.attrs['incomplete_teams'] = sorted({row['Team'] for row in unmatched if row['Minutes']>0})
     if result.duplicated(['PLAYER_ID','Team','Opponent']).any():raise ValueError('Multiple Tabs names map to the same player.')
     return result,dict(export_date=day.isoformat(),export_rows=len(frame),matched=len(result),
                        other_games=other_games,unmatched=unmatched,scenario=scenario.strip())

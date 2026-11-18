@@ -7,10 +7,12 @@ import render from '../tabs_browser_bridge.mjs';
 const source=readFileSync(new URL('../integrations/tabs_browser_connector/reader.js',import.meta.url),'utf8');
 const context=vm.createContext({Date,Error});vm.runInContext(source,context);
 const capture=(doc,now='2026-11-18T01:05:00Z')=>context.tabsSnapshot(doc,new Date(now));
-function doc({edited=false,scenario='POR: Avdija OUT (Q) ×',published='5:57 PM MST',date='NOV 17 2026 6:05 PM',slate='TUE, 11/17',missingChips=false,empty=false,minutes='28.0'}={}) {
+function doc({edited=false,scenario='POR: Avdija OUT (Q) ×',published='5:57 PM MST',date='NOV 17 2026 6:05 PM',slate='TUE, 11/17',missingChips=false,empty=false,minutes='28.0',joinedBadge=false,missingOut=false}={}) {
     const head=['PLAYER','POS','TEAM','OPP','MIN ▾'].map(innerText=>({innerText}));
     const row=(name,min,hidden=false)=>({getClientRects:()=>hidden?[]:[{}],querySelectorAll:()=>[
-        {innerText:name+(min==null?' OUT\n8:00 pm ET':' START\n8:00 pm ET')},{innerText:'PG'},{innerText:'POR'},{innerText:'MIN'},{}],
+        {innerText:(joinedBadge?'DA\n':'')+name+(min==null?(missingOut?'':joinedBadge?'OUT':' OUT')+'\n8:00 pm ET':' START\n8:00 pm ET'),
+         querySelector:key=>joinedBadge?(key==='[data-pn]'?{innerText:name}:key==='.tag.out'&&!missingOut&&min==null?{innerText:'OUT'}:null):null},
+        {innerText:'PG'},{innerText:'POR'},{innerText:'MIN'},{}],
         querySelector:()=>min==null?null:{value:min,getAttribute:()=>`Minutes for ${name}`}});
     const rows=[{querySelectorAll:()=>head},...empty?[]:[row('Jrue Holiday',minutes),row('Deni Avdija',null),row('Hidden player','48',true)]];
     const table={querySelectorAll:()=>rows};
@@ -24,6 +26,12 @@ test('rendered inputs and explicit OUT rows retain chosen scenario and source ti
     assert.equal(snapshot.rows[0].minutes,28);assert.equal(snapshot.rows[1].minutes,0);
     assert.equal(snapshot.scenario,'POR: Avdija OUT (Q)');assert.equal(snapshot.slate_date,'2026-11-17');
     assert.equal(snapshot.source_updated_at,'2026-11-18T00:57:00.000Z');
+});
+test('joined OUT badges preserve the player name without photo initials; missing status is not zero',()=>{
+    const out=capture(doc({joinedBadge:true})).rows[1];
+    assert.equal(out.Player,'Deni Avdija');
+    assert.equal(out.status,'Out');assert.equal(out.minutes,0);
+    assert.throws(()=>capture(doc({joinedBadge:true,missingOut:true})),/no verifiable minutes/);
 });
 test('manual edits, stale source, changed controls, empty tables and invalid minutes do not clear checks',()=>{
     for (const options of [{edited:true},{published:'2:00 PM MST'},{missingChips:true},{empty:true},{minutes:''},{minutes:'NaN'},{minutes:'49'}])

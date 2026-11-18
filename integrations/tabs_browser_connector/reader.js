@@ -43,10 +43,14 @@ function tabsSnapshot(doc, now = new Date()) {
         if (!cells.length) continue;
         const label=cells[col('PLAYER')]?.innerText.trim();
         const input=tr.querySelector('input[aria-label^="Minutes for "]');
-        const out=!input && /\bOUT\b/.test(label || '');
+        // Status badges can touch the surname in innerText ("MobleyOUT").
+        // Read the explicit badge and name separately, excluding photo initials.
+        const badge=cells[col('PLAYER')]?.querySelector('.tag.out');
+        const out=!input && (badge?.innerText.trim()==='OUT' || /\bOUT\b/.test(label || ''));
         // Only explicitly labeled OUT rows get zero. Omitted/unknown rows stay absent.
         if (!input && !out) throw Error('A Tabs player row has no verifiable minutes.');
-        const Player=input ? input.getAttribute('aria-label').slice(12).trim() : label.split(/\bOUT\b/)[0].trim();
+        const playerName=cells[col('PLAYER')]?.querySelector('[data-pn]')?.innerText.trim();
+        const Player=input ? input.getAttribute('aria-label').slice(12).trim() : playerName || label.split(/\bOUT\b/)[0].trim();
         const raw=input ? input.value.trim() : '0';
         const minutes=Number(raw);
         const Team=cells[col('TEAM')]?.innerText.trim(), Opp=cells[col('OPP')]?.innerText.trim();
