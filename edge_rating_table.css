@@ -1,7 +1,7 @@
 section { font: inherit; color: var(--st-text-color); }
 .edges-scroll { overflow-x: auto; border: 1px solid var(--st-border-color, #8886); border-radius: .55rem; }
-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .875rem; font-variant-numeric: tabular-nums; }
-th, td { white-space: nowrap; text-align: start; padding: .45rem .55rem; border-bottom: 1px solid var(--st-border-color, #8885); }
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 1.0625rem; line-height: 1.45; font-variant-numeric: tabular-nums; }
+th, td { white-space: nowrap; text-align: start; padding: .6rem .65rem; border-bottom: 1px solid var(--st-border-color, #8885); }
 th:not(:last-child), td:not(:last-child) { border-inline-end: 1px solid var(--st-border-color, #8885); }
 th { position: sticky; top: 0; z-index: 1; font-weight: 600; background: var(--st-secondary-background-color, #838383); }
 tr:last-child td { border-bottom: 0; }
@@ -17,17 +17,17 @@ th[data-column="Player"] { z-index: 3; }
 td button { width: 100%; text-align: start; text-decoration: underline dotted; text-underline-offset: .25rem; padding: .12rem .2rem; }
 button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: .2rem; }
 [popover] { pointer-events: none; position: fixed; inset: auto; margin: 0; box-sizing: border-box;
-    max-width: min(24rem, calc(100vw - 16px)); padding: .7rem .95rem; white-space: pre-line; font: inherit;
-    font-size: .875rem; line-height: 1.45; color: var(--st-text-color, CanvasText); background: var(--st-background-color, Canvas);
+    max-width: min(28rem, calc(100vw - 16px)); padding: .85rem 1rem; white-space: pre-line; font: inherit;
+    font-size: 1rem; line-height: 1.5; color: var(--st-text-color, CanvasText); background: var(--st-background-color, Canvas);
     border: 1px solid var(--st-border-color, #8886); border-radius: .5rem; box-shadow: 0 3px 16px #0003; }
 .role-popup { pointer-events: auto; max-height: calc(100vh - 16px); overflow-y: auto; }
 .role-popup details { margin-top: .7rem; border-top: 1px solid var(--st-border-color, #8885); padding-top: .5rem; }
 .role-popup summary { cursor: pointer; font-weight: 600; }
 .role-popup summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-.role-popup details > div { margin-top: .5rem; font-size: .8rem; }
+.role-popup details > div { margin-top: .5rem; font-size: .9375rem; }
 
 tbody tr.saved-play { --edge-row-bg: color-mix(in srgb, var(--st-primary-color, #25785c) 8%, var(--st-background-color, Canvas)); }
-td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; padding:.15rem .35rem; border-radius:.3rem; font-size:.75rem; font-weight:700; text-decoration:none; }
+td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; padding:.2rem .4rem; border-radius:.3rem; font-size:.875rem; font-weight:700; text-decoration:none; }
 .review-minutes { color:#713a00; background:#ffdfad; }
 .review-role { color:#56249b; background:#eadcff; }
 .review-injury { color:#134f91; background:#d4eaff; }
@@ -35,9 +35,9 @@ td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; paddin
 .review-clear { color:#175538; background:#d7eee1; }
 .saved-play td:first-child { box-shadow: inset 3px 0 var(--st-primary-color, #25785c); }
 .confidence-checks { display: inline-flex; gap: .25rem; }
-.confidence-choice { display: inline-flex; align-items: center; gap: .25rem; padding: .2rem .3rem;
-    border: 1px solid transparent; border-radius: .3rem; cursor: pointer; font-size: .75rem; font-weight: 600; }
-.confidence-choice input { margin: 0; width: .9rem; height: .9rem; cursor: pointer; accent-color: #175c43; }
+.confidence-choice { display: inline-flex; align-items: center; gap: .3rem; padding: .25rem .35rem;
+    border: 1px solid transparent; border-radius: .3rem; cursor: pointer; font-size: .9375rem; font-weight: 600; }
+.confidence-choice input { margin: 0; width: 1.05rem; height: 1.05rem; cursor: pointer; accent-color: #175c43; }
 .confidence-choice:focus-within { outline: 2px solid var(--st-text-color, CanvasText); outline-offset: 2px; }
 .confidence-5 { background: #edf0f3; color: #45515d; }
 .confidence-10 { background: #fff0c8; color: #633d00; }
