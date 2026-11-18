@@ -109,6 +109,8 @@ def role_popup(row):
     elif stat in ('STL', 'BLK'):
         summary = (f'Recent-role checks for {units} aren’t available yet. '
                    'This bet has not passed the role check.')
+    elif stat == 'AST' and row.get('Role flag') == 'Unchecked':
+        summary = f'{player}’s passing-role check is pending. ' + technical.split('\n')[0]
     else:
         summary = (f'{player}’s recent {role} role couldn’t be fully checked. '
                    'There isn’t enough reliable recent data to assess this bet’s role risk.')

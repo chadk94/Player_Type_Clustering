@@ -3,6 +3,10 @@ from html.parser import HTMLParser
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from time import monotonic
+from functools import lru_cache
+from pathlib import Path
+import hashlib
+import json
 
 import numpy as np
 import pandas as pd
@@ -12,6 +16,29 @@ from live_projections import name_key
 
 MINUTES_URL = 'https://www.rotowire.com/basketball/projected-minutes.php'
 REFERENCE_COLUMNS = ['PLAYER_ID','Team','Opponent','game_date','minutes','source','updated_at','independent']
+PASSING_COLUMNS = ['PLAYER_ID','GAME_ID','POTENTIAL_AST','PASSES_MADE']
+PASSING_ARCHIVE_COLUMNS = ['PLAYER_ID','GAME_ID','GAME_DATE','GP','MIN','AST','POTENTIAL_AST','PASSES_MADE']
+
+
+@lru_cache(maxsize=2)
+def archived_review_passing(season):
+    """Public, game-level checkpoint for diagnostics only; rechecked against live boxes."""
+    path = Path(__file__).parent / 'data' / f'review_passing_{season}.csv.gz'
+    try:
+        meta = json.loads(path.with_suffix('.source.json').read_text())
+        if meta['season'] != season or hashlib.sha256(path.read_bytes()).hexdigest() != meta['sha256']:
+            raise ValueError('Passing checkpoint scope or checksum mismatch')
+        frame = pd.read_csv(path, dtype={'GAME_ID':str}, usecols=PASSING_ARCHIVE_COLUMNS)
+        numeric = frame[['PLAYER_ID','GP','MIN','AST','POTENTIAL_AST','PASSES_MADE']]
+        counts = frame[['PLAYER_ID','GP','AST','POTENTIAL_AST','PASSES_MADE']]
+        if (len(frame) != meta['rows'] or frame.duplicated(['PLAYER_ID','GAME_ID']).any()
+                or frame.GAME_DATE.isna().any() or frame.GAME_ID.isna().any()
+                or not np.isfinite(numeric).all().all() or numeric.lt(0).any().any()
+                or counts.mod(1).ne(0).any().any() or not frame.GP.eq(1).all()):
+            raise ValueError('Invalid game-level passing checkpoint')
+        return frame
+    except (OSError, KeyError, TypeError, ValueError):
+        return pd.DataFrame(columns=PASSING_ARCHIVE_COLUMNS)
 
 
 class Node:
@@ -122,14 +149,28 @@ def review_passing(season, logs, matches, read_days):
     rows=logs.copy()
     rows['PLAYER_ID']=rows.ESPN_PLAYER_ID.astype(str).map(dict(zip(ids,ids.index)))
     rows=rows[rows.PLAYER_ID.notna() & rows.MIN.gt(0)].copy()
-    columns=['PLAYER_ID','GAME_ID','POTENTIAL_AST','PASSES_MADE']
+    columns=PASSING_COLUMNS
     if rows.empty:return pd.DataFrame(columns=columns)
+    rows['GAME_ID']=rows.GAME_ID.astype(str)
     rows['day']=pd.to_datetime(rows.GAME_DATE,utc=True).dt.tz_convert('America/New_York').dt.date
-    tables=read_days(season,set(rows.day));output=[]
+    rows=rows[~rows.duplicated(['PLAYER_ID','day'],keep=False)].copy()
+    output=[]
+    archive=archived_review_passing(season)
+    if not archive.empty:
+        pair=rows.merge(archive,on=['PLAYER_ID','GAME_ID'],how='inner',suffixes=('','_nba'),validate='one_to_one')
+        good=(pair.day.astype(str).eq(pair.GAME_DATE_nba)&pair.GP.eq(1)&pair.AST.eq(pair.AST_nba)
+              &(pair.MIN-pair.MIN_nba).abs().le(.5+1/60))
+        output.append(pair.loc[good,columns])
+    verified=set((pid,gid) for frame in output for pid,gid in zip(frame.PLAYER_ID,frame.GAME_ID))
+    days=set(rows.loc[[(pid,gid) not in verified for pid,gid in zip(rows.PLAYER_ID,rows.GAME_ID)],'day'])
+    # Never refetch the entire season on a cold app start just to review one game.
+    # New or corrected boxes still require a fresh daily NBA match.
+    tables=read_days(season,days) if days else {}
     for day,boxes in rows.groupby('day'):
         if day not in tables:continue
         boxes=boxes[~boxes.PLAYER_ID.duplicated(keep=False)].set_index('PLAYER_ID')
         pair=boxes.join(tables[day],how='inner',rsuffix='_nba')
         good=pair.GP.eq(1)&pair.AST.eq(pair.AST_nba)&(pair.MIN-pair.MIN_nba).abs().le(.5+1/60)
         output.append(pair.loc[good].reset_index()[columns])
-    return pd.concat(output,ignore_index=True) if output else pd.DataFrame(columns=columns)
+    return (pd.concat(output,ignore_index=True).drop_duplicates(['PLAYER_ID','GAME_ID'],keep='last')
+            if output else pd.DataFrame(columns=columns))

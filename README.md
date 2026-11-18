@@ -1581,6 +1581,14 @@ does not blur their different effects on an Over or Under.
   team targets and normalized archetype effects fixed. An adverse 10% window-to-window opportunity
   change or loss of the 5% edge triggers purple. This is a sensitivity proxy, not a new production
   baseline. Steal and block role checks remain unchecked.
+  The assist-role review reuses the public per-game passing checkpoint in
+  `data/review_passing_2026-27.csv.gz` (verified through November 16) after app restarts.
+  Each archived game is rechecked against the current player ID, game ID, Eastern date,
+  assists and minutes; new or mismatched games request fresh NBA daily tracking in the
+  background. Missing games remain unchecked, never zero or fabricated passing counts.
+  Passing coverage and recent/preceding potential-assist and pass rates appear in Technical
+  details. Complete shooting fields are not required for an assist-only check. This checkpoint
+  is used only for review flags and what-if scenarios, not production assists or team totals.
 - **Recent rebounding trend:** compare total rebounds / total minutes in the last five
   positive-minute appearances with the preceding five to ten, on the current team and
   before tip-off. Require 45 recent / 60 preceding minutes, complete rebound records,

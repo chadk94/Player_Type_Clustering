@@ -117,6 +117,39 @@ recomputed frames instead (see assess_edges).
     return out
 
 
+def passing_role_evidence(sample, player_id, n, passing):
+    """Keep the existing 50/50 opportunity check and report its exact coverage."""
+    prior_start=max(0,len(sample)-n-CONFIG['previous_games'])
+    previous=sample.iloc[prior_start:-n]
+    result=dict(ratios={},trends={})
+    track=(passing.loc[passing.PLAYER_ID.eq(player_id)].reindex(columns=['GAME_ID','POTENTIAL_AST','PASSES_MADE']).copy()
+           if passing is not None and not passing.empty else pd.DataFrame(columns=['GAME_ID','POTENTIAL_AST','PASSES_MADE']))
+    track['GAME_ID']=track.GAME_ID.astype(str)
+    if track.GAME_ID.duplicated().any():
+        return dict(result,passing_detail='Duplicate passing records; the passing-role check is pending.')
+    merged=sample.assign(GAME_ID=sample.GAME_ID.astype(str)).merge(track,on='GAME_ID',how='left',validate='one_to_one')
+    counts=merged[['POTENTIAL_AST','PASSES_MADE']].apply(pd.to_numeric,errors='coerce')
+    verified=np.isfinite(counts).all(axis=1)&counts.ge(0).all(axis=1)
+    coverage=(f'Potential assists and passes made are verified for {int(verified.iloc[-n:].sum())} of {n} recent games '
+              f'and {int(verified.iloc[prior_start:-n].sum())} of {len(previous)} preceding games '
+              f'({int(verified.sum())} of {len(sample)} season games).')
+    if not verified.all():
+        return dict(result,passing_detail=coverage+' The passing-role check is pending until the missing records are available.')
+    detail=[coverage]
+    ratios=[];trends=[]
+    for stat, label in [('POTENTIAL_AST','potential assists'),('PASSES_MADE','passes made')]:
+        rates=[x[stat].sum()/x.MIN.sum() for x in (merged,merged.iloc[-n:],merged.iloc[prior_start:-n])]
+        if min(rates[0],rates[2])<=0:
+            return dict(result,passing_detail=coverage+' The comparison period has zero passing opportunities; a percentage trend cannot be calculated.')
+        ratios.append(rates[1]/rates[0]);trends.append(rates[1]/rates[2]-1)
+        detail.append(f'{label.title()} per 36 minutes: {rates[2]*36:.2f} preceding → {rates[1]*36:.2f} recent ({trends[-1]:+.1%}).')
+    result['ratios']['AST']=sum(ratios)/2
+    result['trends']['AST']=sum(trends)/2
+    detail.append(f'50/50 opportunity blend: {result["trends"]["AST"]:+.1%} recent vs preceding; '
+                  f'{result["ratios"]["AST"]:.4f} × current-season opportunity rate. Conversion rates stay fixed; raw assist counts do not drive this trend.')
+    return dict(result,passing_detail='\n'.join(detail))
+
+
 def role_evidence(player, observed, logs, as_of, passing=None):
     """Compare nonoverlapping windows; retain conversion/accuracy, change volume.
 
@@ -124,15 +157,16 @@ Passing is optional verified player/game tracking: PLAYER_ID, GAME_ID,
 POTENTIAL_AST, PASSES_MADE. Missing tracking is not replaced by noisy assists.
 """
     result=dict(ratios={},trends={},detail='Insufficient recent opportunity history.',
+                passing_detail='The passing-role check needs at least three recent and five preceding appearances, with 45/60 minutes in the two periods.',
                 rebound_detail='Needs five recent and at least five preceding appearances on this team, with 45/60 minutes and complete rebound records.')
     if observed is None or logs.empty:return result
     sample=logs.loc[logs.ESPN_PLAYER_ID.astype(str).eq(str(observed.ESPN_PLAYER_ID))].copy()
     dates=pd.to_datetime(sample.GAME_DATE,utc=True,errors='coerce')
     year=pd.Timestamp(as_of).year-(pd.Timestamp(as_of).month<7)
     sample=sample.loc[dates.lt(pd.Timestamp(as_of)) & dates.ge(pd.Timestamp(f'{year}-07-01',tz='UTC'))]
-    if sample.GAME_ID.duplicated().any():return dict(result,detail='Duplicate player game logs; trend unchecked.')
+    if sample.GAME_ID.duplicated().any():return dict(result,detail='Duplicate player game logs; trend unchecked.',passing_detail='Duplicate player game logs prevent a reliable passing comparison.')
     if pd.notna(observed.get('GP')) and len(sample)!=int(observed.GP):
-        return dict(result,detail='Season summary and available game logs disagree; trend unchecked.')
+        return dict(result,detail='Season summary and available game logs disagree; trend unchecked.',passing_detail='The season summary and game-by-game records disagree. The passing-role check is pending.')
     sample=sample.loc[sample.Team.eq(player.Team)&sample.MIN.gt(0)].sort_values(['GAME_DATE','GAME_ID'])
     n=min(CONFIG['recent_games'],len(sample)-CONFIG['minimum_previous_games'])
     if n<CONFIG['minimum_recent_games']:return result
@@ -159,6 +193,11 @@ POTENTIAL_AST, PASSES_MADE. Missing tracking is not replaced by noisy assists.
                     'This is an observed rebounding trend, not proof of a role change; missed-shot opportunities can affect it.')
             else:
                 result['rebound_detail'] = 'The preceding window has zero rebounds, so a percentage trend cannot be calculated.'
+    # Passing tracking does not depend on complete shooting fields.
+    passing_result=passing_role_evidence(sample,player.PLAYER_ID,n,passing)
+    result['ratios'].update(passing_result['ratios'])
+    result['trends'].update(passing_result['trends'])
+    result['passing_detail']=passing_result['passing_detail']
     fields=['FGA','FG3A','FTA','FGM','FG3M','FTM','MIN']
     if not set(fields).issubset(sample):return result
     if not np.isfinite(sample[fields].to_numpy(float)).all() or sample[fields].lt(0).any().any():return result
@@ -178,19 +217,6 @@ POTENTIAL_AST, PASSES_MADE. Missing tracking is not replaced by noisy assists.
             result['ratios'][stat]=new/all_rate
             result['trends'][stat]=new/old-1
     result['detail']=f'{len(recent)} recent vs {len(previous)} preceding appearances on {player.Team}; {recent.MIN.sum():.0f}/{previous.MIN.sum():.0f} minutes. Attempts per minute; shooting conversion held fixed.'
-    if passing is not None and not passing.empty:
-        track=passing.loc[passing.PLAYER_ID.eq(player.PLAYER_ID),['GAME_ID','POTENTIAL_AST','PASSES_MADE']].copy()
-        if not track.GAME_ID.duplicated().any():
-            merged=sample.assign(GAME_ID=sample.GAME_ID.astype(str)).merge(track.assign(GAME_ID=track.GAME_ID.astype(str)),on='GAME_ID',how='left')
-            if set(['POTENTIAL_AST','PASSES_MADE']).issubset(merged) and np.isfinite(merged[['POTENTIAL_AST','PASSES_MADE']]).all().all():
-                ratios=[];trends=[]
-                for stat in ('POTENTIAL_AST','PASSES_MADE'):
-                    rates=[x[stat].sum()/x.MIN.sum() for x in (merged,merged.iloc[-n:],merged.iloc[max(0,len(merged)-n-CONFIG['previous_games']):-n])]
-                    if min(rates[0],rates[2])>0:
-                        ratios.append(rates[1]/rates[0]);trends.append(rates[1]/rates[2]-1)
-                if len(ratios)==2:
-                    result['ratios']['AST']=sum(ratios)/2
-                    result['trends']['AST']=sum(trends)/2
     if 'AST' not in result['ratios']:result['detail']+=' Passing-opportunity trend unavailable; assists not inferred from raw assist counts.'
     return result
 
@@ -331,6 +357,11 @@ warnings are a screening rule, not a numerical in/out forecast.
             'Combined test projection':np.nan,'Combined test edge %':np.nan,
             'Reference minutes':np.nan,'Minutes difference':np.nan,'Reference source':'Unavailable',
             'Robust play':False,'Review group':'Unchecked'})
+        passing_detail=evidence.get(pid,{}).get('passing_detail',record['Role detail'])
+        if row.Stat == 'AST':
+            record['Role detail']=passing_detail
+        elif row.Stat == 'PRA':
+            record['Role detail']+='\n'+passing_detail
         reference=minute_reference(references,row,game,now)
         target=max(0.,row['Projected minutes']-CONFIG['minutes_stress']) if side=='Over' else min(48.,row['Projected minutes']+CONFIG['minutes_stress'])
         if reference is not None:
