@@ -11,6 +11,7 @@ import pdfplumber
 import requests
 
 from approved_minutes import for_matchup
+from import_minutes import TEAM_IDS
 from live_projections import name_key
 from sportsbook_lines import TEAM_NAMES
 
@@ -138,12 +139,48 @@ def pending_key_players(observations):
     return sorted(rows, key=lambda row: (row['Team'], row['Player']))
 
 
+def _approved_rotations(game, bundle):
+    """Full, validated rotations for this exact game, including profile-less rows."""
+    if not bundle:
+        return {}
+    day = str(pd.Timestamp(game['GameTimeUTC']).tz_convert(ET).date())
+    away, home = game['Away'], game['Home']
+    away_id, home_id = TEAM_IDS.get(away), TEAM_IDS.get(home)
+    matches = [g for g in bundle.get('games', []) if g['game_date'] == day
+               and g['away_team_id'] == away_id and g['home_team_id'] == home_id]
+    if len(matches) != 1:
+        return {}
+    key = matches[0]['game_key']
+    rotations = {}
+    for team, tid, opponent in ((away, away_id, home_id), (home, home_id, away_id)):
+        records = [r for r in bundle.get('approvals', []) if r['game_key'] == key
+                   and r['game_date'] == day and r['team'] == team
+                   and r['team_id'] == tid and r['opponent_id'] == opponent]
+        if len(records) == 1:
+            players = records[0]['players']
+            if abs(sum(p['minutes'] for p in players) - 240) < 1e-6:
+                rotations[team] = players
+    return rotations
+
+
+def _excluded_from_rotation(name, rotation, automatic):
+    """An omitted player is inactive in a complete approved 240-minute rotation."""
+    if rotation is None:
+        return False
+    matches = [p for p in rotation if compact(p['player_name']) == compact(name)]
+    if not matches:
+        return True
+    return (len(matches) == 1 and matches[0]['minutes'] == 0
+            and automatic.get(matches[0]['player_id'], 0) == 0)
+
+
 def game_injuries(game, reports, roster, automatic, bundle):
     """Match each official status to this game's roster, approvals and minutes."""
     away, home, tip = game['Away'], game['Home'], game['GameTimeUTC']
     day = pd.Timestamp(tip).tz_convert(ET).date()
     pair = f'{away}@{home}'
     approved = for_matchup(bundle, roster, away, home, tip)
+    rotations = _approved_rotations(game, bundle)
     observations = {}
     for team in (away, home):
         entry = reports.get((day, pair, team), {})
@@ -168,9 +205,15 @@ def game_injuries(game, reports, roster, automatic, bundle):
         for reported, status in entry['players'].items():
             matches = names.get(compact(reported), set())
             if len(matches) != 1:
+                # Unknown is not generally zero. Only a confirmed Out plus the
+                # exact game's complete approval establishes exclusion. Q and
+                # Doubtful players can still return, even with zero minutes.
+                if (not matches and status == 'Out'
+                        and _excluded_from_rotation(reported, rotations.get(team), automatic)):
+                    info.statuses[reported] = status
+                    continue
                 info.complete = False  # An unmatched name could be a previously listed player.
-                if status == 'Questionable':
-                    info.unverified.append(f'{reported} ({team})')
+                info.unverified.append(f'{reported} ({team})')
                 continue
             name = next(iter(matches))
             info.statuses[name] = status

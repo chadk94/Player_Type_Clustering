@@ -1694,6 +1694,12 @@ does not blur their different effects on an Over or Under.
   screening rule, not proof that every absence helps an Over. The player's own Q/Doubtful
   status (even below the key-player threshold), unresolved key opponents, and Out players
   still assigned minutes flag both directions. Missing/stale reports remain unchecked.
+  An unmatched **Out** player no longer makes the whole game unchecked when the exact
+  game's complete approved 240-minute team rotation excludes him (omitted, or explicitly
+  zero with no conflicting projected minutes). This also covers inactive players without
+  prop-model profiles; it does not label them free agents or change any minutes. Unmatched
+  Q/Doubtful names, ambiguous identities, incomplete reports, and missing/wrong-game
+  approvals remain unchecked. Unresolved roster matches are named in the report summary.
   The banner immediately below the selected game lists key Q/Doubtful players and their
   statuses even when they do not flag a given bet; it follows game changes independently
   of the notification scope. Full verified alternative rotations are not yet supplied by
