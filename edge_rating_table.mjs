@@ -322,6 +322,16 @@ export default function({data, parentElement}) {
                         }
                         td.append(button);
                     }
+                } else if (data.columns[i] === 'Projected minutes') {
+                    const button = make('button', label);
+                    button.type = 'button'; button.className = 'minutes-source';
+                    button.setAttribute('aria-label', row.labels[data.columns.indexOf('Player')] +
+                        ' minutes comparison: ' + label + ' min');
+                    const preview = () => show(button, row.minutesDetail || 'Minutes comparison unavailable for this game.');
+                    button.onpointerenter = e => { if (e.pointerType !== 'touch') preview(); };
+                    button.onfocus = button.onclick = preview;
+                    button.onpointerleave = button.onblur = () => { if (active === button) hide(); };
+                    td.append(button);
                 } else if (data.columns[i] === 'Matchup rating') {
                     const button = make('button', label);
                     button.type = 'button';

@@ -59,7 +59,7 @@ class EdgeRatingDetailsTests(unittest.TestCase):
             dict(PLAYER_ID=1, Player='Demo Player', Team='MEM', Opponent='CLE',
                  PTS=16.25, REB=5.31, AST=8.12, FG3M=2.13, STL=0., BLK=.43,
                  TOV=2.4, PF=float('nan'), PRA=29.68,
-                 **{'Projected minutes':31.5, 'Baseline PTS':99.}),
+                 **{'Projected minutes':31.5, 'Your minutes':32., 'Tabs minutes':31., 'Baseline PTS':99.}),
             dict(PLAYER_ID=2, Player='Demo Player', Team='MEM', Opponent='CLE', PTS=50.),
             dict(PLAYER_ID=1, Player='Demo Player', Team='MEM', Opponent='BOS', PTS=60.),
         ])
@@ -69,6 +69,8 @@ class EdgeRatingDetailsTests(unittest.TestCase):
                 dict(id='demo', Away='MEM', Home='CLE'), 'FanDuel', date(2026,11,18))
         card = table_payload(*args, projections=projections)['rows'][0]['projection']
         self.assertEqual(card['minutes'], '31.5')
+        self.assertEqual(card['minutesDetail'],
+            'Your projection: 32.0 min\nTabsNBA projection: 31.0 min\nUsed by model: 31.5 min')
         self.assertEqual(card['opponent'], 'CLE')
         self.assertEqual({s['stat']: s['value'] for s in card['stats']},
                          dict(PTS='16.25', REB='5.31', AST='8.12', **{'3PM':'2.13'},
@@ -76,6 +78,8 @@ class EdgeRatingDetailsTests(unittest.TestCase):
         pd.testing.assert_frame_equal(projections, original)
         wrong_game = projections.loc[projections.Opponent.eq('BOS')]
         self.assertIsNone(table_payload(*args, projections=wrong_game)['rows'][0]['projection'])
+        self.assertEqual(table_payload(*args, projections=wrong_game)['rows'][0]['minutesDetail'],
+                         'Minutes comparison unavailable for this game.')
         ambiguous = pd.concat([projections, projections.iloc[:1]], ignore_index=True)
         self.assertIsNone(table_payload(*args, projections=ambiguous)['rows'][0]['projection'])
 
@@ -88,12 +92,16 @@ class EdgeRatingDetailsTests(unittest.TestCase):
                               dict(base, Projected=25., **{'Event ID':'second', 'Edge %':30.})])
         games = {key: dict(id=key, Away='MEM', Home='CLE') for key in ['first','second']}
         projections = edges.rename(columns={'Projected':'PTS'}).assign(**{'Projected minutes':30.})
+        projections['Your minutes'] = [8., 32.]
+        projections['Tabs minutes'] = [0., float('nan')]
         day = date(2026,11,18)
         result = table_payload(edges, ['Rank','Player','Stat','Projected','Edge %','Play'],
             pd.DataFrame([dict(PLAYER_ID=1)]), {}, 'All games', None, 'FanDuel', day,
             projections, games)
         self.assertEqual([row['playerRowSpan'] for row in result['rows']], [1,1])
         self.assertEqual([row['projection']['stats'][0]['value'] for row in result['rows']], ['25.00','20.00'])
+        self.assertIn('Your projection: 32.0 min\nTabsNBA projection: Unavailable', result['rows'][0]['minutesDetail'])
+        self.assertIn('Your projection: 8.0 min\nTabsNBA projection: 0.0 min', result['rows'][1]['minutesDetail'])
         expected = {edge_pick(row, games[row['Event ID']], 'FanDuel', day)['id'] for _, row in edges.iterrows()}
         self.assertEqual({row['pick']['id'] for row in result['rows']}, expected)
         self.assertEqual(len(expected), 2)

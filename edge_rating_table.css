@@ -29,6 +29,7 @@ td[data-column="Player"] { background: var(--edge-group-bg); font-weight: 500; }
 th[data-column="Player"] { z-index: 3; }
 td button { width: 100%; text-align: start; text-decoration: underline dotted; text-underline-offset: .25rem; padding: .12rem .2rem; }
 td button.player-identity { width: auto; padding: 0; text-decoration: none; }
+td button.minutes-source { text-align: end; padding: 0; cursor: help; }
 .player-name { text-decoration: underline dotted; text-decoration-color: var(--st-border-color, #8888); text-underline-offset: .25rem; }
 button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: .2rem; }
 [popover] { pointer-events: none; position: fixed; inset: auto; margin: 0; box-sizing: border-box;

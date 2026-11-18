@@ -13,7 +13,7 @@ from points_probability import PROBABILITY_COLUMNS
 from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT
 from todays_plays import edge_pick
 
-EDGE_TABLE_UI_VERSION = 'matchup_peer_performances_v2_locked'
+EDGE_TABLE_UI_VERSION = 'minutes_source_hover_v1'
 
 PLAYER_PREVIEW_STATS = {'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', '3PM': 'FG3M',
                         'STL': 'STL', 'BLK': 'BLK', 'TOV': 'TOV', 'PF': 'PF', 'PRA': 'PRA'}
@@ -35,6 +35,7 @@ HEADER_LABELS = {'Rank':'Player #', 'Projected minutes':'Min', 'Reference minute
                  'Book line (Over)':'Line / Over odds', 'Book implied total':'Implied total',
                  'Exp. P(over)':'Over %', 'Exp. P(under)':'Under %', 'Exp. P(push)':'Push %'}
 HEADER_HELP = {
+    'Projected minutes':'Hover or click to compare your projected minutes with TabsNBA and the minutes used by the model.',
     'Rank':'Player rank in this list, based on their highest qualifying Edge %. All their displayed props stay together.',
     'Edge %':'Players are ordered by their highest qualifying edge; props within each player are highest first. This projection gap is not win probability or expected return.',
     'Good-to minutes':'Minutes at which this side still clears 5% edge: lower limit for an Over, upper limit for an Under. Tested in half-minute steps through 48.',
@@ -186,6 +187,29 @@ def group_player_edges(edges):
         ordered.groupby(identity, sort=False, dropna=False), start=1)], ignore_index=True)
 
 
+def minutes_source_detail(row):
+    """Show source allocations, including valid zeroes, without new calculations."""
+    def minutes(field):
+        try:
+            value = float(row.get(field))
+            return f'{value:.1f} min' if isfinite(value) and 0 <= value <= 48 else 'Unavailable'
+        except (TypeError, ValueError):
+            return 'Unavailable'
+
+    lines = [f'Your projection: {minutes("Your minutes")}',
+             f'TabsNBA projection: {minutes("Tabs minutes")}',
+             f'Used by model: {minutes("Projected minutes")}']
+    basis = str(row.get('Tabs minutes basis', ''))
+    if basis.startswith('Assumed 0'):
+        lines.append('TabsNBA’s 0 is inferred from its complete rotation; this player was not listed.')
+    elif basis == 'Explicit OUT':
+        lines.append('TabsNBA lists this player as OUT.')
+    status = str(row.get('Minutes blend status', ''))
+    if status.startswith('Pending'):
+        lines.append(status)
+    return '\n'.join(lines)
+
+
 def player_projection_cards(projections):
     """Format the loaded final game frame, independently of qualifying prop filters."""
     if projections is None or projections.empty:
@@ -206,6 +230,7 @@ def player_projection_cards(projections):
         row = rows.iloc[0]
         cards[key] = dict(player=str(row.Player), team=str(row.Team), opponent=str(row.Opponent),
                           minutes=number(row.get('Projected minutes'), 1),
+                          minutesDetail=minutes_source_detail(row),
                           stats=[dict(stat=label, value=number(row.get(field)))
                                  for label, field in PLAYER_PREVIEW_STATS.items()])
     return cards
@@ -221,6 +246,7 @@ def table_payload(edges, columns, roster, effects, team, game, book, day, projec
     for _, row in grouped.iterrows():
         event = games[row['Event ID']] if games is not None else game
         card_key = ((row['Event ID'],) if games is not None else ()) + (row.PLAYER_ID, row.Team, row.Opponent)
+        card = cards.get(card_key)
         raw = row[columns]
         values = [None if pd.isna(v) else v for v in raw.tolist()]
         labels = []
@@ -250,7 +276,8 @@ def table_payload(edges, columns, roster, effects, team, game, book, day, projec
             badges.append(dict(label='✓' if row.get('Robust play') else 'Review',color='clear' if row.get('Robust play') else 'unchecked',detail=row.get('Review detail','')))
         output.append(dict(pick=edge_pick(row, event, book, day), values=values, labels=labels, styles=comparison_style(raw),
                            playerId=int(row.PLAYER_ID),
-                           projection=cards.get(card_key) if row.Rank != last_rank else None,
+                           projection=card if row.Rank != last_rank else None,
+                           minutesDetail=card['minutesDetail'] if card else 'Minutes comparison unavailable for this game.',
                            playerRowSpan=int(counts[row.Rank]) if row.Rank != last_rank else 0,
                            detail=rating_detail(row.Stat, player, row.Opponent, effects),
                            matchup=peer_panels(row.Stat, player, row.Opponent, effects,

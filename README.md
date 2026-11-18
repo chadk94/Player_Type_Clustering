@@ -1715,3 +1715,9 @@ expanding perform no network request or model rerun.
 Expanded matchup panels stay attached to the selected rating until dismissed or
 another rating is explicitly clicked. Expansion updates the open panel in place;
 passive hover over another row or team table cannot replace its archetype.
+
+Hover, focus or click a **Min** value in either the game or all-slate Sportsbook
+Edges table to see your projected minutes, TabsNBA's projected minutes, and the
+minutes used by the model. Values come from the loaded game projection; the hover
+does not fetch data or rerun calculations. Missing sources stay unavailable, valid
+zeroes remain zero, and zeroes inferred from a complete Tabs rotation are labeled.
