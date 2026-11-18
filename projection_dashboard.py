@@ -482,13 +482,14 @@ def reset_manual_minutes(flag_key, slider_key):
 
 
 @st.fragment
-def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day, projections):
+def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day, projections, games=None):
     extra = ui.toggle('Show extra columns', value=False, key='edges_extra_columns',
                       help='Show reference minutes, minutes cushion, implied totals, both odds and push probability. Players stay grouped by their best Edge %.')
     secondary = {'Reference minutes', 'Minutes cushion', 'Book implied total', 'Over odds', 'Exp. P(push)'}
     columns = [column for column in columns if column != 'EV %' and (extra or column not in secondary)]
     ordered = ranked.sort_values('Edge %', ascending=False, na_position='last', kind='stable')
-    groups = [(team, ordered.loc[ordered.Team.eq(team)]) for team in (game['Away'], game['Home'])]
+    groups = ([('All games', ordered)] if games is not None else
+              [(team, ordered.loc[ordered.Team.eq(team)]) for team in (game['Away'], game['Home'])])
 
     exports = []
     for group, rows in groups:
@@ -498,12 +499,14 @@ def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day, p
             continue
         rows = group_player_edges(rows)
         exports.append(rows.drop(columns='PLAYER_ID'))
-        render_edge_table(rows, columns, roster, effects, group, game, book, day, projections)
+        render_edge_table(rows, columns, roster, effects, group, game, book, day, projections, games)
     ui.caption('Experimental probabilities use each player’s final projection and the saved line, conditional on playing. '
                'Players are ranked by their best Edge %, with their props grouped together. Extra columns include push probability.')
     ui.caption('Hover or tap a player’s name or photo for their full game projection. Hover or tap a matchup rating for recent results by archetype. Ratings range from 1 (poor) to 5 (excellent).')
-    ui.download_button('Download all edges for this game', pd.concat(exports, ignore_index=True).to_csv(index=False),
-                       f"{game['Away']}_{game['Home']}_edges.csv", 'text/csv', key='edges_download')
+    label = 'Download full-slate robust plays' if games is not None else 'Download all edges for this game'
+    filename = f'robust-plays-{day}.csv' if games is not None else f"{game['Away']}_{game['Home']}_edges.csv"
+    ui.download_button(label, pd.concat(exports, ignore_index=True).to_csv(index=False),
+                       filename, 'text/csv', key='edges_download')
 
 
 def set_edge_stats(selected):
@@ -1330,12 +1333,96 @@ def render_live_dashboard(ui, roster):
             edge_cache[key] = ranked, observations
         return edge_cache[key]
 
+    def render_robust_slate(games, book_name, api_key, day, direction, stats, search, show_recent):
+        """Review every verified upcoming event; keep per-event quotes and save IDs."""
+        reviews, projections_by_game, observations, coverage = [], [], [], []
+        progress = ui.progress(0., text='Checking the full slate…')
+        for index, game in enumerate(games):
+            label = f"{game['Away']} @ {game['Home']}"
+            progress.progress(index / len(games), text=f'Checking {label} · {index + 1} of {len(games)} games')
+            row = {'Game': label, 'Eligible plays': 0, 'More robust': 0,
+                   'Minutes unchecked': 0, 'Role unchecked': 0, 'Injury unchecked': 0, 'Status': 'Checked'}
+            blocked = blocked_matchup_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
+            if blocked:
+                row['Status'] = blocked
+                coverage.append(row)
+                continue
+            try:
+                base, combined = game_frames(game['Away'], game['Home'], game['GameTimeUTC'])
+                payload = sportsbook_props(game['id'], BOOKS[book_name], api_key)
+                if not combined.empty:
+                    event = {**game, 'commence_time': game['GameTimeUTC'].isoformat()}
+                    combined = team_projection_preview(ProjectionNotes(), combined, event, BOOKS[book_name], api_key, team_rates)
+                edges, captured = edge_snapshot(combined, payload, game, BOOKS[book_name], datetime.now(timezone.utc))
+                # Count all qualifying categories/directions, independent of display filters.
+                edges, _ = filter_game_edges(edges, True, 'Both', EDGE_STATS, '')
+                observations.extend(captured)
+                if edges.empty:
+                    row['Status'] = 'No eligible current quotes / projections'
+                else:
+                    try:
+                        refs, info, stamp, passing = edge_review_inputs(game, roster, base, approved_bundle, logs, matched_players)
+                        reviewed = assess_edges(edges, combined, game, logs, matched_players, refs, info, stamp,
+                                                datetime.now(timezone.utc), passing=passing)
+                    except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
+                        reviewed = unavailable_review(edges)
+                    row['Eligible plays'] = len(reviewed)
+                    row['More robust'] = int(reviewed['Robust play'].sum())
+                    for check in ('Minutes', 'Role', 'Injury'):
+                        row[check + ' unchecked'] = int(reviewed[check + ' flag'].eq('Unchecked').sum())
+                    if show_recent and row['More robust']:
+                        recent = recent_role_comparison(combined, roster, players, logs, SEASON, matched_players=matched_players)
+                        reviewed = add_recent_columns(reviewed, recent)
+                    reviews.append(reviewed.assign(**{'Event ID': game['id'], 'Game': label}))
+                    projections_by_game.append(combined.assign(**{'Event ID': game['id']}))
+            except (OddsFeedError, requests.RequestException, ValueError, KeyError, TypeError, IndexError):
+                row['Status'] = 'Unavailable — refresh to retry'
+            coverage.append(row)
+        progress.empty()
+        ui.subheader(f'More robust plays — all games · {book_name}')
+        review = pd.concat(reviews, ignore_index=True) if reviews else pd.DataFrame()
+        total = sum(row['More robust'] for row in coverage)
+        eligible = sum(row['Eligible plays'] for row in coverage)
+        unavailable = [row['Game'] for row in coverage if row['Status'] != 'Checked']
+        ui.success(f'{total} more robust plays across {len(games)} upcoming games · {eligible} eligible plays checked')
+        ui.caption('Full-slate count before player, stat and direction filters. Only current quotes and completed checks qualify; missing inputs never count as passes.')
+        if unavailable:
+            ui.warning('No verified qualifying results from: ' + ', '.join(unavailable) + '. See slate coverage below; these games are not assumed to have passed.')
+        if not review.empty:
+            pending = review[['Minutes flag', 'Role flag', 'Injury flag']].eq('Unchecked').any(axis=1)
+            if pending.any():
+                ui.info(f'{int(pending.sum())} plays still have an unfinished check. Missing or stale comparison data can keep plays out of this list.')
+            robust = filter_review(review, 'More robust plays')
+            shown, _ = filter_game_edges(robust, True, direction, stats, search)
+            if shown.empty:
+                ui.info('No more robust plays match your filters.' if total else
+                        'No plays currently pass every robustness check across the slate.')
+            else:
+                ui.caption(f'Showing {len(shown)} of {total} more robust plays. Players are grouped by their best Edge % across all games.')
+                shown['Book line (Over)'] = [over_line_label(line, price) for line, price in zip(shown['Book line'], shown['Over odds'])]
+                columns = ['Rank', 'Player', 'Team', 'Game', 'Stat', 'Play', 'Edge %', 'Projected',
+                           'Book line (Over)', 'Under odds', 'Projected minutes', 'Good-to minutes',
+                           'Matchup rating', 'Review flags', 'Reference minutes', 'Minutes cushion',
+                           'Book implied total', 'Over odds', *PROBABILITY_COLUMNS]
+                if show_recent:
+                    columns[columns.index('Projected') + 1:columns.index('Projected') + 1] = RECENT_COLUMNS
+                    ui.caption(RECENT_CAPTION)
+                render_ranked_edges(ui, shown, columns, roster, current_effects, None, book_name, day,
+                                    pd.concat(projections_by_game, ignore_index=True), {g['id']: g for g in games})
+        with ui.expander('Slate coverage and review details'):
+            ui.dataframe(pd.DataFrame(coverage), hide_index=True, width='stretch')
+            ui.caption('Unchecked counts can overlap. More robust uses the same minutes, role, injury and >5% stress-test requirements as the individual-game view. Projections and probabilities are unchanged.')
+            if not review.empty:
+                ui.download_button('Download full-slate review', review.to_csv(index=False),
+                                   f'slate-review-{day}.csv', 'text/csv', key='edge_review_slate_download')
+        return observations
+
     @st.fragment
     def render_edges_page():
         probability_observations = []
-        ui.subheader('💰 Sportsbook Edges by Team')
-        ui.caption('Edges are ranked within each team by the gap from the juice-adjusted book total. Steals and blocks Unders require an Under price of −160 or better.')
-        # Only fetch props for the selected game, never the full slate.
+        ui.subheader('💰 Sportsbook Edges')
+        ui.caption('Players are ranked by their strongest edge from the juice-adjusted book total. More robust plays combines all games. Steals and blocks Unders require an Under price of −160 or better.')
+        # All plays stays game-scoped; only the opt-in robust view loads the slate.
         try:
             edge_key = get_odds_api_key()
             if not edge_key:
@@ -1359,7 +1446,7 @@ def render_live_dashboard(ui, roster):
                 edge_direction = ui.selectbox('Edge direction',['Both','Over','Under'],key='edges_direction')
             player_search = ui.text_input(
                 'Filter by player',key='edges_player_search',placeholder='Type a player’s name…',
-                help='Search any part of a name in the selected game, then press Enter. Clear the field to show all players. Your stat and edge filters still apply.')
+                help='Search any part of a name, then press Enter. More robust plays searches all games; other views search the selected game. Your stat and edge filters still apply.')
             ui.write('Stats to show')
             select_col,clear_col,_ = ui.columns([1,1,6])
             with select_col:
@@ -1386,6 +1473,10 @@ def render_live_dashboard(ui, roster):
                 st.session_state['tabs_minutes_reference']=render_tabs_comparison(ui,roster_for_approved_games(source_roster,SEASON,edge_date,approved_bundle),games)
             if not games:
                 ui.info('No upcoming regular-season games with a verified sportsbook event were found for this date. Choose another date. Lines are never substituted from a different game.')
+            elif review_view == 'More robust plays':
+                render_edge_injuries(ui, None, games, roster, projections, approved_bundle)
+                probability_observations = render_robust_slate(games, edge_book_name, edge_key, edge_date,
+                    edge_direction, selected_stats, player_search, show_recent)
             else:
                 by_id = {game['id']:game for game in games}
                 labels = {game['id']:f"{game['Away']} @ {game['Home']} · {game['GameTimeUTC'].tz_convert('America/Denver'):%I:%M %p %Z}" for game in games}

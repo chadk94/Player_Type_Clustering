@@ -34,7 +34,7 @@ HEADER_LABELS = {'Rank':'Player #', 'Projected minutes':'Min', 'Reference minute
                  'Book line (Over)':'Line / Over odds', 'Book implied total':'Implied total',
                  'Exp. P(over)':'Over %', 'Exp. P(under)':'Under %', 'Exp. P(push)':'Push %'}
 HEADER_HELP = {
-    'Rank':'Player rank within this team, based on their highest qualifying Edge %. All their displayed props stay together.',
+    'Rank':'Player rank in this list, based on their highest qualifying Edge %. All their displayed props stay together.',
     'Edge %':'Players are ordered by their highest qualifying edge; props within each player are highest first. This projection gap is not win probability or expected return.',
     'Good-to minutes':'Minutes at which this side still clears 5% edge: lower limit for an Over, upper limit for an Under. Tested in half-minute steps through 48.',
     'Matchup rating':'1 = poor, 3 = average, 5 = excellent. Click a rating for archetype matchup evidence.',
@@ -160,8 +160,9 @@ def group_player_edges(edges):
         return edges.copy()
     ordered = edges.sort_values(['Edge %', 'Player', 'Stat'],
                                 ascending=[False, True, True], na_position='last', kind='stable')
+    identity = (['Event ID'] if 'Event ID' in ordered else []) + ['Team', 'PLAYER_ID']
     return pd.concat([rows.assign(Rank=rank) for rank, (_, rows) in enumerate(
-        ordered.groupby(['Team', 'PLAYER_ID'], sort=False, dropna=False), start=1)], ignore_index=True)
+        ordered.groupby(identity, sort=False, dropna=False), start=1)], ignore_index=True)
 
 
 def player_projection_cards(projections):
@@ -177,7 +178,8 @@ def player_projection_cards(projections):
             return '—'
 
     cards = {}
-    for key, rows in projections.groupby(['PLAYER_ID', 'Team', 'Opponent'], sort=False):
+    identity = (['Event ID'] if 'Event ID' in projections else []) + ['PLAYER_ID', 'Team', 'Opponent']
+    for key, rows in projections.groupby(identity, sort=False):
         if len(rows) != 1:
             continue  # Never pick an arbitrary conflicting game projection.
         row = rows.iloc[0]
@@ -188,7 +190,7 @@ def player_projection_cards(projections):
     return cards
 
 
-def table_payload(edges, columns, roster, effects, team, game, book, day, projections=None):
+def table_payload(edges, columns, roster, effects, team, game, book, day, projections=None, games=None):
     players = roster.set_index('PLAYER_ID')
     cards = player_projection_cards(projections)
     output = []
@@ -196,6 +198,8 @@ def table_payload(edges, columns, roster, effects, team, game, book, day, projec
     counts = grouped['Rank'].value_counts()
     last_rank = None
     for _, row in grouped.iterrows():
+        event = games[row['Event ID']] if games is not None else game
+        card_key = ((row['Event ID'],) if games is not None else ()) + (row.PLAYER_ID, row.Team, row.Opponent)
         raw = row[columns]
         values = [None if pd.isna(v) else v for v in raw.tolist()]
         labels = []
@@ -223,9 +227,9 @@ def table_payload(edges, columns, roster, effects, team, game, book, day, projec
                     **popup))
         if not badges and 'Review group' in row:
             badges.append(dict(label='✓' if row.get('Robust play') else 'Review',color='clear' if row.get('Robust play') else 'unchecked',detail=row.get('Review detail','')))
-        output.append(dict(pick=edge_pick(row, game, book, day), values=values, labels=labels, styles=comparison_style(raw),
+        output.append(dict(pick=edge_pick(row, event, book, day), values=values, labels=labels, styles=comparison_style(raw),
                            playerId=int(row.PLAYER_ID),
-                           projection=cards.get((row.PLAYER_ID, row.Team, row.Opponent)) if row.Rank != last_rank else None,
+                           projection=cards.get(card_key) if row.Rank != last_rank else None,
                            playerRowSpan=int(counts[row.Rank]) if row.Rank != last_rank else 0,
                            detail=rating_detail(row.Stat, player, row.Opponent, effects),reviewBadges=badges))
         last_rank = row.Rank
@@ -241,6 +245,6 @@ def _component(runtime, ui_version):
         css=Path(__file__).with_suffix('.css').read_text(), js=Path(__file__).with_name('play_storage.mjs').read_text()+'\n'+Path(__file__).with_suffix('.mjs').read_text())
 
 
-def render_edge_table(edges, columns, roster, effects, team, game, book, day, projections):
-    _component(st.runtime.get_instance(), EDGE_TABLE_UI_VERSION)(data=table_payload(edges, columns, roster, effects, team, game, book, day, projections),
+def render_edge_table(edges, columns, roster, effects, team, game, book, day, projections, games=None):
+    _component(st.runtime.get_instance(), EDGE_TABLE_UI_VERSION)(data=table_payload(edges, columns, roster, effects, team, game, book, day, projections, games),
                                           key='sportsbook_edge_table_' + team)

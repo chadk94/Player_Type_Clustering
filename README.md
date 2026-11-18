@@ -1568,6 +1568,15 @@ unvalidated sensitivity thresholds. The default **All plays** view retains every
 row; **More robust plays**, **Waiting on news**, and **Needs review / unchecked** only filter
 visibility. Click the orange **Minutes risk**, purple **ROLE** and blue **Q** badges for evidence.
 A gray question mark means a check is unavailable, never that it passed.
+Selecting **More robust plays** reviews all verified upcoming games for the selected
+date and sportsbook and shows one table, grouped by each player's strongest Edge %.
+The full-slate count stays visible before player/stat/direction filters; game labels,
+Lo/Med/Hi saves and full-projection cards retain their original event identity.
+**Slate coverage and review details** lists per-game counts and unfinished checks;
+failed feeds, blocked rotations and absent quotes are reported, never counted as passes.
+Other review views keep the single-game selector. The full slate is loaded only when
+the robust view is selected, reusing cached quotes and calculations. Main projections,
+probabilities and review thresholds are unchanged.
 The gray **Minutes unverified** badge explains when an independent comparison is missing,
 shows the what-if minutes, projected stat and remaining directional edge, and keeps the
 check pending. The rotation redistribution and source timestamps sit under **Technical details**.

@@ -300,7 +300,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         with patch.object(dashboard,'game_quote_probabilities',side_effect=AssertionError('Review filter recalculated probabilities')):
             review_widget.set_value('More robust plays').run()
             self.assert_no_errors()
-            self.assertTrue(any('No plays pass this review filter' in item.value for item in self.app.info))
+            self.assertTrue(any('No plays currently pass every robustness check' in item.value for item in self.app.info))
             next(w for w in self.app.get('button_group') if w.key=='edges_review_view').set_value('All plays').run()
             self.assert_no_errors()
             for before,after in zip(edge_tables,self.edge_frames()):pd.testing.assert_frame_equal(before,after)
@@ -375,6 +375,62 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertTrue(comparison.loc[comparison.Stat.isin(['PTS','AST']), 'Market status'].str.startswith('Stale').all())
         self.assertEqual(self.probability_tracking.call_args.args[1], [])
         self.assertEqual([m.call_count for m in feeds], counts)
+
+    def test_robust_plays_collect_all_games_keep_save_ids_and_report_missing_coverage(self):
+        now = datetime.now(timezone.utc)
+        start = (now + timedelta(hours=4)).isoformat()
+        events = [dict(id='one', home_team='Houston Rockets', away_team='Atlanta Hawks', commence_time=start),
+                  dict(id='two', home_team='Charlotte Hornets', away_team='Cleveland Cavaliers', commence_time=start)]
+        self.mock('get_odds_api_key', return_value='test-key')
+        self.mock('sportsbook_events', return_value=events)
+        self.mock('sportsbook_game_lines', return_value={})
+        self.mock('team_projection_preview', side_effect=lambda ui, rows, *args: rows)
+        def props(event_id, *args):
+            event = next(e for e in events if e['id'] == event_id)
+            return {**event, 'bookmakers':[{'key':'fanduel','markets':[{
+                'key':'player_points','last_update':now.isoformat(),'outcomes':[
+                    dict(description=name,name=side,point=20.5,price=-110)
+                    for name in self.roster.PLAYER_NAME for side in ['Over','Under']]}]}]}
+        self.mock('sportsbook_props', side_effect=props)
+        self.schedule.return_value = pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
+            for side,opp,venue in [('HOU','ATL','home'),('ATL','HOU','away'),
+                                   ('CHA','CLE','home'),('CLE','CHA','away')]])
+        def reviewed(edges, *args, **kwargs):
+            result = dashboard.unavailable_review(edges)
+            result.loc[result.index[:2], ['Robust play','Review group']] = [True,'More robust']
+            result.loc[result.index[:2], ['Minutes flag','Role flag','Injury flag']] = 'Clear'
+            return result
+        self.mock('assess_edges', side_effect=reviewed)
+        self.app.session_state['edges_review_view'] = 'More robust plays'
+        self.app.run()
+        self.assert_no_errors()
+        self.assertTrue(any('4 more robust plays across 2 upcoming games' in m.value for m in self.app.success))
+        frames = self.edge_frames()
+        self.assertEqual(len(frames), 1)
+        self.assertEqual(len(frames[0]), 4)
+        self.assertEqual(set(frames[0].Game), {'ATL @ HOU','CLE @ CHA'})
+        self.assertTrue(frames[0].groupby('Rank')['Edge %'].max().is_monotonic_decreasing)
+        component = next(e for e in self.app.get('bidi_component') if 'sportsbook_edge_table' in e.proto.component_name)
+        data = json.loads(component.proto.json)
+        self.assertEqual({row['pick']['event'] for row in data['rows']}, {'one','two'})
+        by_player = frames[0].set_index('Player')
+        target = frames[0].iloc[0].Player
+        search = self.app.text_input(key='edges_player_search')
+        self.fragment_id = self.fragment_for(search)
+        with patch.object(dashboard, 'game_quote_probabilities', side_effect=AssertionError('Search recalculated probabilities')):
+            search.set_value(target).run()
+        self.assert_no_errors()
+        self.assertEqual(set(self.edge_frames()[0].Player), {target})
+        self.assertTrue(any('4 more robust plays across 2 upcoming games' in m.value for m in self.app.success))
+        self.assertAlmostEqual(self.edge_frames()[0].iloc[0].Projected, by_player.loc[target,'Projected'])
+        self.app.text_input(key='edges_player_search').set_value('').run()
+        with patch.object(dashboard,'sportsbook_props',side_effect=lambda event_id,*args:
+                          props(event_id) if event_id == 'one' else (_ for _ in ()).throw(dashboard.OddsFeedError('unavailable'))):
+            self.app.button(key='edges_review_refresh').click().run()
+        self.assert_no_errors()
+        self.assertEqual(set(self.edge_frames()[0].Game), {'ATL @ HOU'})
+        self.assertTrue(any('No verified qualifying results from: CLE @ CHA' in w.value for w in self.app.warning))
 
     def test_team_player_navigation_selects_player_and_exact_matchup(self):
         self.fragment_id = self.fragment_for(self.app.selectbox(key='projection_player'))

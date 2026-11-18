@@ -79,6 +79,25 @@ class EdgeRatingDetailsTests(unittest.TestCase):
         ambiguous = pd.concat([projections, projections.iloc[:1]], ignore_index=True)
         self.assertIsNone(table_payload(*args, projections=ambiguous)['rows'][0]['projection'])
 
+    def test_slate_table_saves_each_event_and_shows_its_own_projection(self):
+        base = dict(PLAYER_ID=1, Player='Same Player', Team='MEM', Opponent='CLE', Stat='PTS',
+                    Play='Over', Projected=20., **{'Book line': 15.5, 'Over odds': -110,
+                    'Under odds': -110, 'Signed edge %': 20., 'Edge %': 20.})
+        # Even the same player/team/opponent must not merge across event IDs.
+        edges = pd.DataFrame([dict(base, **{'Event ID':'first'}),
+                              dict(base, Projected=25., **{'Event ID':'second', 'Edge %':30.})])
+        games = {key: dict(id=key, Away='MEM', Home='CLE') for key in ['first','second']}
+        projections = edges.rename(columns={'Projected':'PTS'}).assign(**{'Projected minutes':30.})
+        day = date(2026,11,18)
+        result = table_payload(edges, ['Rank','Player','Stat','Projected','Edge %','Play'],
+            pd.DataFrame([dict(PLAYER_ID=1)]), {}, 'All games', None, 'FanDuel', day,
+            projections, games)
+        self.assertEqual([row['playerRowSpan'] for row in result['rows']], [1,1])
+        self.assertEqual([row['projection']['stats'][0]['value'] for row in result['rows']], ['25.00','20.00'])
+        expected = {edge_pick(row, games[row['Event ID']], 'FanDuel', day)['id'] for _, row in edges.iterrows()}
+        self.assertEqual({row['pick']['id'] for row in result['rows']}, expected)
+        self.assertEqual(len(expected), 2)
+
     def test_window_uses_distinct_opponent_games_and_rates_use_qualifying_player_games(self):
         rows = [dict(GAME_DATE=f'2026-11-0{i}', GAME_ID=str(i), ESPN_PLAYER_ID='1',
                      MIN=36, PTS=99 if i==1 else 10, FG3M=0, FG3A=4,
