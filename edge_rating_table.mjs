@@ -11,7 +11,6 @@ export default function({data, parentElement}) {
     const table = make('table');
     table.setAttribute('aria-label', data.team + ' sportsbook edges');
     const headers = table.createTHead().insertRow();
-    const body = table.createTBody();
     scroll.append(table);
     const tip = make('div');
     tip.id = 'rating-detail-' + data.team;
@@ -84,16 +83,14 @@ export default function({data, parentElement}) {
     function render() {
         selectors.clear();
         hide();
-        body.replaceChildren();
+        for (const body of [...table.tBodies]) body.remove();
         for (const [i, th] of [...headers.cells].slice(1).entries()) {
-            th.setAttribute('aria-sort', i === sort ? 'descending' : 'none');
+            th.setAttribute('aria-sort', i === sort ? 'other' : 'none');
         }
-        const rows = [...data.rows].sort((a, b) => {
-            const x = a.values[sort], y = b.values[sort];
-            if (x == null || y == null) return Number(x == null) - Number(y == null);
-            return typeof x === 'number' && typeof y === 'number' ? y - x : 0;
-        });
-        for (const row of rows) {
+        let body;
+        // The payload groups players by their best edge, then their props by edge.
+        for (const row of data.rows) {
+            if (row.playerRowSpan) body = table.createTBody();
             const tr = body.insertRow();
             const saveCell = tr.insertCell();
             const pick = row.pick;
@@ -129,8 +126,14 @@ export default function({data, parentElement}) {
                 selectors.set(group,{pick,inputs});saveCell.append(group);
             }
             for (const [i, label] of row.labels.entries()) {
+                const playerCell = ['Rank', 'Player'].includes(data.columns[i]);
+                if (playerCell && !row.playerRowSpan) continue;
                 const td = tr.insertCell();
                 td.dataset.column = data.columns[i];
+                if (playerCell) {
+                    td.rowSpan = row.playerRowSpan;
+                    td.classList.add('player-group');
+                }
                 if (typeof row.values[i] === 'number' || data.columns[i] === 'Book line (Over)') td.classList.add('numeric');
                 if (row.styles[i]) td.style.cssText = row.styles[i];
                 if (data.columns[i] === 'Review flags') {

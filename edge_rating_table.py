@@ -12,7 +12,7 @@ from points_probability import PROBABILITY_COLUMNS
 from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT
 from todays_plays import edge_pick
 
-EDGE_TABLE_UI_VERSION = 'plain_minutes_v3'
+EDGE_TABLE_UI_VERSION = 'player_groups_v1'
 
 # Match the component statistics used by apply_matchup, including the attempts
 # effect on made threes. Keep the two rebound populations separate.
@@ -25,13 +25,14 @@ ROLE_STATS = {
 FORMATS = {'Projected minutes': '.1f', 'Reference minutes': '.1f', 'Good-to minutes': 'g', 'Projected': '.2f', 'Recent role': '.2f',
            'Recent change %': '+.1f', 'Book implied total': '.2f', 'Edge %': '+.2f',
            'Over odds': '+.0f', 'Under odds': '+.0f', **{key: '.1%' for key in PROBABILITY_COLUMNS}}
-HEADER_LABELS = {'Rank':'#', 'Projected minutes':'Min', 'Reference minutes':'Ref. min',
+HEADER_LABELS = {'Rank':'Player #', 'Projected minutes':'Min', 'Reference minutes':'Ref. min',
                  'Good-to minutes':'Good-to min', 'Minutes cushion':'Cushion',
                  'Matchup rating':'Matchup', 'Review flags':'Flags', 'Projected':'Projection',
                  'Book line (Over)':'Line / Over odds', 'Book implied total':'Implied total',
                  'Exp. P(over)':'Over %', 'Exp. P(under)':'Under %', 'Exp. P(push)':'Push %'}
 HEADER_HELP = {
-    'Edge %':'Projection gap from the juice-adjusted book total, ranked highest first. This is not win probability or expected return.',
+    'Rank':'Player rank within this team, based on their highest qualifying Edge %. All their displayed props stay together.',
+    'Edge %':'Players are ordered by their highest qualifying edge; props within each player are highest first. This projection gap is not win probability or expected return.',
     'Good-to minutes':'Minutes at which this side still clears 5% edge: lower limit for an Over, upper limit for an Under. Tested in half-minute steps through 48.',
     'Matchup rating':'1 = poor, 3 = average, 5 = excellent. Click a rating for archetype matchup evidence.',
     'Review flags':'Minutes unverified = no completed minutes check; Minutes risk = playing time could weaken the bet; ROLE = recent-role risk; Q = availability risk; ? = unchecked. Click a badge for details.',
@@ -150,10 +151,23 @@ def rating_detail(stat, player, opponent, effects):
     return basis + f'vs {opponent} · {period} this season\nAverage per 36 minutes · 5+ minutes played\n\n' + '\n\n'.join(sections)
 
 
+def group_player_edges(edges):
+    """Group displayed props by identity, ranking players by their best remaining edge."""
+    if edges.empty:
+        return edges.copy()
+    ordered = edges.sort_values(['Edge %', 'Player', 'Stat'],
+                                ascending=[False, True, True], na_position='last', kind='stable')
+    return pd.concat([rows.assign(Rank=rank) for rank, (_, rows) in enumerate(
+        ordered.groupby(['Team', 'PLAYER_ID'], sort=False, dropna=False), start=1)], ignore_index=True)
+
+
 def table_payload(edges, columns, roster, effects, team, game, book, day):
     players = roster.set_index('PLAYER_ID')
     output = []
-    for _, row in edges.iterrows():
+    grouped = group_player_edges(edges)
+    counts = grouped['Rank'].value_counts()
+    last_rank = None
+    for _, row in grouped.iterrows():
         raw = row[columns]
         values = [None if pd.isna(v) else v for v in raw.tolist()]
         labels = []
@@ -182,7 +196,9 @@ def table_payload(edges, columns, roster, effects, team, game, book, day):
         if not badges and 'Review group' in row:
             badges.append(dict(label='✓' if row.get('Robust play') else 'Review',color='clear' if row.get('Robust play') else 'unchecked',detail=row.get('Review detail','')))
         output.append(dict(pick=edge_pick(row, game, book, day), values=values, labels=labels, styles=comparison_style(raw),
+                           playerRowSpan=int(counts[row.Rank]) if row.Rank != last_rank else 0,
                            detail=rating_detail(row.Stat, player, row.Opponent, effects),reviewBadges=badges))
+        last_rank = row.Rank
     return dict(columns=columns, rows=output, team=team,
                 headers=[HEADER_LABELS.get(c,c) for c in columns],
                 headerHelp=[HEADER_HELP.get(c,c) for c in columns])

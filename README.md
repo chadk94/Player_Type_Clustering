@@ -533,8 +533,12 @@ opponent-adjusted projection and the no-vig, Poisson-implied book total. This is
 not a probability edge or expected return. Both sides' American prices and the
 posted line remain visible. Multiple props for one player can be correlated.
 
-The table hides **EV %** and always sorts each team by **Edge %**, highest first;
-old EV sort preferences and column clicks cannot change that order. EV continues
+The table hides **EV %** and groups each player's qualifying props together within
+their team. **Player #** ranks players by their highest displayed **Edge %**;
+their props then run highest edge first. Names and player ranks appear once beside
+the group, with Lo / Med / Hi controls on every prop. Filters recalculate groups
+from the remaining props, and the game CSV uses the same grouping and player ranks.
+Old EV sort preferences and column clicks cannot change that order. EV continues
 to be calculated for exports and tracking, using the unrounded win/loss probabilities
 and the selected side's quoted payout. It does not affect the visible rankings.
 

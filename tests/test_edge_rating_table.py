@@ -1,12 +1,55 @@
 import unittest
+from datetime import date
 
 import pandas as pd
 
-from edge_rating_table import rating_detail
+from edge_rating_table import group_player_edges, rating_detail, table_payload
+from todays_plays import edge_pick
 from matchup_projections import matchup_effects
 
 
 class EdgeRatingDetailsTests(unittest.TestCase):
+    def test_player_groups_use_best_qualifying_edge_and_preserve_prop_terms(self):
+        edges = pd.DataFrame([
+            dict(PLAYER_ID=1, Player='Cameron Boozer', Stat='AST', **{'Edge %': 21.07}),
+            dict(PLAYER_ID=2, Player='Cedric Coward', Stat='AST', **{'Edge %': 17.53}),
+            dict(PLAYER_ID=1, Player='Cameron Boozer', Stat='PRA', **{'Edge %': 15.10}),
+            dict(PLAYER_ID=1, Player='Cameron Boozer', Stat='REB', **{'Edge %': 9.89}),
+            dict(PLAYER_ID=2, Player='Cedric Coward', Stat='PTS', **{'Edge %': 8.08}),
+        ]).assign(Team='MEM', Rank=range(1, 6))
+        original = edges.copy(deep=True)
+        grouped = group_player_edges(edges)
+        self.assertEqual(list(zip(grouped.PLAYER_ID, grouped.Stat, grouped.Rank)),
+                         [(1,'AST',1), (1,'PRA',1), (1,'REB',1), (2,'AST',2), (2,'PTS',2)])
+        # Filtering out the strongest prop changes the player order, not any terms.
+        filtered = group_player_edges(edges.loc[edges.Stat.ne('AST') | edges.PLAYER_ID.ne(1)])
+        self.assertEqual(filtered.PLAYER_ID.tolist(), [2, 2, 1, 1])
+        self.assertEqual(filtered.Rank.tolist(), [1, 1, 2, 2])
+        pd.testing.assert_frame_equal(edges, original)
+        pd.testing.assert_frame_equal(
+            grouped.drop(columns='Rank').sort_values(['PLAYER_ID', 'Stat']).reset_index(drop=True),
+            original.drop(columns='Rank').sort_values(['PLAYER_ID', 'Stat']).reset_index(drop=True))
+
+    def test_grouped_payload_keeps_save_identity_and_separate_player_ids(self):
+        base = dict(Player='Same Name', Team='MEM', Opponent='CLE', Play='Over', Projected=5.5,
+                    **{'Book line': 4.5, 'Over odds': -110, 'Under odds': -110,
+                       'Signed edge %': 10., 'Edge %': 10.})
+        edges = pd.DataFrame([dict(base, PLAYER_ID=1, Stat='AST'),
+                              dict(base, PLAYER_ID=2, Stat='PTS'),
+                              dict(base, PLAYER_ID=1, Stat='REB')])
+        roster = pd.DataFrame([dict(PLAYER_ID=1), dict(PLAYER_ID=2)])
+        event = dict(id='demo', Away='MEM', Home='CLE')
+        day = date(2026, 11, 18)
+        columns = ['Rank', 'Player', 'Stat', 'Edge %', 'Projected', 'Play']
+        payload = table_payload(edges, columns, roster, {}, 'MEM', event, 'FanDuel', day)
+        self.assertEqual([row['playerRowSpan'] for row in payload['rows']], [2, 0, 1])
+        self.assertEqual([row['labels'][2] for row in payload['rows']], ['AST', 'REB', 'PTS'])
+        self.assertEqual([row['labels'][0] for row in payload['rows']], ['1', '1', '2'])
+        expected = {edge_pick(row, event, 'FanDuel', day)['id']: edge_pick(row, event, 'FanDuel', day)
+                    for _, row in edges.iterrows()}
+        self.assertEqual({row['pick']['id']: row['pick'] for row in payload['rows']}, expected)
+        self.assertTrue(group_player_edges(edges.iloc[:0]).empty)
+
     def test_window_uses_distinct_opponent_games_and_rates_use_qualifying_player_games(self):
         rows = [dict(GAME_DATE=f'2026-11-0{i}', GAME_ID=str(i), ESPN_PLAYER_ID='1',
                      MIN=36, PTS=99 if i==1 else 10, FG3M=0, FG3A=4,

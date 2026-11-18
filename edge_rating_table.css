@@ -6,7 +6,9 @@ th:not(:last-child), td:not(:last-child) { border-inline-end: 1px solid var(--st
 th { position: sticky; top: 0; z-index: 1; font-weight: 600; background: var(--st-secondary-background-color, #838383); }
 tr:last-child td { border-bottom: 0; }
 button { color: inherit; font: inherit; padding: 0; border: 0; background: transparent; cursor: pointer; }
-th[aria-sort="descending"]::after { content: ' ↓'; }
+th[aria-sort="other"]::after { content: ' ↓'; }
+tbody + tbody tr:first-child td { border-top: 2px solid var(--st-border-color, #8886); }
+td.player-group { vertical-align: top; font-weight: 600; background: var(--st-background-color, Canvas); }
 tbody tr { --edge-row-bg: var(--st-background-color, Canvas); background: var(--edge-row-bg); }
 tbody tr:nth-child(even) { --edge-row-bg: color-mix(in srgb, var(--st-secondary-background-color, #888) 25%, var(--st-background-color, Canvas)); }
 tbody tr:hover { --edge-row-bg: color-mix(in srgb, var(--st-primary-color, #25785c) 7%, var(--st-background-color, Canvas)); }

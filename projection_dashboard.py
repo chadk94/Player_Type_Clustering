@@ -33,7 +33,7 @@ from team_projection_view import upcoming_team_games, team_projection_tables, TE
 from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, filter_game_edges, add_play_ev, EDGE_STATS, EVENT_TIME_TOLERANCE
 from sportsbook_injuries import KEY_MINUTES, game_injuries, injury_alert_changes, latest_report, pending_key_players
-from edge_rating_table import render_edge_table
+from edge_rating_table import group_player_edges, render_edge_table
 from edge_review import assess_edges, filter_review, unavailable_review, REVIEW_VIEWS
 from edge_review_sources import MinutesReferenceFeed, parse_minutes, review_passing
 from tabs_minutes import render_tabs_comparison
@@ -484,7 +484,7 @@ def reset_manual_minutes(flag_key, slider_key):
 @st.fragment
 def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day):
     extra = ui.toggle('Show extra columns', value=False, key='edges_extra_columns',
-                      help='Show reference minutes, minutes cushion, implied totals, both odds and push probability. Rankings stay highest Edge % first.')
+                      help='Show reference minutes, minutes cushion, implied totals, both odds and push probability. Players stay grouped by their best Edge %.')
     secondary = {'Reference minutes', 'Minutes cushion', 'Book implied total', 'Over odds', 'Exp. P(push)'}
     columns = [column for column in columns if column != 'EV %' and (extra or column not in secondary)]
     ordered = ranked.sort_values('Edge %', ascending=False, na_position='last', kind='stable')
@@ -496,11 +496,11 @@ def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day):
         if rows.empty:
             ui.info('No eligible edges for this team match the current filters.')
             continue
-        rows = rows.assign(Rank=range(1, len(rows) + 1))
+        rows = group_player_edges(rows)
         exports.append(rows.drop(columns='PLAYER_ID'))
         render_edge_table(rows, columns, roster, effects, group, game, book, day)
     ui.caption('Experimental probabilities use each player’s final projection and the saved line, conditional on playing. '
-               'Tables stay ranked by Edge %, highest first. Extra columns include push probability.')
+               'Players are ranked by their best Edge %, with their props grouped together. Extra columns include push probability.')
     ui.caption('Hover or tap a matchup rating for recent results by archetype. Ratings range from 1 (poor) to 5 (excellent).')
     ui.download_button('Download all edges for this game', pd.concat(exports, ignore_index=True).to_csv(index=False),
                        f"{game['Away']}_{game['Home']}_edges.csv", 'text/csv', key='edges_download')
@@ -1437,7 +1437,7 @@ def render_live_dashboard(ui, roster):
                         ui.success(f'Showing {len(ranked)} of {total_edges} eligible player-stat edges · {int(reviewed["Robust play"].sum())} pass all robustness checks')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
                         display_columns = ['Rank','Player','Stat','Play','Edge %','Projected','Book line (Over)','Under odds','Projected minutes','Good-to minutes','Matchup rating','Review flags','Reference minutes','Minutes cushion','Book implied total','Over odds', *PROBABILITY_COLUMNS]
-                        ui.caption('Highest Edge % first within each team. Click a flag or matchup rating for details; hover over column headings for definitions.')
+                        ui.caption('Players ordered by their best Edge % within each team. Each player’s plays stay together, highest edge first. Click a flag or matchup rating for details.')
                         if show_recent:
                             recent = recent_role_comparison(combined, roster, players, logs, SEASON, matched_players=matched_players)
                             ranked = add_recent_columns(ranked, recent)
