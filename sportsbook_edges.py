@@ -10,11 +10,9 @@ from points_probability import PROBABILITY_COLUMNS
 from projection_presentation import player_matchup_rating
 from team_rebounds import REBOUND_METADATA
 from matchup_projections import MATCHUP_METADATA, PRIOR_FIELD_BY_STAT
-from sportsbook_lines import TEAM_NAMES, STAT_ORDER, OddsFeedError, player_quotes, compare_with_book
+from sportsbook_lines import TEAM_NAMES, STAT_ORDER, OddsFeedError, player_quotes, compare_with_book, EVENT_TIME_TOLERANCE
 
 EDGE_STATS = [stat for stat in STAT_ORDER if stat != 'TOV']
-# Books can move from the advertised start to the expected actual tip near game time.
-EVENT_TIME_TOLERANCE = pd.Timedelta(minutes=15)
 
 
 def add_play_ev(edges):

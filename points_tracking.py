@@ -12,6 +12,7 @@ import streamlit as st
 
 from points_probability import MODEL_VERSION, PROBABILITY_COLUMNS, model_profile
 from prop_distributions import COUNT_STATS, COUNT_VERSION
+from sportsbook_lines import EVENT_TIME_TOLERANCE
 
 
 def record_id(record):
@@ -127,7 +128,7 @@ def grade_records(records, logs):
         if pool is None:
             return {}
         year = int(season[:4])
-        match = pool.loc[(pool['_start']-pd.Timestamp(start)).abs() <= pd.Timedelta(minutes=15)]
+        match = pool.loc[(pool['_start']-pd.Timestamp(start)).abs() <= EVENT_TIME_TOLERANCE]
         if (match.GAME_ID.nunique() != 1 or (match['_start'] < pd.Timestamp(f'{year}-10-01',tz='UTC')).any()
                 or (match['_start'] >= pd.Timestamp(f'{year+1}-07-01',tz='UTC')).any()):
             return {}

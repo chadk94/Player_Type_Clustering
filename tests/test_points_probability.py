@@ -87,6 +87,12 @@ class PointsProbabilityTests(unittest.TestCase):
         logs = pd.DataFrame([log])
         results = grade_records([r],logs)
         self.assertEqual(results[0]['outcome'],'Under')
+        for offset in [-30, -20, 20, 30]:
+            shifted = logs.assign(GAME_DATE=(pd.Timestamp(r['start'])+pd.Timedelta(minutes=offset)).isoformat())
+            self.assertEqual(grade_records([r],shifted)[0]['outcome'],'Under')
+        for offset in [-31, 31]:
+            shifted = logs.assign(GAME_DATE=(pd.Timestamp(r['start'])+pd.Timedelta(minutes=offset)).isoformat())
+            self.assertFalse(grade_records([r],shifted))
         for changed in [dict(ESPN_PLAYER_ID='9999'),dict(Team='BOS'),dict(Opponent='DET'),
                         dict(GAME_DATE='2026-11-04T22:00:00Z'),dict(PTS=np.nan)]:
             self.assertFalse(grade_records([r],pd.DataFrame([{**log,**changed}])))

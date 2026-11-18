@@ -255,12 +255,12 @@ class GameEdgeTests(unittest.TestCase):
         scheduled = pd.Timestamp(self.event['commence_time'])
         schedule = pd.DataFrame([{'TEAM_ID':TEAM_IDS['NYK'],'Opponent':'PHI','Venue':'home',
             'GameTimeUTC':scheduled,'GameStatus':'Scheduled'}])
-        for minutes in [-15, 9, 10, 15]:
+        for minutes in [-30, -20, -15, 9, 10, 15, 20, 30]:
             event = {**self.event,'commence_time':(scheduled+pd.Timedelta(minutes=minutes)).isoformat()}
             games = scheduled_book_games([event],schedule,self.now)
             self.assertEqual(len(games),1)
             self.assertEqual(games[0]['GameTimeUTC'],pd.Timestamp(event['commence_time']))
-        for minutes in [-16, 16, 1440]:
+        for minutes in [-31, 31, 1440]:
             event = {**self.event,'commence_time':(scheduled+pd.Timedelta(minutes=minutes)).isoformat()}
             self.assertEqual(scheduled_book_games([event],schedule,self.now),[])
         event = {**self.event,'commence_time':(scheduled+pd.Timedelta(minutes=9)).isoformat()}
@@ -270,6 +270,15 @@ class GameEdgeTests(unittest.TestCase):
         self.assertEqual(scheduled_book_games([wrong],schedule,self.now),[])
         reversed_venue = {**event,'home_team':event['away_team'],'away_team':event['home_team']}
         self.assertEqual(scheduled_book_games([reversed_venue],schedule,self.now),[])
+
+    def test_boston_denver_twenty_minute_feed_difference(self):
+        event = dict(id='bos-den', home_team='Denver Nuggets', away_team='Boston Celtics',
+                     commence_time='2026-11-19T02:10:00Z')
+        schedule = pd.DataFrame([dict(TEAM_ID=TEAM_IDS['DEN'], Opponent='BOS', Venue='home',
+                                     GameTimeUTC='2026-11-19T02:30:00Z', GameStatus='Scheduled')])
+        games = scheduled_book_games([event], schedule, pd.Timestamp('2026-11-18T20:00Z'))
+        self.assertEqual([(g['Away'], g['Home']) for g in games], [('BOS', 'DEN')])
+        self.assertEqual(games[0]['GameTimeUTC'], pd.Timestamp(event['commence_time']))
 
     def test_game_selector_requires_exact_future_scheduled_regular_season_event(self):
         schedule=pd.DataFrame([{'TEAM_ID':TEAM_IDS['NYK'],'Opponent':'PHI','Venue':'home',

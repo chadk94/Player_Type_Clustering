@@ -43,7 +43,7 @@ Selecting a player team defaults the opponent to its next verified regular-seaso
 
 Automatic selections follow the schedule whenever the page reruns or you refresh live data; they are tracked separately from manual choices. **Use next opponent** (or clearing the dropdown) restores automatic selection. Only the schedule response is cached for five minutes, so an expired game cannot remain the automatic default just because it was cached. A recovered schedule fills an empty automatic selection. This does not add automatic page reloads or enable in-game sportsbook prices; retained matchups remain pregame model previews.
 
-Sportsbook events for the default matchup must match its scheduled tip within 15 minutes. After tip, a later rematch between the same teams cannot supply replacement prices or team-total adjustments.
+Sportsbook events must match the scheduled teams, home/away orientation and tip within 30 minutes. This shared window covers feed discrepancies such as BOS–DEN on November 18, 2026 (ESPN 02:30 UTC; The Odds API 02:10 UTC). It applies to all projection pages and completed-box prediction tracking. The sportsbook event time remains the pregame cutoff; wrong opponents, later rematches and non-scheduled games remain excluded. Quote freshness still requires prices no more than 15 minutes old.
 
 The **Player vs Opponent** tab selects a player and any other team, with an opponent-adjustment toggle and baseline/adjusted stat comparison. A 0–48 minute slider (half-minute steps) recalculates the selected player’s baseline and opponent-adjusted stat line from the underlying per-minute rates, including players whose automatic minutes are zero. Each player’s custom value persists within the browser session; **Use automatic minutes** restores the exact workbook/season-average value. Custom minutes affect only this player preview and its CSV, not the saved workbook or daily matchup rankings. The **Today’s Best Matchups** tab uses the day’s verified upcoming regular-season schedule (date selectable), ranks by any supported percentage, includes a negative-matchup toggle and minimum-sample filter, and displays a green/red heatmap, home/away, archetypes, sample counts, projected lines and CSV download. Empty slates stay empty; choose another date for previews. Rosters remain the user's workbook scenario, not confirmed lineups.
 
@@ -139,7 +139,7 @@ the stat, direction, search and 5% filters. The player page records its
 loaded comparison. Manual-minute and opponent-adjustment-off previews have
 separate labels and are excluded from standard evaluation. On a new visit or
 **Refresh live data**, validated completed ESPN box scores match by player ESPN
-ID, teams and unique start time within 15 minutes. Missing appearances, ambiguous
+ID, teams and unique start time within 30 minutes. Missing appearances, ambiguous
 games and mismatched dates stay ungraded, never zero points. Results include
 the actual stat and minutes, Over/Under/Push and the ESPN game ID. Feed gaps leave
 previously saved results available; corrections from verified boxes replace

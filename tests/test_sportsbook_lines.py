@@ -83,6 +83,16 @@ class SportsbookTests(unittest.TestCase):
         # its next upcoming fixture, with that game's date shown in the app.
         self.assertEqual(next_matchup([later],'PHI','NYK',tip)['id'],'rematch')
 
+    def test_schedule_match_shares_thirty_minute_window(self):
+        tip = pd.Timestamp('2026-11-19T02:30:00Z')
+        event = dict(id='bos-den', home_team='Denver Nuggets', away_team='Boston Celtics')
+        for offset in [-30, -20, 20, 30]:
+            quote = {**event, 'commence_time':(tip+pd.Timedelta(minutes=offset)).isoformat()}
+            self.assertEqual(next_matchup([quote], 'BOS', 'DEN', self.now, scheduled_start=tip)['id'], 'bos-den')
+        for offset in [-31, 31, 1440]:
+            quote = {**event, 'commence_time':(tip+pd.Timedelta(minutes=offset)).isoformat()}
+            self.assertIsNone(next_matchup([quote], 'BOS', 'DEN', self.now, scheduled_start=tip))
+
     def test_colors_compare_projection_to_implied_not_posted_line(self):
         quotes=player_quotes(self.payload,'Jalen Brunson','fanduel',now=self.now)
         preview=pd.DataFrame({'Stat':['3PM','TOV'],'Projected':[2.7,1.]})

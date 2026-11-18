@@ -18,6 +18,9 @@ MARKETS = {'player_points':'PTS','player_rebounds':'REB','player_assists':'AST',
 STAT_ORDER = ['PTS','REB','AST','3PM','STL','BLK','TOV','PRA']
 PLAY_THRESHOLD_PCT = 5.
 MIN_STEALS_BLOCKS_UNDER_ODDS = -160
+# Schedule and book feeds can disagree by 20 minutes (BOS–DEN, Nov 18, 2026).
+# Share this bounded window across page matching and completed-box grading.
+EVENT_TIME_TOLERANCE = pd.Timedelta(minutes=30)
 TEAM_NAMES = {team['full_name']:team['abbreviation'] for team in get_teams()}
 TEAM_NAMES.update({'Los Angeles Clippers':'LAC','LA Clippers':'LAC'})
 
@@ -38,7 +41,7 @@ def read_feed(path, api_key, **params):
 
 
 def next_matchup(events, team, opponent, now=None, scheduled_start=None,
-                 time_tolerance=pd.Timedelta(minutes=15)):
+                 time_tolerance=EVENT_TIME_TOLERANCE):
     now = now or datetime.now(timezone.utc)
     scheduled_start = pd.Timestamp(scheduled_start) if scheduled_start is not None else None
     matches=[]
