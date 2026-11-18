@@ -1682,3 +1682,7 @@ The full rating explanation stays under **Technical details**. Recent examples a
 display-only: projections, ratings, season weights, probabilities and rankings are
 unchanged. Evidence is indexed once per cached history refresh; hovering and
 expanding perform no network request or model rerun.
+
+Expanded matchup panels stay attached to the selected rating until dismissed or
+another rating is explicitly clicked. Expansion updates the open panel in place;
+passive hover over another row or team table cannot replace its archetype.

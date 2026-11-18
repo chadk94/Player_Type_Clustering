@@ -13,7 +13,7 @@ from points_probability import PROBABILITY_COLUMNS
 from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT
 from todays_plays import edge_pick
 
-EDGE_TABLE_UI_VERSION = 'matchup_peer_performances_v1'
+EDGE_TABLE_UI_VERSION = 'matchup_peer_performances_v2_locked'
 
 PLAYER_PREVIEW_STATS = {'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', '3PM': 'FG3M',
                         'STL': 'STL', 'BLK': 'BLK', 'TOV': 'TOV', 'PF': 'PF', 'PRA': 'PRA'}

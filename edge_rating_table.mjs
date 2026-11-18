@@ -48,10 +48,21 @@ export default function({data, parentElement}) {
     }
     function show(button, text, technical, projection, matchup, expanded = false, pin = false) {
         clearTimeout(closeTimer);
-        if ((active === button && !pin) || restoringFocus) return;
-        hide();
+        // A clicked panel owns its matchup until it is dismissed or another
+        // trigger is deliberately clicked. Passing over other rows must not
+        // replace it, including pointer-enter events caused by its own resize.
+        if ((active === button && !pin) || restoringFocus || (pinned && active !== button && !pin)) return;
+        // Team tables are separate components in the same page. Respect a
+        // pinned panel in another table too, instead of layering over it.
+        if (!window.dispatchEvent(new CustomEvent('nba-props:edge-popover-request', {
+            cancelable: true, detail: {owner: tip, explicit: pin},
+        }))) return;
+        const updatingOpenPanel = active === button && tip.matches(':popover-open');
+        // Expanding in place avoids briefly exposing/clicking the row beneath.
+        // Hiding/reopening the top-layer popover also causes stray hover events.
+        if (!updatingOpenPanel) hide();
         active = button;
-        pinned = pin;
+        pinned = pin || (updatingOpenPanel && pinned);
         tip.replaceChildren(make('div', text));
         tip.classList.toggle('role-popup', !!technical);
         tip.classList.toggle('projection-popup', !!projection);
@@ -144,7 +155,7 @@ export default function({data, parentElement}) {
             button.setAttribute('aria-expanded', 'true');
         } else tip.removeAttribute('aria-label');
         button.setAttribute('aria-describedby', tip.id);
-        tip.showPopover();
+        if (!tip.matches(':popover-open')) tip.showPopover();
         position();
     }
     function leaveInteractive() {
@@ -174,7 +185,7 @@ export default function({data, parentElement}) {
         identity.onpointerenter = e => { if (e.pointerType !== 'touch') openProjection(); };
         identity.onfocus = identity.onclick = openProjection;
         identity.onpointerleave = leaveInteractive;
-        identity.onblur = e => { if (!tip.contains(e.relatedTarget)) hide(); };
+        identity.onblur = e => { if (active === identity && !tip.contains(e.relatedTarget)) hide(); };
         identity.className = 'player-identity';
         if (plays > 1) identity.classList.add('multiple-plays');
         if (plays > 2) identity.classList.add('many-plays');
@@ -304,10 +315,10 @@ export default function({data, parentElement}) {
                                 tip.querySelector('summary').focus();
                             };
                             button.onpointerleave=leaveInteractive;
-                            button.onblur=e=>{if(!tip.contains(e.relatedTarget))hide();};
+                            button.onblur=e=>{if(active===button&&!tip.contains(e.relatedTarget))hide();};
                         } else {
                             button.onclick=()=>show(button,badge.detail);
-                            button.onpointerleave=button.onblur=hide;
+                            button.onpointerleave=button.onblur=()=>{if(active===button)hide();};
                         }
                         td.append(button);
                     }
@@ -359,6 +370,12 @@ export default function({data, parentElement}) {
         }
     };
     const outside = e => { if (active && !e.composedPath().includes(active) && !e.composedPath().includes(tip)) hide(); };
+    const claimPopover = e => {
+        if (e.detail.owner === tip || !active) return;
+        if (pinned && !e.detail.explicit) e.preventDefault();
+        else hide();
+    };
+    window.addEventListener('nba-props:edge-popover-request', claimPopover);
     document.addEventListener('keydown', dismiss);
     document.addEventListener('pointerdown', outside, true);
     scroll.onscroll = hide;
@@ -378,5 +395,6 @@ export default function({data, parentElement}) {
         document.removeEventListener('pointerdown', outside, true);
         window.removeEventListener('scroll', pageScroll, true);
         window.removeEventListener('resize', hide);
+        window.removeEventListener('nba-props:edge-popover-request', claimPopover);
     };
 }
