@@ -70,9 +70,11 @@ export default function({data, parentElement}) {
     const selectors = new Map();
     const portraits = new Map();
     let portraitObserver;
-    function playerIdentity(name, id) {
+    function playerIdentity(name, id, plays) {
         const identity = make('span'), avatar = make('span');
         identity.className = 'player-identity';
+        if (plays > 1) identity.classList.add('multiple-plays');
+        if (plays > 2) identity.classList.add('many-plays');
         avatar.className = 'player-avatar';
         avatar.setAttribute('aria-hidden', 'true');
         const parts = name.trim().split(/\s+/);
@@ -91,7 +93,9 @@ export default function({data, parentElement}) {
             portraits.set(img, `https://cdn.nba.com/headshots/nba/latest/260x190/${id}.png`);
             avatar.append(img);
         }
-        identity.append(avatar, make('span', name));
+        const playerName = make('span', name);
+        if (plays > 1) identity.append(playerName, avatar);
+        else identity.append(avatar, playerName);
         return identity;
     }
     function loadVisiblePortraits() {
@@ -213,7 +217,7 @@ export default function({data, parentElement}) {
                     button.onpointerleave = button.onblur = hide;
                     td.append(button);
                 } else if (data.columns[i] === 'Player') {
-                    td.append(playerIdentity(label, row.playerId));
+                    td.append(playerIdentity(label, row.playerId, row.playerRowSpan));
                 } else {
                     td.textContent = label;
                     if (data.columns[i] === 'EV %' && pick && row.values[i] != null) {

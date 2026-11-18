@@ -542,6 +542,10 @@ Small NBA headshots load once per player group, directly in the browser, after
 table rendering and only near the viewport. Images use low fetch priority,
 asynchronous decoding and stable URLs for normal browser caching. Fixed-size
 initials placeholders preserve the layout when an image is slow or unavailable.
+Single-play photos stay 44×32 pixels beside the name. Two-play groups use 72×52
+photos below the name; groups with three or more props use 104×76, fitting within
+the existing grouped rows without widening the player column. All sizes reuse
+the same small image source and deferred loading.
 No photo downloads or lookups run on the projection server or block the table.
 Old EV sort preferences and column clicks cannot change that order. EV continues
 to be calculated for exports and tracking, using the unrounded win/loss probabilities

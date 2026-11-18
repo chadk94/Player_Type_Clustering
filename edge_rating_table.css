@@ -15,12 +15,15 @@ tbody tr:hover { --edge-row-bg: color-mix(in srgb, var(--st-primary-color, #2578
 td.numeric { text-align: end; }
 th[data-column="Player"], td[data-column="Player"] { position: sticky; left: 0; z-index: 2; border-inline-end-width: 2px; }
 td[data-column="Player"] { background: var(--edge-row-bg); font-weight: 500; }
-.player-identity { display: inline-flex; align-items: center; gap: .5rem; }
-.player-avatar { position: relative; display: inline-grid; place-items: center; flex: 0 0 44px;
-    width: 44px; height: 32px; overflow: hidden; border-radius: .3rem;
+.player-identity { display: inline-flex; align-items: center; gap: .5rem; --photo-width: 44px; --photo-height: 32px; }
+.player-identity.multiple-plays { flex-direction: column; align-items: flex-start; gap: .25rem;
+    --photo-width: 72px; --photo-height: 52px; }
+.player-identity.many-plays { --photo-width: 104px; --photo-height: 76px; }
+.player-avatar { position: relative; display: inline-grid; place-items: center; flex: none;
+    width: var(--photo-width); height: var(--photo-height); overflow: hidden; border-radius: .3rem;
     background: var(--st-secondary-background-color, #e8eaee); }
 .player-initials { font-size: .75rem; font-weight: 600; }
-.player-avatar img { position: absolute; inset: 0; width: 44px; height: 32px; object-fit: contain; opacity: 0; }
+.player-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; }
 .player-avatar.photo-loaded img { opacity: 1; }
 .player-avatar.photo-loaded .player-initials { visibility: hidden; }
 th[data-column="Player"] { z-index: 3; }
