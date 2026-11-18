@@ -30,12 +30,14 @@ class MinutesBlendTests(unittest.TestCase):
         self.assertTrue(meta['Minutes blend status'].str.startswith('50/50').all())
         pd.testing.assert_frame_equal(base,original);pd.testing.assert_frame_equal(refs,saved)
 
-    def test_tabs_decides_in_out_and_preserves_240_with_caps(self):
+    def test_explicit_out_stays_zero_and_preserves_240_with_caps(self):
         base=raw_team()
         tabs=base.set_index('PLAYER_ID')['Projected minutes'].to_dict();tabs.update({1:0.,9:30.})
-        plans,_=minutes_plan(base,references(tabs),GAME,NOW)
+        refs=references(tabs).assign(source_status='Projected')
+        refs.loc[refs.PLAYER_ID.eq(1),'source_status']='Out'
+        plans,_=minutes_plan(base,refs,GAME,NOW)
         self.assertEqual(plans['blended'][1],0.)
-        self.assertEqual(plans['blended'][9],30.)
+        self.assertEqual(plans['blended'][9],16.)  # Healthy 0/30 averages to 15, then balances to 240.
         self.assertEqual(plans['yours'][1],30.)
         self.assertEqual(plans['yours'][9],0.)
         self.assertAlmostEqual(sum(plans['blended'].values()),240.)
@@ -43,6 +45,51 @@ class MinutesBlendTests(unittest.TestCase):
         self.assertEqual(capped.iloc[0],48.)
         self.assertAlmostEqual(capped.sum(),240.)
         self.assertTrue(capped.le(48).all())
+
+    def test_healthy_zeroes_average_in_both_directions(self):
+        base=raw_team()
+        tabs=base.set_index('PLAYER_ID')['Projected minutes'].to_dict();tabs.update({1:0.,9:30.})
+        plans,_=minutes_plan(base,references(tabs).assign(source_status='Projected'),GAME,NOW)
+        self.assertEqual(plans['blended'][1],15.)
+        self.assertEqual(plans['blended'][9],15.)
+        self.assertEqual(sum(plans['blended'].values()),240.)
+
+    def test_eight_and_zero_gives_four_even_when_omitted_from_complete_browser_rotation(self):
+        base=raw_team();base.loc[:2,'Projected minutes']=[8.,48.,34.]
+        values=base.set_index('PLAYER_ID')['Projected minutes'].to_dict();values.update({1:0.,3:42.})
+        complete=references(values).assign(source_mode='Browser comparison',source_status='Projected')
+        for refs in (complete,complete[complete.PLAYER_ID.ne(1)]):
+            saved=refs.copy(deep=True)
+            plans,meta=minutes_plan(base,refs,GAME,NOW)
+            self.assertEqual(plans['blended'][1],4.)
+            self.assertEqual(plans['yours'][1],8.)
+            self.assertEqual(plans['tabs'][1],0.)
+            self.assertAlmostEqual(sum(plans['blended'].values()),240.)
+            self.assertTrue(meta['Minutes blend status'].str.startswith('50/50').all())
+            self.assertEqual(meta.loc[meta.PLAYER_ID.eq(1),'Tabs minutes'].iloc[0],0.)
+            pd.testing.assert_frame_equal(refs,saved)
+        self.assertTrue(meta.loc[meta.PLAYER_ID.eq(1),'Tabs minutes basis'].iloc[0].startswith('Assumed 0'))
+        # A short rotation, CSV omission, stale/rejected row, or unmapped source
+        # player cannot masquerade as a complete zero-allocation inference.
+        omitted=complete[complete.PLAYER_ID.ne(1)]
+        stale_zero=complete.copy();stale_zero.loc[stale_zero.PLAYER_ID.eq(1),'source_updated_at']=(NOW-pd.Timedelta(hours=3)).isoformat()
+        invalids=[omitted.assign(minutes=omitted.minutes*.99),omitted.assign(source_mode='CSV snapshot'),
+                  omitted.assign(source_updated_at=(NOW-pd.Timedelta(hours=3)).isoformat()),stale_zero,
+                  pd.concat([omitted,complete.iloc[:1].assign(PLAYER_ID=100,minutes=5.)])]
+        unmatched=omitted.copy();unmatched.attrs['incomplete_teams']=['BOS'];invalids.append(unmatched)
+        for invalid in invalids:
+            self.assertFalse(minutes_plan(base,invalid,GAME,NOW)[0]['blended'])
+
+    def test_inferred_zero_is_minutes_risk_not_missing_data_or_safe_under(self):
+        main=finalized(raw_team());yours=main.copy();tabs=main.copy()
+        tabs.loc[0,['Projected minutes','PTS']]=0.;tabs.loc[8,'Projected minutes']=30.
+        tabs['Tabs minutes basis']='Published minutes'
+        tabs.loc[0,'Tabs minutes basis']='Assumed 0 — not listed in complete 240-minute Tabs rotation'
+        with patch('edge_review.role_evidence',return_value=dict(ratios={'PTS':1.},trends={'PTS':0.},detail='Stable')):
+            row=assess_edges(edge(15,20,'Under'),main,GAME,pd.DataFrame(),{},None,healthy(),NOW,NOW,
+                             minutes_cases={'yours':yours,'tabs':tabs}).iloc[0]
+        self.assertEqual(row['Minutes flag'],'MIN');self.assertFalse(row['Robust play'])
+        self.assertIn('allocation assumption',row['Minutes detail'])
 
     def test_missing_stale_wrong_game_or_incomplete_rotation_never_blends(self):
         base=raw_team();values=base.set_index('PLAYER_ID')['Projected minutes'].to_dict()

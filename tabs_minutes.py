@@ -62,7 +62,7 @@ def _remember_browser_result():
 def render_tabs_comparison(ui,roster,games):
     with ui.expander('TabsNBA minutes comparison',expanded=False):
         mode=ui.radio('Tabs connection',['Browser connection','CSV upload'],horizontal=True,key='tabs_minutes_mode')
-        ui.caption('Fresh, complete rotations blend 50/50 with your minutes across projection pages. TabsNBA decides availability conflicts; team minutes stay at 240. Your saved rotation is preserved.')
+        ui.caption('Fresh, complete rotations blend 50/50 with your minutes, including healthy-player zeroes. Explicit Tabs OUT statuses stay at zero. Players omitted from a complete 240-minute browser rotation count as zero for that source. Team minutes stay at 240; your saved rotation is preserved.')
         if mode=='CSV upload':return render_tabs_upload(ui,roster,games)
         previous=st.session_state.get('tabs_browser_last_result')
         result=_browser_component(st.runtime.get_instance())(data={'previous':previous},
@@ -122,6 +122,9 @@ def parse_tabs_minutes(content, filename, roster, games, captured_at, scenario, 
         for alias in (player.PLAYER_NAME,getattr(player,'WorkbookPlayerName',None)):
             if pd.notna(alias):names.setdefault((player.TEAM_ABBREVIATION,name_key(alias)),set()).add(int(player.PLAYER_ID))
     rows=[];unmatched=[];other_games=0
+    if 'status' in frame:
+        if not frame.status.isin(['Projected','Out']).all():raise ValueError('Unknown Tabs row status.')
+        if frame.loc[frame.status.eq('Out'),'Tabs Min'].ne(0).any():raise ValueError('An OUT row must explicitly have zero minutes.')
     for _,r in frame.iterrows():
         team,opponent=str(r.Team).strip(),str(r.Opp).strip()
         if (team,opponent) not in pairs:other_games+=1;continue
@@ -133,12 +136,13 @@ def parse_tabs_minutes(content, filename, roster, games, captured_at, scenario, 
         rows.append(dict(PLAYER_ID=next(iter(ids)),Team=team,Opponent=opponent,game_date=day.isoformat(),
             minutes=float(r['Tabs Min']),source='TabsNBA',updated_at=capture.isoformat(),independent=True,
             scenario=scenario.strip(),source_updated_at=published.isoformat() if published is not None else None,
-            source_max_age_hours=SOURCE_MAX_AGE_HOURS,requires_source_timestamp=True,source_mode='CSV snapshot'))
+            source_max_age_hours=SOURCE_MAX_AGE_HOURS,requires_source_timestamp=True,source_mode='CSV snapshot',
+            source_status=r.get('status','Unknown')))
     columns=['PLAYER_ID','Team','Opponent','game_date','minutes','source','updated_at','independent','scenario',
-             'source_updated_at','source_max_age_hours','requires_source_timestamp','source_mode']
+             'source_updated_at','source_max_age_hours','requires_source_timestamp','source_mode','source_status']
     result=pd.DataFrame(rows,columns=columns)
     # Unmatched reserves with explicit zero minutes contribute no allocation.
-    # Every positive own player still needs a matched reference in minutes_plan.
+    # Missing players can be resolved only from a complete browser rotation.
     result.attrs['incomplete_teams'] = sorted({row['Team'] for row in unmatched if row['Minutes']>0})
     if result.duplicated(['PLAYER_ID','Team','Opponent']).any():raise ValueError('Multiple Tabs names map to the same player.')
     return result,dict(export_date=day.isoformat(),export_rows=len(frame),matched=len(result),

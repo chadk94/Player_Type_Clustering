@@ -79,8 +79,16 @@ class TabsTests(unittest.TestCase):
         snapshot=browser();saved=copy.deepcopy(snapshot)
         refs,details=parse_tabs_browser_snapshot(snapshot,ROSTER,[GAME],NOW)
         self.assertEqual(refs.minutes.tolist(),[19,0]);self.assertEqual(snapshot,saved)
+        self.assertEqual(refs.source_status.tolist(),['Projected','Out'])
         self.assertEqual(details['scope'],'POR @ MIN')
         self.assertTrue(refs.independent.all());self.assertEqual(refs.source_mode.unique().tolist(),['Browser comparison'])
+
+    def test_healthy_zero_is_not_an_out_designation(self):
+        b=browser();b['rows'][1]['status']='Projected'
+        refs,_=parse_tabs_browser_snapshot(b,ROSTER,[GAME],NOW)
+        self.assertEqual(refs.loc[refs.PLAYER_ID.eq(2),'source_status'].iloc[0],'Projected')
+        refs,_=self.parse()
+        self.assertEqual(refs.source_status.tolist(),['Unknown'])
 
     def test_browser_stale_edited_missing_bad_origin_or_status_fails_closed(self):
         for changes in [dict(manual_edits=True),dict(source_url='https://other.example'),dict(rows=[]),

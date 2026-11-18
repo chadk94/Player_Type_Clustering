@@ -1613,10 +1613,17 @@ does not blur their different effects on an Over or Under.
   See `integrations/tabs_browser_connector/README.md` for permissions and installation.
   A fresh, matched full rotation now blends 50/50 with the user's minutes, before player
   rates, matchup effects and normal team allocation, on all projection pages. If either
-  source has a player at zero, use TabsNBA's availability decision (user approved).
-  Rebalance active minutes to 240, retaining zero decisions and a 48-minute cap. Source
+  source has a healthy player at zero, average both values normally: 8 and 0 become 4.
+  Only explicit Tabs **OUT** statuses override the mean and stay at zero.
+  Rebalance active minutes to 240, retaining explicit OUT zeroes and a 48-minute cap. Source
   totals within two minutes of 240 allow rounding reconciliation; larger gaps, unknown
   profiles or missing active players leave that team's original minutes in use and unchecked.
+  Exception: if every supplied browser row is fresh and mapped, with known Projected/Out
+  status, and its full team allocation totals exactly 240, an omitted player has an
+  assumed zero allocation for Tabs only. This is labeled in **Tabs minutes basis**,
+  never an injury designation. CSV omissions, stale/rejected rows and short rotations
+  cannot use this inference. For example, Jalen Slawson’s 8 user minutes average with
+  that inferred zero to 4, while other Pacers can complete their two-source checks.
   Saved user minutes are never overwritten. Source-only scenarios preserve the user's full
   rotation and TabsNBA's full rotation separately; rebuild incoming players from their real
   baseline rather than dividing a zero-minute projection.

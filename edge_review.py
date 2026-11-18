@@ -392,7 +392,11 @@ warnings are a screening rule, not a numerical in/out forecast.
                 record.update({name+' minutes':float(sample['Projected minutes']),
                                name+' minutes projection':value,name+' minutes edge %':edge})
                 source_cases.append(case)
-            if len(source_cases)==2 and reference is not None:
+            # Complete browser rotations may explicitly label an omitted reserve
+            # as a zero-allocation inference. It is a risk, not an unchecked feed.
+            inferred_zero = (len(source_cases)==2 and record['Tabs minutes']==0 and
+                source_cases[1].loc[source_cases[1].PLAYER_ID.eq(pid)].iloc[0].get('Tabs minutes basis','').startswith('Assumed 0'))
+            if len(source_cases)==2 and (reference is not None or inferred_zero):
                 worst=min(('Your','Tabs'),key=lambda name:record[name+' minutes edge %'])
                 minutes_ok=all(record[name+' minutes']>0 and round(record[name+' minutes edge %'],2)>PLAY_THRESHOLD_PCT for name in ('Your','Tabs'))
                 record.update({'Minutes flag':'Clear' if minutes_ok else 'MIN',
@@ -402,6 +406,8 @@ warnings are a screening rule, not a numerical in/out forecast.
                 record['Minutes detail']=('Recalculate the full team separately with your rotation and TabsNBA’s rotation, '
                     'using the same player rates, opponent effects and market lines. Team targets and normalized archetype allocation are recalculated normally. '
                     'Both sources must leave more than 5% directional edge and have the player active. No extra ±3-minute stress is added.')
+                if inferred_zero:
+                    record['Minutes detail']+=' Tabs does not list this player in its complete 240-minute rotation; zero is an allocation assumption, not an OUT designation.'
             else:
                 source_cases=[]
         else:

@@ -758,7 +758,7 @@ def render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
                      on_select=lambda: queue_player_selection(widget_key, player_rows, game, book_name),
                      selection_mode=['single-row', 'single-cell'])
         send_player_navigation()
-        ui.caption('Fresh, complete TabsNBA rotations blend 50/50 with your minutes; Tabs decides availability conflicts and the team stays at 240. Your saved rotation remains intact. Missing or stale Tabs data retains your minutes.')
+        ui.caption('Fresh, complete TabsNBA rotations blend 50/50 with your minutes, including healthy-player zeroes; explicit Tabs OUT statuses stay at zero and the team stays at 240. Your saved rotation remains intact. Missing or stale Tabs data retains your minutes.')
     with ui.expander('Where the assist and three-point targets come from'):
         inputs = ['Market team total', 'Expected team FGM', 'Expected team FGA', 'Team 3PA target', 'Team assist rate', 'Team three attempt rate']
         if set(inputs).issubset(final):
@@ -1120,7 +1120,7 @@ def render_live_dashboard(ui, roster):
             ui.caption(f"{row['Offensive archetype']} · {row['Defensive archetype']} · {row['Projected minutes']:.1f} projected minutes ({row['Minutes source']})")
             if 'Minutes blend status' in row:
                 if str(row['Minutes blend status']).startswith('50/50'):
-                    ui.caption(f"Your minutes: {row['Your minutes']:.1f} · TabsNBA: {row['Tabs minutes']:.1f}. Availability follows Tabs; team minutes stay at 240. A manual slider setting overrides the blend for this preview.")
+                    ui.caption(f"Your minutes: {row['Your minutes']:.1f} · TabsNBA: {row['Tabs minutes']:.1f}. Healthy zeroes are averaged; explicit Tabs OUT stays at zero. Team minutes stay at 240. A manual slider setting overrides the blend for this preview.")
                 else:
                     ui.caption(str(row['Minutes blend status']) + '. Retaining your model minutes.')
             ui.caption(f"Stat baseline: {row['Stat baseline']} · Opponent history: {row['Matchup data']} · Offensive samples: {row['Off prior samples']} prior / {row['Off current samples']} current · Defensive samples: {row['Def prior samples']} prior / {row['Def current samples']} current")
@@ -1574,7 +1574,7 @@ def render_live_dashboard(ui, roster):
                     payload = sportsbook_props(game_id,BOOKS[edge_book_name],edge_key)
                     with ui.expander('Game projection details', expanded=False):
                         ui.caption(game_minutes_caption(game_projections, [game['Away'], game['Home']]))
-                        ui.dataframe(game_projections[['Player','Team','Your minutes','Tabs minutes','Projected minutes','Minutes blend status']],
+                        ui.dataframe(game_projections[['Player','Team','Your minutes','Tabs minutes','Tabs minutes basis','Projected minutes','Minutes blend status']],
                                      hide_index=True,width='stretch')
                         if not combined.empty:
                             market_event = {**game,'commence_time':game['GameTimeUTC'].isoformat()}
@@ -1616,7 +1616,7 @@ def render_live_dashboard(ui, roster):
                         render_ranked_edges(ui, ranked, display_columns, roster, current_effects, game,
                                             edge_book_name, edge_date, combined)
                     with ui.expander('Review assumptions and scenario comparisons'):
-                        ui.write('Minutes: projections use a 50/50 average of your complete rotation and fresh TabsNBA minutes. Tabs decides availability conflicts; active allocations are adjusted to keep 240 minutes. The flag checks the full model separately under each source and warns if either leaves 5% edge or less, or has the player out. No extra three-minute stress is added. Both source rotations must be complete; missing/stale Tabs data retains your minutes and stays unchecked. Your saved rotation is never overwritten.')
+                        ui.write('Minutes: projections use a 50/50 average of your complete rotation and fresh TabsNBA minutes. Healthy-player zeroes are averaged; explicit Tabs OUT statuses stay at zero. An omitted player counts as zero only in a fresh, fully matched 240-minute browser rotation. Active allocations are adjusted to keep 240 minutes. The flag checks the full model separately under each source and warns if either leaves 5% edge or less, or gives the player zero minutes. No extra three-minute stress is added. Both source rotations must be complete; missing/stale Tabs data retains your minutes and stays unchecked. Your saved rotation is never overwritten.')
                         ui.write('Role: compare up to 5 recent appearances with up to 10 preceding appearances, holding shooting conversion and minutes fixed. Points use shot/free-throw volume; threes use attempts; assists use verified potential assists and passes made. At least 3 recent and 5 preceding games are required. Rebounds compare the last 5 appearances with the preceding 5–10, using rebounds per minute; a 20% decline flags Overs and a 20% increase flags Unders. The rebound comparison uses the recent rate at your projected minutes, without changing the main model. Steal and block role checks remain unchecked. Other role scenarios retain team targets and normalized archetype effects.')
                         ui.write('Q flags: a key questionable or doubtful teammate flags Unders. For Overs, it flags when that teammate is excluded (0 minutes) or their rotation minutes are unknown; positive projected minutes count as already included. The player’s own questionable/doubtful status, opponent uncertainty and Out players still assigned minutes flag both directions. The game banner keeps all key unresolved players visible, including those that do not flag a particular bet. This is a screening rule, not an estimated injury boost.')
                         ui.write('More robust: the blended projection, each source rotation, recent-role projection and both source-plus-role scenarios must each retain more than 5% directional edge. Both teams need complete injury reports no older than 30 minutes and no adverse availability warning. Missing branches are not guessed. These are sensitivity checks, not a backtested selection rule.')

@@ -63,7 +63,7 @@ def minutes_popup(row):
                 edge_label = f'{edge:+.2f}' if round(edge,1)==PLAY_THRESHOLD_PCT and edge!=PLAY_THRESHOLD_PCT else f'{edge:+.1f}'
                 parts.append(f'{label}: {minutes:.1f} min → {projection:.2f} {units}, {edge_label}% {side} edge.')
         if len(parts) == 2 and row.get('Minutes flag') != 'Unchecked':
-            summary = ('This bet does not clear 5% edge or the player is out under at least one source. '
+            summary = ('This bet does not clear 5% edge or has zero projected minutes under at least one source. '
                        if row.get('Minutes flag') == 'MIN' else 'This bet clears 5% edge with either minutes source. ')
             summary += '\n' + '\n'.join(parts)
             summary += f'\nBlended model: {row["Projected minutes"]:.1f} min → {row["Projected"]:.2f} {units}.'
