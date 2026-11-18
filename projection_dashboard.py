@@ -36,7 +36,8 @@ from sportsbook_injuries import KEY_MINUTES, game_injuries, injury_alert_changes
 from edge_rating_table import group_player_edges, render_edge_table
 from edge_review import assess_edges, filter_review, unavailable_review, REVIEW_VIEWS
 from edge_review_sources import MinutesReferenceFeed, parse_minutes, review_passing
-from tabs_minutes import render_tabs_comparison
+from tabs_minutes import render_tabs_comparison, export_day
+from minutes_blend import minutes_plan
 from todays_plays import render_shortlist
 from projection_presentation import over_line_label, player_matchup_rating
 from recent_role import recent_role_comparison, add_recent_columns, DISPLAY_COLUMNS as RECENT_COLUMNS, CAPTION as RECENT_CAPTION
@@ -751,7 +752,7 @@ def render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
                      on_select=lambda: queue_player_selection(widget_key, player_rows, game, book_name),
                      selection_mode=['single-row', 'single-cell'])
         send_player_navigation()
-        ui.caption('Approved game minutes retain their exact 240-minute allocation. A linked NBA model updates matching games automatically after approval. Other minute sources round individually to 0.5.')
+        ui.caption('Fresh, complete TabsNBA rotations blend 50/50 with your minutes; Tabs decides availability conflicts and the team stays at 240. Your saved rotation remains intact. Missing or stale Tabs data retains your minutes.')
     with ui.expander('Where the assist and three-point targets come from'):
         inputs = ['Market team total', 'Expected team FGM', 'Expected team FGA', 'Team 3PA target', 'Team assist rate', 'Team three attempt rate']
         if set(inputs).issubset(final):
@@ -848,6 +849,29 @@ def render_live_dashboard(ui, roster):
         approved_bundle = render_import(ui, roster, SEASON)
         roster = roster_for_approved_games(source_roster, SEASON, today, approved_bundle).copy()
         roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)
+        # The connection belongs to the shared parent, so a changed snapshot
+        # invalidates every page's game frames, never just the Edges fragment.
+        tabs_day = today
+        previous_tabs = st.session_state.get('tabs_browser_last_result') or {}
+        try:
+            upload = st.session_state.get('tabs_minutes_csv')
+            if st.session_state.get('tabs_minutes_mode') == 'CSV upload' and upload is not None:
+                tabs_day = export_day(upload.name)
+            elif previous_tabs.get('ok'):
+                tabs_day = pd.Timestamp(previous_tabs['snapshot']['slate_date']).date()
+        except (ValueError, TypeError, KeyError):
+            pass
+        tabs_games = []
+        try:
+            tabs_schedule = today_schedule(SEASON, tabs_day)
+            codes = {value: key for key, value in TEAM_IDS.items()}
+            if not tabs_schedule.empty:
+                tabs_games = [dict(Home=codes[row.TEAM_ID], Away=row.Opponent, GameTimeUTC=pd.Timestamp(row.GameTimeUTC))
+                              for row in tabs_schedule.loc[tabs_schedule.Venue.eq('home')].itertuples()]
+        except (requests.RequestException, ValueError, KeyError, TypeError):
+            pass
+        st.session_state['tabs_minutes_reference'] = render_tabs_comparison(
+            ui, roster_for_approved_games(source_roster, SEASON, tabs_day, approved_bundle), tabs_games)
         if ui.button('Refresh live data'):
             public_team_cache.clear()
             live_state.clear()
@@ -923,7 +947,7 @@ def render_live_dashboard(ui, roster):
                 ui.dataframe(gaps, hide_index=True, width='stretch')
         game_projection_cache = {}
         @lru_cache(maxsize=64)
-        def project_for_game(team, opponent, start):
+        def own_projections_for_game(team, opponent, start):
             blocked = blocked_matchup_message(approved_bundle, team, opponent, start)
             if blocked:
                 raise ValueError(blocked)
@@ -941,14 +965,43 @@ def render_live_dashboard(ui, roster):
                 game_projection_cache[key] = pd.concat(
                     [projections[~projections.PLAYER_ID.isin(changed_ids)], changed], ignore_index=True)
             return game_projection_cache[key]
-        @lru_cache(maxsize=32)
-        def game_frames(away, home, start):
+
+        def game_minutes_plan(team, opponent, start):
+            own = own_projections_for_game(team, opponent, start)
+            own = own.loc[own.Team.isin((team, opponent))].copy()
+            game = dict(Home=team, Away=opponent, GameTimeUTC=pd.Timestamp(start))
+            return own, *minutes_plan(own, st.session_state.get('tabs_minutes_reference'), game, pd.Timestamp.now(tz='UTC'))
+
+        def project_for_game(team, opponent, start, mode='blended'):
+            own, plans, metadata = game_minutes_plan(team, opponent, start)
+            minutes = plans[mode]
+            key = ('tabs_blend_v1', mode, team, opponent, str(start), tuple(sorted(minutes.items())))
+            if key not in game_projection_cache:
+                frame = own
+                if minutes:
+                    day = pd.Timestamp(start).tz_convert('America/New_York').date()
+                    game_roster = roster_for_approved_games(source_roster, SEASON, day, approved_bundle)
+                    changed = build_projections(game_roster[game_roster.PLAYER_ID.isin(minutes)], history, teams, players,
+                        opening_games=OPENING_GAMES, fallback=fallback, approved_minutes=minutes,
+                        archetype_priors=archetype_priors, assist_samples=assist_samples, matched_players=matched_players)
+                    changed['Minutes source'] = {'blended':'50/50 your + TabsNBA', 'yours':'Your rotation scenario', 'tabs':'TabsNBA rotation scenario'}[mode]
+                    frame = pd.concat([own[~own.PLAYER_ID.isin(minutes)], changed], ignore_index=True)
+                game_projection_cache[key] = frame
+            return game_projection_cache[key].merge(metadata, on=['PLAYER_ID','Team'], how='left', validate='one_to_one')
+
+        matchup_frame_cache = {}
+        def game_frames(away, home, start, mode='blended'):
             # One immutable roster snapshot per game, including approved minutes.
-            frame = project_for_game(home, away, start)
+            frame = project_for_game(home, away, start, mode)
             base = frame.loc[frame.Team.isin((home, away))].reset_index(drop=True)
-            opponents = base.Team.map({away: home, home: away})
-            before = apply_matchup(base.assign(Opponent=opponents), roster, teams, prior_effects, current_effects)
-            return base, before
+            key = (away, home, str(start), mode, hashlib.sha256(pd.util.hash_pandas_object(base).to_numpy().tobytes()).digest())
+            if key not in matchup_frame_cache:
+                opponents = base.Team.map({away: home, home: away})
+                before = apply_matchup(base.assign(Opponent=opponents), roster, teams, prior_effects, current_effects)
+                if len(matchup_frame_cache) >= 96:
+                    del matchup_frame_cache[next(iter(matchup_frame_cache))]
+                matchup_frame_cache[key] = base, before
+            return matchup_frame_cache[key]
 
         @lru_cache(maxsize=128)
         def manual_player_unit(player_id):
@@ -973,10 +1026,10 @@ def render_live_dashboard(ui, roster):
             frame['PRA'] = frame.PTS + frame.REB + frame.AST
             return frame
 
-        @lru_cache(maxsize=32)
         def player_team_matchups(team, opponent, scheduled_start):
-            frame = projections if scheduled_start is None else project_for_game(team, opponent, scheduled_start)
-            return apply_matchup(frame.loc[frame.Team.eq(team)], roster, teams, prior_effects, current_effects, opponent)
+            if scheduled_start is not None:
+                return game_frames(opponent, team, scheduled_start)[1].loc[lambda f: f.Team.eq(team)]
+            return apply_matchup(projections.loc[projections.Team.eq(team)], roster, teams, prior_effects, current_effects, opponent)
 
         team_rates = blend_team_rates(prior_team_rates(), logs, teams)
         probability_context = {int(pid): row.to_dict() for pid, row in matched_players.items()}
@@ -1059,6 +1112,11 @@ def render_live_dashboard(ui, roster):
             row = adjusted.iloc[0]
             ui.subheader(f'{player_name} vs {opponent}', anchor='selected-player-projection')
             ui.caption(f"{row['Offensive archetype']} · {row['Defensive archetype']} · {row['Projected minutes']:.1f} projected minutes ({row['Minutes source']})")
+            if 'Minutes blend status' in row:
+                if str(row['Minutes blend status']).startswith('50/50'):
+                    ui.caption(f"Your minutes: {row['Your minutes']:.1f} · TabsNBA: {row['Tabs minutes']:.1f}. Availability follows Tabs; team minutes stay at 240. A manual slider setting overrides the blend for this preview.")
+                else:
+                    ui.caption(str(row['Minutes blend status']) + '. Retaining your model minutes.')
             ui.caption(f"Stat baseline: {row['Stat baseline']} · Opponent history: {row['Matchup data']} · Offensive samples: {row['Off prior samples']} prior / {row['Off current samples']} current · Defensive samples: {row['Def prior samples']} prior / {row['Def current samples']} current")
             ui.caption(f"Player rates: {row['Player current weight']:.1%} this season · Steals/blocks: {row['STL/BLK current weight']:.1%} this season · {row['Season appearances']:g} appearances. Three-point accuracy uses its separate career blend; missing actual categories retain labeled fallbacks.")
             if row['Passing games used']:
@@ -1306,6 +1364,17 @@ def render_live_dashboard(ui, roster):
     # One session-local set per league snapshot. Check quote freshness at every
     # interaction before reusing calculated probabilities, minute cushions or EV.
     edge_cache = {}
+    def source_minutes_cases(game, book, api_key):
+        cases = {}
+        event = {**game, 'commence_time':game['GameTimeUTC'].isoformat()}
+        for mode in ('yours','tabs'):
+            base, before = game_frames(game['Away'], game['Home'], game['GameTimeUTC'], mode)
+            valid_teams = base.loc[base['Minutes blend status'].str.startswith('50/50'), 'Team'].unique()
+            if len(valid_teams):
+                final = team_projection_preview(ProjectionNotes(), before, event, book, api_key, team_rates)
+                cases[mode] = final.loc[final.Team.isin(valid_teams)].copy()
+        return cases
+
     def edge_snapshot(combined, payload, game, book, now):
         if any(payload.get(k) != game[k] for k in ('id', 'home_team', 'away_team')):
             raise OddsFeedError('Sportsbook matchup could not be verified.')
@@ -1363,7 +1432,8 @@ def render_live_dashboard(ui, roster):
                     try:
                         refs, info, stamp, passing = edge_review_inputs(game, roster, base, approved_bundle, logs, matched_players)
                         reviewed = assess_edges(edges, combined, game, logs, matched_players, refs, info, stamp,
-                                                datetime.now(timezone.utc), passing=passing)
+                                                datetime.now(timezone.utc), passing=passing,
+                                                minutes_cases=source_minutes_cases(game, BOOKS[book_name], api_key))
                     except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
                         reviewed = unavailable_review(edges)
                     row['Eligible plays'] = len(reviewed)
@@ -1460,7 +1530,7 @@ def render_live_dashboard(ui, roster):
                         selected_stats.append(stat)
             plays_only = ui.checkbox('Only show plays above 5% edge',value=True,key='edges_plays_only')
             review_view = ui.pills('Play review',REVIEW_VIEWS,default='All plays',selection_mode='single',key='edges_review_view') or 'All plays'
-            ui.caption('🟠 Minutes risk: playing time could weaken the bet · Gray Minutes unverified: minutes check pending · 🟣 ROLE: recent role works against the bet · 🔵 Q: availability could hurt this bet · ? Unchecked. Click a badge for details. More robust requires all checks and more than 5% edge in each stress test; it is not a calibrated win-confidence score.')
+            ui.caption('🟠 Minutes risk: the play fails with your minutes or TabsNBA’s · Gray Minutes unverified: a full source rotation is missing · 🟣 ROLE: recent role works against the bet · 🔵 Q: availability could hurt this bet. Click a badge for details. More robust requires more than 5% edge under both sources and the role checks.')
             ui.button('Refresh review checks',key='edges_review_refresh',help='Read any completed background minutes and passing updates. Your model projections stay unchanged.')
             show_recent = ui.toggle('Show recent-role comparison', value=False, key='edges_recent_role',
                                     help='Compare recent shot volume and assists beside the current model. Rankings and the 5% rule stay unchanged.')
@@ -1468,9 +1538,8 @@ def render_live_dashboard(ui, roster):
             if edge_schedule is None:
                 return
             games = scheduled_book_games(edge_events,edge_schedule,now=now)
-            source = ui.selectbox('Minutes comparison source',['TabsNBA','RotoWire public'],key='edges_minutes_source')
-            if source=='TabsNBA':
-                st.session_state['tabs_minutes_reference']=render_tabs_comparison(ui,roster_for_approved_games(source_roster,SEASON,edge_date,approved_bundle),games)
+            st.session_state['edges_minutes_source'] = 'TabsNBA'
+            ui.caption('Minutes use your rotation + TabsNBA when a fresh full rotation is available. Manage the connection in TabsNBA minutes comparison at the top of the app.')
             if not games:
                 ui.info('No upcoming regular-season games with a verified sportsbook event were found for this date. Choose another date. Lines are never substituted from a different game.')
             elif review_view == 'More robust plays':
@@ -1499,6 +1568,8 @@ def render_live_dashboard(ui, roster):
                     payload = sportsbook_props(game_id,BOOKS[edge_book_name],edge_key)
                     with ui.expander('Game projection details', expanded=False):
                         ui.caption(game_minutes_caption(game_projections, [game['Away'], game['Home']]))
+                        ui.dataframe(game_projections[['Player','Team','Your minutes','Tabs minutes','Projected minutes','Minutes blend status']],
+                                     hide_index=True,width='stretch')
                         if not combined.empty:
                             market_event = {**game,'commence_time':game['GameTimeUTC'].isoformat()}
                             combined = team_projection_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key,team_rates)
@@ -1509,7 +1580,8 @@ def render_live_dashboard(ui, roster):
                         try:
                             refs, injury_info, injury_stamp, passing = edge_review_inputs(game,roster,game_projections,approved_bundle,logs,matched_players)
                             reviewed = assess_edges(ranked,combined,game,logs,matched_players,refs,injury_info,injury_stamp,
-                                                    datetime.now(timezone.utc),passing=passing)
+                                                    datetime.now(timezone.utc),passing=passing,
+                                                    minutes_cases=source_minutes_cases(game, BOOKS[edge_book_name], edge_key))
                         except (requests.RequestException,ValueError,KeyError,TypeError,IndexError):
                             reviewed = unavailable_review(ranked)
                         ranked = filter_review(reviewed,review_view)
@@ -1538,10 +1610,10 @@ def render_live_dashboard(ui, roster):
                         render_ranked_edges(ui, ranked, display_columns, roster, current_effects, game,
                                             edge_book_name, edge_date, combined)
                     with ui.expander('Review assumptions and scenario comparisons'):
-                        ui.write('Minutes: compare with your selected source; stress an Over down or an Under up by at least 3 minutes, or to the more adverse source estimate. Redistribute active teammates to keep 240 minutes; excluded players stay out. TabsNBA follows your connected browser scenario, or Tabs Min from a CSV snapshot. Its publication time must be within two hours. Missing, stale or unmatched sources remain unchecked. Tabs comparisons never replace your approved minutes.')
+                        ui.write('Minutes: projections use a 50/50 average of your complete rotation and fresh TabsNBA minutes. Tabs decides availability conflicts; active allocations are adjusted to keep 240 minutes. The flag checks the full model separately under each source and warns if either leaves 5% edge or less, or has the player out. No extra three-minute stress is added. Both source rotations must be complete; missing/stale Tabs data retains your minutes and stays unchecked. Your saved rotation is never overwritten.')
                         ui.write('Role: compare up to 5 recent appearances with up to 10 preceding appearances, holding shooting conversion and minutes fixed. Points use shot/free-throw volume; threes use attempts; assists use verified potential assists and passes made. At least 3 recent and 5 preceding games are required. Rebounds compare the last 5 appearances with the preceding 5–10, using rebounds per minute; a 20% decline flags Overs and a 20% increase flags Unders. The rebound comparison uses the recent rate at your projected minutes, without changing the main model. Steal and block role checks remain unchecked. Other role scenarios retain team targets and normalized archetype effects.')
                         ui.write('Q flags: a key questionable or doubtful teammate flags Unders. For Overs, it flags when that teammate is excluded (0 minutes) or their rotation minutes are unknown; positive projected minutes count as already included. The player’s own questionable/doubtful status, opponent uncertainty and Out players still assigned minutes flag both directions. The game banner keeps all key unresolved players visible, including those that do not flag a particular bet. This is a screening rule, not an estimated injury boost.')
-                        ui.write('More robust: original, minutes-only, role-only and combined scenarios each retain more than 5% directional edge. Both teams need complete injury reports no older than 30 minutes and no adverse availability warning under the direction-aware rules. In/out projections require verified alternative rotations; missing branches are not guessed. These are sensitivity checks, not a backtested selection rule.')
+                        ui.write('More robust: the blended projection, each source rotation, recent-role projection and both source-plus-role scenarios must each retain more than 5% directional edge. Both teams need complete injury reports no older than 30 minutes and no adverse availability warning. Missing branches are not guessed. These are sensitivity checks, not a backtested selection rule.')
                         if not reviewed.empty:
                             detail_cols=['Player','Team','Stat','Play','Review group','Projected','Projected minutes','Reference minutes','Minutes difference','Reference source','Minutes test projection','Minutes test edge %','Recent test projection','Recent test edge %','Rebound trend %','Combined test projection','Combined test edge %','Minutes detail','Role detail','Injury detail','Review detail']
                             ui.dataframe(reviewed[detail_cols],hide_index=True,width='stretch')

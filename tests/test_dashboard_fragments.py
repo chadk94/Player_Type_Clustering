@@ -432,6 +432,80 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertEqual(set(self.edge_frames()[0].Game), {'ATL @ HOU'})
         self.assertTrue(any('No verified qualifying results from: CLE @ CHA' in w.value for w in self.app.warning))
 
+    def test_tabs_blend_is_shared_across_pages_and_stale_source_restores_own_minutes(self):
+        now = pd.Timestamp.now(tz='UTC')
+        start = now + pd.Timedelta(hours=4)
+        day = start.tz_convert('America/New_York').date().isoformat()
+        event = dict(id='blend',home_team='Houston Rockets',away_team='Atlanta Hawks',commence_time=start.isoformat())
+        self.mock('get_odds_api_key',return_value='test-key')
+        self.mock('sportsbook_events',return_value=[event])
+        self.mock('sportsbook_game_lines',return_value={})
+        self.mock('team_projection_preview',side_effect=lambda ui,rows,*args:rows)
+        self.mock('next_team_game',return_value={'Opponent':'HOU','GameTimeUTC':start.isoformat()})
+        self.schedule.return_value = pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS[team],Opponent=opp,Venue=venue,GameTimeUTC=start.isoformat(),GameStatus='Scheduled')
+            for team,opp,venue in [('ATL','HOU','away'),('HOU','ATL','home')]])
+        own,refs={},[]
+        for team,opponent in [('ATL','HOU'),('HOU','ATL')]:
+            ids=self.roster.loc[self.roster.TEAM_ABBREVIATION.eq(team),'PLAYER_ID'].tolist()
+            for i,pid in enumerate(ids):
+                own[pid]=30. if i<8 else 0.
+                minutes=24. if i==0 else 36. if i==1 else own[pid]
+                refs.append(dict(PLAYER_ID=pid,Team=team,Opponent=opponent,game_date=day,minutes=minutes,
+                    source='TabsNBA',updated_at=now.isoformat(),independent=True,
+                    source_updated_at=now.isoformat(),requires_source_timestamp=True,source_max_age_hours=2))
+        target=self.roster.loc[self.roster.TEAM_ABBREVIATION.eq('ATL')].iloc[0]
+        self.mock('for_matchup',return_value=own)
+        references=pd.DataFrame(refs)
+        connector=self.mock('render_tabs_comparison',return_value=references)
+        self.mock('sportsbook_props',return_value={**event,'bookmakers':[{'key':'fanduel','markets':[{
+            'key':'player_points','last_update':now.isoformat(),'outcomes':[
+                dict(description=name,name=side,point=20.5,price=-110)
+                for name in self.roster.PLAYER_NAME for side in ['Over','Under']]}]}]})
+        self.app.session_state['projection_team']='ATL'
+        self.app.session_state['projection_player']=target.PLAYER_NAME
+        self.app.run()
+        self.assert_no_errors()
+        self.assertEqual(self.app.slider[0].value,27.)
+        self.assertTrue(any('Your minutes: 30.0 · TabsNBA: 24.0' in c.value for c in self.app.caption))
+        edge_frame=pd.concat(self.edge_frames())
+        self.assertEqual(edge_frame.loc[edge_frame.Player.eq(target.PLAYER_NAME),'Projected minutes'].iloc[0],27.)
+        contributions=next(d.value for d in self.app.dataframe if 'Stat baseline' in d.value and 'PRA' in d.value)
+        self.assertEqual(contributions.loc[contributions.Player.eq(target.PLAYER_NAME),'Projected minutes'].iloc[0],27.)
+        np.testing.assert_allclose(contributions.groupby('Team')['Projected minutes'].sum(),[240.,240.])
+        np.testing.assert_allclose(contributions.PRA,contributions.PTS+contributions.REB+contributions.AST,atol=.011)
+        counts=[m.call_count for m in (self.live,self.logs,self.effects,self.imported,connector)]
+        self.fragment_id=self.fragment_for(self.app.slider[0])
+        self.app.slider[0].set_value(20.).run()
+        self.assert_no_errors()
+        self.assertEqual([m.call_count for m in (self.live,self.logs,self.effects,self.imported,connector)],counts)
+        incoming=self.roster.loc[self.roster.TEAM_ABBREVIATION.eq('ATL')].iloc[8]
+        donor=self.roster.loc[self.roster.TEAM_ABBREVIATION.eq('ATL')].iloc[2]
+        changed=references.copy()
+        changed.loc[changed.PLAYER_ID.eq(incoming.PLAYER_ID),'minutes']=12.
+        changed.loc[changed.PLAYER_ID.eq(donor.PLAYER_ID),'minutes']=18.
+        connector.return_value=changed
+        self.fragment_id=None
+        self.app.run()
+        self.assert_no_errors()
+        contributions=next(d.value for d in self.app.dataframe if 'Stat baseline' in d.value and 'PRA' in d.value)
+        newcomer=contributions.loc[contributions.Player.eq(incoming.PLAYER_NAME)].iloc[0]
+        self.assertGreater(newcomer['Projected minutes'],0.)
+        self.assertGreater(newcomer.PTS,0.)  # Rebuilt from a real baseline, not zero scaled upward.
+        self.assertEqual(own[int(incoming.PLAYER_ID)],0.)
+        totals=next(d.value for d in self.app.dataframe if 'Minutes' in d.value and 'Stat coverage' in d.value)
+        np.testing.assert_allclose(totals.Minutes,[240.,240.])  # Raw totals, before display rounding.
+        # Source expiry removes the blend on the next normal page render, without
+        # mutating the approved rotation or reusing a blended cache entry.
+        connector.return_value=references.assign(source_updated_at=(now-pd.Timedelta(hours=3)).isoformat())
+        self.fragment_id=None
+        for key in list(self.app.session_state.filtered_state):
+            if key.startswith('custom_minutes_'):del self.app.session_state[key]
+        self.app.run()
+        self.assert_no_errors()
+        self.assertEqual(self.app.slider[0].value,30.)
+        self.assertEqual(own[int(target.PLAYER_ID)],30.)
+
     def test_team_player_navigation_selects_player_and_exact_matchup(self):
         self.fragment_id = self.fragment_for(self.app.selectbox(key='projection_player'))
         counts = [m.call_count for m in (self.live, self.logs, self.effects, self.imported, self.schedule)]

@@ -1577,32 +1577,34 @@ failed feeds, blocked rotations and absent quotes are reported, never counted as
 Other review views keep the single-game selector. The full slate is loaded only when
 the robust view is selected, reusing cached quotes and calculations. Main projections,
 probabilities and review thresholds are unchanged.
-The gray **Minutes unverified** badge explains when an independent comparison is missing,
-shows the what-if minutes, projected stat and remaining directional edge, and keeps the
-check pending. The rotation redistribution and source timestamps sit under **Technical details**.
-The display uses the actual tested minutes, including a more adverse reference when available;
-the test is not presented as another source's forecast. Projections and review thresholds are unchanged.
+The gray **Minutes unverified** badge explains when a complete source rotation is missing.
+The minutes popup shows the source-only projections and remaining directional edges;
+the full-rotation calculation sits under **Technical details**.
 Injury popups group names by status and team, with one explanation per type of risk.
 Own-player, opponent, teammate-absence, and possible-return risks remain separate so grouping
 does not blur their different effects on an Over or Under.
 
 - **Minutes:** TabsNBA is the default independent comparison, via the prepared Chrome connector
   or a private CSV upload. The connector reads only the displayed unedited projection table,
-  preserves the selected If/Then scenario, and only updates flags when its contents change.
+  preserves the selected If/Then scenario, and refreshes the shared projection snapshot only
+  when its contents change. The connection appears above the tabs so every page uses it.
   The CSV reads **Tabs Min**, never **My Min** or fantasy-platform player IDs. Match player,
   team, opponent and Eastern slate date; explicit browser OUT rows can supply zero, while
   absent CSV rows never imply zero. Tabs publication time must be verified and within two hours.
   Paid references stay in the user's Streamlit session and are never bundled or globally cached.
   See `integrations/tabs_browser_connector/README.md` for permissions and installation.
-  Public RotoWire remains an optional fallback,
-  matching player, team, opponent and Eastern game date. The page's retrieval time is recorded
-  separately from any claim about when the publisher last revised its estimate. References
-  expire after six hours; subscriber-only home-team placeholders are not parsed. NBA-model
-  approved minutes remain the model input, not a falsely independent comparison. Stress an
-  Over down / Under up by at least three minutes, extending to a more adverse reference when
-  available. Active teammates rebalance proportionally to 240 with a 48-minute cap; existing
-  zero-minute players stay excluded. The orange flag indicates an adverse 3+ minute disagreement
-  or a stress-test edge no longer above 5%.
+  A fresh, matched full rotation now blends 50/50 with the user's minutes, before player
+  rates, matchup effects and normal team allocation, on all projection pages. If either
+  source has a player at zero, use TabsNBA's availability decision (user approved).
+  Rebalance active minutes to 240, retaining zero decisions and a 48-minute cap. Source
+  totals within two minutes of 240 allow rounding reconciliation; larger gaps, unknown
+  profiles or missing active players leave that team's original minutes in use and unchecked.
+  Saved user minutes are never overwritten. Source-only scenarios preserve the user's full
+  rotation and TabsNBA's full rotation separately; rebuild incoming players from their real
+  baseline rather than dividing a zero-minute projection.
+  The orange flag now means either source leaves 5% directional edge or less, or excludes
+  the player. It no longer adds the previous three-minute stress or flags a disagreement
+  solely for being large. The popup shows both projections, both edges and the blended mean.
 - **Role:** require at least three recent and five preceding appearances, with 45/60 minimum
   minutes. Compare up to five recent with ten preceding games. Points use 2PA, 3PA and FTA at
   fixed shooting conversion; threes use 3PA; assists use the current 50/50 potential-assist / pass
@@ -1644,14 +1646,16 @@ does not blur their different effects on an Over or Under.
   of the notification scope. Full verified alternative rotations are not yet supplied by
   the feed, so no numerical in/out projection is fabricated. No projections, PRA,
   probabilities, EV or original edge rankings change.
-- **More robust:** the existing qualifying play, minutes-only, role-only, and combined scenarios
+- **More robust:** the blended play, both source rotations, role-only, and both source-plus-role scenarios
   must all retain an edge strictly greater than 5%, rounded consistently to two decimal places.
   Missing/stale sources, incomplete reports or adverse availability warnings prevent qualification.
   Passing this filter is not a calibrated win-confidence rating or demonstrated profitable rule.
 
-Optional minutes and passing retrieval runs in the background only when the Edges view needs it.
-**Refresh review checks** reads completed results; a source failure leaves original edges available
-with unchecked flags. It does not trigger new probabilities or change Player vs Opponent minutes.
+Passing retrieval runs in the background when the Edges view needs it. The minutes connection
+is shared across pages; changed input invalidates the game caches. Freshness is rechecked on
+normal page renders. **Refresh review checks** reads completed results; missing Tabs inputs
+retain the user's minutes with unchecked flags. Explicit player-slider overrides still apply
+only to that individual preview. PRA and probabilities follow the new final projection.
 The downloadable review snapshot includes all scenario details for later comparison with results.
 No picks are automatically sent, modified or graded by this feature.
 

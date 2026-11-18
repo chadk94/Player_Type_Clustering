@@ -50,6 +50,26 @@ def minutes_popup(row):
     def finite(value):
         return isinstance(value, (int, float)) and isfinite(value)
 
+    if row.get('Minutes comparison mode') == 'Both sources':
+        units = {'PTS':'points','REB':'rebounds','AST':'assists','3PM':'threes','PRA':'PRA',
+                 'STL':'steals','BLK':'blocks'}.get(row.get('Stat'), row.get('Stat',''))
+        side = row.get('Play', '')
+        parts = []
+        for name, label in [('Your','Your minutes'),('Tabs','TabsNBA minutes')]:
+            values = [row.get(name+' minutes'),row.get(name+' minutes projection'),row.get(name+' minutes edge %')]
+            if all(finite(value) for value in values):
+                minutes, projection, edge = values
+                edge_label = f'{edge:+.2f}' if round(edge,1)==PLAY_THRESHOLD_PCT and edge!=PLAY_THRESHOLD_PCT else f'{edge:+.1f}'
+                parts.append(f'{label}: {minutes:.1f} min → {projection:.2f} {units}, {edge_label}% {side} edge.')
+        if len(parts) == 2 and row.get('Minutes flag') != 'Unchecked':
+            summary = ('This bet does not clear 5% edge or the player is out under at least one source. '
+                       if row.get('Minutes flag') == 'MIN' else 'This bet clears 5% edge with either minutes source. ')
+            summary += '\n' + '\n'.join(parts)
+            summary += f'\nBlended model: {row["Projected minutes"]:.1f} min → {row["Projected"]:.2f} {units}.'
+        else:
+            summary = 'We need complete, current minutes from both your rotation and TabsNBA to check this bet. Your minutes stay in use where the blend is unavailable.'
+        return dict(detail=summary, technical=str(row.get('Minutes detail','')))
+
     reference = row.get('Reference minutes')
     original = row.get('Projected minutes')
     has_reference = finite(reference)

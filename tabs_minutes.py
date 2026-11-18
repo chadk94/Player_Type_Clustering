@@ -1,4 +1,4 @@
-"""Private TabsNBA export adapter. Comparison inputs never become model minutes."""
+"""Private, session-only TabsNBA minutes source for blending and review."""
 from datetime import datetime
 from hashlib import sha256
 from functools import lru_cache
@@ -61,7 +61,7 @@ def _remember_browser_result():
 def render_tabs_comparison(ui,roster,games):
     with ui.expander('TabsNBA minutes comparison',expanded=False):
         mode=ui.radio('Tabs connection',['Browser connection','CSV upload'],horizontal=True,key='tabs_minutes_mode')
-        ui.caption('Comparison only: your approved minutes and projections stay unchanged.')
+        ui.caption('Fresh, complete rotations blend 50/50 with your minutes across projection pages. TabsNBA decides availability conflicts; team minutes stay at 240. Your saved rotation is preserved.')
         if mode=='CSV upload':return render_tabs_upload(ui,roster,games)
         previous=st.session_state.get('tabs_browser_last_result')
         result=_browser_component(st.runtime.get_instance())(data={'previous':previous},
@@ -136,6 +136,7 @@ def parse_tabs_minutes(content, filename, roster, games, captured_at, scenario, 
     columns=['PLAYER_ID','Team','Opponent','game_date','minutes','source','updated_at','independent','scenario',
              'source_updated_at','source_max_age_hours','requires_source_timestamp','source_mode']
     result=pd.DataFrame(rows,columns=columns)
+    result.attrs['incomplete_teams'] = sorted({row['Team'] for row in unmatched})
     if result.duplicated(['PLAYER_ID','Team','Opponent']).any():raise ValueError('Multiple Tabs names map to the same player.')
     return result,dict(export_date=day.isoformat(),export_rows=len(frame),matched=len(result),
                        other_games=other_games,unmatched=unmatched,scenario=scenario.strip())
@@ -144,7 +145,7 @@ def parse_tabs_minutes(content, filename, roster, games, captured_at, scenario, 
 def render_tabs_upload(ui, roster, games):
     """Session-only import; paid data is not bundled, cached globally or published."""
     with ui.container():
-        ui.caption('Your approved minutes still drive every projection. TabsNBA supplies a comparison only. This CSV connection is a snapshot; it does not automatically refresh the Tabs website.')
+        ui.caption('Fresh, complete Tabs rotations blend with your minutes. This CSV is a snapshot; it does not automatically refresh the Tabs website. Missing or stale coverage retains your minutes and stays unchecked.')
         upload=ui.file_uploader('TabsNBA projections CSV',type=['csv'],key='tabs_minutes_csv')
         if upload is None:
             ui.info('Export your selected scenario from TabsNBA, then upload it here. Missing Tabs comparisons remain unchecked.')

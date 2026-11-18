@@ -314,7 +314,7 @@ def directional_injury_review(row, side, pending, team_frames, injury_info):
 
 
 def assess_edges(edges, final, game, logs, matches, references=None, injury_info=None,
-                 injury_stamp=None, as_of=None, passing=None):
+                 injury_stamp=None, as_of=None, passing=None, minutes_cases=None):
     """Append explanations, scenario means, directional gaps and eligibility only.
 
 No data source is interpreted as clear when missing. Direction-aware injury
@@ -373,17 +373,49 @@ warnings are a screening rule, not a numerical in/out forecast.
             if pd.notna(reference.get('scenario')):record['Minutes detail']+=f" Scenario: {reference.scenario}."
             if pd.notna(reference.get('source_updated_at')):record['Minutes detail']+=f" Source last updated: {reference.source_updated_at}."
         minute_case=None
-        try:
-            minute_case=rebalance_minutes(team,pid,target)
-            tested=scenario_projection(team,minute_case)
-            value=float(tested.loc[tested.PLAYER_ID.eq(pid),stat].iloc[0])
-            edge=side_edge(value,row['Book implied total'],side)
-            record.update({'Minutes test minutes':target,'Minutes test projection':value,'Minutes test edge %':edge})
-            adverse_diff=(row['Projected minutes']-float(reference.minutes))*(1 if side=='Over' else -1) if reference is not None else 0.
-            record['Minutes flag']='MIN' if edge<=PLAY_THRESHOLD_PCT or adverse_diff>=CONFIG['minutes_disagreement'] else ('Clear' if reference is not None else 'Unchecked')
-            record['Minutes detail']+=f'\nTest at {target:g} min: {value:.2f} {row.Stat}, {edge:+.1f}% {side} edge. Other active minutes redistribute proportionally to total 240, capped at 48; excluded players stay out.'
-            if reference is None:record['Minutes detail']+=' Independent comparison still unchecked.'
-        except (ValueError,KeyError,IndexError):record['Minutes detail']+=' Complete rotation test unavailable.'
+        source_cases=[]
+        if minutes_cases is not None:
+            record['Minutes detail']='Waiting for two complete, fresh rotations: yours and TabsNBA. The minutes check is pending.'
+            record['Minutes comparison mode']='Both sources'
+            for name in ('Your', 'Tabs'):
+                record.update({name+' minutes':np.nan, name+' minutes projection':np.nan, name+' minutes edge %':np.nan})
+            for name, key in [('Your','yours'), ('Tabs','tabs')]:
+                frame=minutes_cases.get(key)
+                case=frame.loc[frame.Team.eq(row.Team)].copy() if frame is not None and not frame.empty else pd.DataFrame()
+                if case.empty or case.PLAYER_ID.duplicated().any():break
+                values=pd.to_numeric(case['Projected minutes'],errors='coerce')
+                selected=case.loc[case.PLAYER_ID.eq(pid)]
+                if (len(selected)!=1 or not np.isfinite(values).all() or not values.between(0,48).all()
+                        or abs(values.sum()-240)>1e-6 or not np.isfinite(selected.iloc[0][stat])):break
+                sample=selected.iloc[0]
+                value=float(sample[stat]);edge=side_edge(value,row['Book implied total'],side)
+                record.update({name+' minutes':float(sample['Projected minutes']),
+                               name+' minutes projection':value,name+' minutes edge %':edge})
+                source_cases.append(case)
+            if len(source_cases)==2 and reference is not None:
+                worst=min(('Your','Tabs'),key=lambda name:record[name+' minutes edge %'])
+                minutes_ok=all(record[name+' minutes']>0 and round(record[name+' minutes edge %'],2)>PLAY_THRESHOLD_PCT for name in ('Your','Tabs'))
+                record.update({'Minutes flag':'Clear' if minutes_ok else 'MIN',
+                    'Minutes test minutes':record[worst+' minutes'],
+                    'Minutes test projection':record[worst+' minutes projection'],
+                    'Minutes test edge %':record[worst+' minutes edge %']})
+                record['Minutes detail']=('Recalculate the full team separately with your rotation and TabsNBA’s rotation, '
+                    'using the same player rates, opponent effects and market lines. Team targets and normalized archetype allocation are recalculated normally. '
+                    'Both sources must leave more than 5% directional edge and have the player active. No extra ±3-minute stress is added.')
+            else:
+                source_cases=[]
+        else:
+            try:
+                minute_case=rebalance_minutes(team,pid,target)
+                tested=scenario_projection(team,minute_case)
+                value=float(tested.loc[tested.PLAYER_ID.eq(pid),stat].iloc[0])
+                edge=side_edge(value,row['Book implied total'],side)
+                record.update({'Minutes test minutes':target,'Minutes test projection':value,'Minutes test edge %':edge})
+                adverse_diff=(row['Projected minutes']-float(reference.minutes))*(1 if side=='Over' else -1) if reference is not None else 0.
+                record['Minutes flag']='MIN' if edge<=PLAY_THRESHOLD_PCT or adverse_diff>=CONFIG['minutes_disagreement'] else ('Clear' if reference is not None else 'Unchecked')
+                record['Minutes detail']+=f'\nTest at {target:g} min: {value:.2f} {row.Stat}, {edge:+.1f}% {side} edge. Other active minutes redistribute proportionally to total 240, capped at 48; excluded players stay out.'
+                if reference is None:record['Minutes detail']+=' Independent comparison still unchecked.'
+            except (ValueError,KeyError,IndexError):record['Minutes detail']+=' Complete rotation test unavailable.'
         needed=required_roles(row.Stat)
         signal=evidence.get(pid,dict(ratios={},trends={}))
         covered=bool(needed) and all(s in signal['ratios'] for s in needed)
@@ -408,6 +440,10 @@ warnings are a screening rule, not a numerical in/out forecast.
                 if minute_case:
                     value=rebound['rate']*minute_case[pid]
                     record.update({'Combined test projection':value,'Combined test edge %':side_edge(value,row['Book implied total'],side)})
+                elif source_cases:
+                    values=[rebound['rate']*float(case.loc[case.PLAYER_ID.eq(pid),'Projected minutes'].iloc[0]) for case in source_cases]
+                    value=min(values,key=lambda value:side_edge(value,row['Book implied total'],side))
+                    record.update({'Combined test projection':value,'Combined test edge %':side_edge(value,row['Book implied total'],side)})
         elif covered:
             role={pid:signal['ratios']}
             try:
@@ -423,6 +459,10 @@ warnings are a screening rule, not a numerical in/out forecast.
                     joint=scenario_projection(team,minute_case,role)
                     value=float(joint.loc[joint.PLAYER_ID.eq(pid),stat].iloc[0])
                     record.update({'Combined test projection':value,'Combined test edge %':side_edge(value,row['Book implied total'],side)})
+                elif source_cases:
+                    values=[float(scenario_projection(case,role=role).loc[lambda f:f.PLAYER_ID.eq(pid),stat].iloc[0]) for case in source_cases]
+                    value=min(values,key=lambda value:side_edge(value,row['Book implied total'],side))
+                    record.update({'Combined test projection':value,'Combined test edge %':side_edge(value,row['Book implied total'],side)})
             except (ValueError,KeyError,IndexError):covered=False
         row_pending, informational=directional_injury_review(row,side,pending,team_frames,injury_info)
         injury_ok=complete and not row_pending
@@ -436,10 +476,11 @@ warnings are a screening rule, not a numerical in/out forecast.
         if informational:record['Injury detail']+='\n'+'\n'.join(informational)
         gaps=[side_edge(row.Projected,row['Book implied total'],side),record['Minutes test edge %'],record['Recent test edge %'],record['Combined test edge %']]
         robust=(row.Play in ('Over','Under') and reference is not None and covered and injury_ok
+                and (minutes_cases is None or (len(source_cases)==2 and record['Minutes flag']=='Clear'))
                 and np.isfinite(gaps).all() and min(round(g,2) for g in gaps)>PLAY_THRESHOLD_PCT
                 and (row.Stat!='REB' or record['Role flag']=='Clear'))
         record['Robust play']=bool(robust)
-        record['Review group']='More robust' if robust else 'Waiting on news' if row_pending else 'Unchecked' if reference is None or not covered or not complete else 'Needs review'
+        record['Review group']='More robust' if robust else 'Waiting on news' if row_pending else 'Unchecked' if reference is None or not covered or not complete or record['Minutes flag']=='Unchecked' else 'Needs review'
         record['Review detail']='All checks covered; each scenario retains more than 5% directional edge.' if robust else 'Not cleared by all review checks.'
         if np.isfinite(record['Combined test edge %']):
             record['Review detail']+=f" Combined minutes + role test: {record['Combined test projection']:.2f} {row.Stat}, {record['Combined test edge %']:+.1f}% {side} edge."
