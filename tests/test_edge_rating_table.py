@@ -50,6 +50,35 @@ class EdgeRatingDetailsTests(unittest.TestCase):
         self.assertEqual({row['pick']['id']: row['pick'] for row in payload['rows']}, expected)
         self.assertTrue(group_player_edges(edges.iloc[:0]).empty)
 
+    def test_hover_card_uses_full_final_projection_even_when_only_one_prop_qualifies(self):
+        edges = pd.DataFrame([dict(PLAYER_ID=1, Player='Demo Player', Team='MEM', Opponent='CLE',
+            Stat='AST', Play='Over', Projected=8.12,
+            **{'Book line': 6.5, 'Over odds': -110, 'Under odds': -110,
+               'Signed edge %': 10., 'Edge %': 10.})])
+        projections = pd.DataFrame([
+            dict(PLAYER_ID=1, Player='Demo Player', Team='MEM', Opponent='CLE',
+                 PTS=16.25, REB=5.31, AST=8.12, FG3M=2.13, STL=0., BLK=.43,
+                 TOV=2.4, PF=float('nan'), PRA=29.68,
+                 **{'Projected minutes':31.5, 'Baseline PTS':99.}),
+            dict(PLAYER_ID=2, Player='Demo Player', Team='MEM', Opponent='CLE', PTS=50.),
+            dict(PLAYER_ID=1, Player='Demo Player', Team='MEM', Opponent='BOS', PTS=60.),
+        ])
+        original = projections.copy(deep=True)
+        args = (edges, ['Rank','Player','Stat','Edge %','Projected','Play'],
+                pd.DataFrame([dict(PLAYER_ID=1)]), {}, 'MEM',
+                dict(id='demo', Away='MEM', Home='CLE'), 'FanDuel', date(2026,11,18))
+        card = table_payload(*args, projections=projections)['rows'][0]['projection']
+        self.assertEqual(card['minutes'], '31.5')
+        self.assertEqual(card['opponent'], 'CLE')
+        self.assertEqual({s['stat']: s['value'] for s in card['stats']},
+                         dict(PTS='16.25', REB='5.31', AST='8.12', **{'3PM':'2.13'},
+                              STL='0.00', BLK='0.43', TOV='2.40', PF='—', PRA='29.68'))
+        pd.testing.assert_frame_equal(projections, original)
+        wrong_game = projections.loc[projections.Opponent.eq('BOS')]
+        self.assertIsNone(table_payload(*args, projections=wrong_game)['rows'][0]['projection'])
+        ambiguous = pd.concat([projections, projections.iloc[:1]], ignore_index=True)
+        self.assertIsNone(table_payload(*args, projections=ambiguous)['rows'][0]['projection'])
+
     def test_window_uses_distinct_opponent_games_and_rates_use_qualifying_player_games(self):
         rows = [dict(GAME_DATE=f'2026-11-0{i}', GAME_ID=str(i), ESPN_PLAYER_ID='1',
                      MIN=36, PTS=99 if i==1 else 10, FG3M=0, FG3A=4,

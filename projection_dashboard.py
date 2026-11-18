@@ -482,7 +482,7 @@ def reset_manual_minutes(flag_key, slider_key):
 
 
 @st.fragment
-def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day):
+def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day, projections):
     extra = ui.toggle('Show extra columns', value=False, key='edges_extra_columns',
                       help='Show reference minutes, minutes cushion, implied totals, both odds and push probability. Players stay grouped by their best Edge %.')
     secondary = {'Reference minutes', 'Minutes cushion', 'Book implied total', 'Over odds', 'Exp. P(push)'}
@@ -498,10 +498,10 @@ def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day):
             continue
         rows = group_player_edges(rows)
         exports.append(rows.drop(columns='PLAYER_ID'))
-        render_edge_table(rows, columns, roster, effects, group, game, book, day)
+        render_edge_table(rows, columns, roster, effects, group, game, book, day, projections)
     ui.caption('Experimental probabilities use each player’s final projection and the saved line, conditional on playing. '
                'Players are ranked by their best Edge %, with their props grouped together. Extra columns include push probability.')
-    ui.caption('Hover or tap a matchup rating for recent results by archetype. Ratings range from 1 (poor) to 5 (excellent).')
+    ui.caption('Hover or tap a player’s name or photo for their full game projection. Hover or tap a matchup rating for recent results by archetype. Ratings range from 1 (poor) to 5 (excellent).')
     ui.download_button('Download all edges for this game', pd.concat(exports, ignore_index=True).to_csv(index=False),
                        f"{game['Away']}_{game['Home']}_edges.csv", 'text/csv', key='edges_download')
 
@@ -1445,7 +1445,7 @@ def render_live_dashboard(ui, roster):
                             display_columns[after_projection:after_projection] = RECENT_COLUMNS
                             ui.caption(RECENT_CAPTION)
                         render_ranked_edges(ui, ranked, display_columns, roster, current_effects, game,
-                                            edge_book_name, edge_date)
+                                            edge_book_name, edge_date, combined)
                     with ui.expander('Review assumptions and scenario comparisons'):
                         ui.write('Minutes: compare with your selected source; stress an Over down or an Under up by at least 3 minutes, or to the more adverse source estimate. Redistribute active teammates to keep 240 minutes; excluded players stay out. TabsNBA follows your connected browser scenario, or Tabs Min from a CSV snapshot. Its publication time must be within two hours. Missing, stale or unmatched sources remain unchecked. Tabs comparisons never replace your approved minutes.')
                         ui.write('Role: compare up to 5 recent appearances with up to 10 preceding appearances, holding shooting conversion and minutes fixed. Points use shot/free-throw volume; threes use attempts; assists use verified potential assists and passes made. At least 3 recent and 5 preceding games are required. Rebounds compare the last 5 appearances with the preceding 5–10, using rebounds per minute; a 20% decline flags Overs and a 20% increase flags Unders. The rebound comparison uses the recent rate at your projected minutes, without changing the main model. Steal and block role checks remain unchecked. Other role scenarios retain team targets and normalized archetype effects.')

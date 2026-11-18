@@ -547,6 +547,11 @@ photos below the name; groups with three or more props use 104×76, fitting with
 the existing grouped rows without widening the player column. All sizes reuse
 the same small image source and deferred loading.
 No photo downloads or lookups run on the projection server or block the table.
+Hover, focus or tap a player's name/photo to see their full game projection:
+minutes, PTS, REB, AST, 3PM, STL, BLK, TOV, PF and PRA. The card reads the same
+already-adjusted game frame used for the edges, before prop filters; it includes
+stats without qualifying lines and leaves unavailable values as dashes. Opening
+or dismissing it is browser-only and makes no network request or model rerun.
 Old EV sort preferences and column clicks cannot change that order. EV continues
 to be calculated for exports and tracking, using the unrounded win/loss probabilities
 and the selected side's quoted payout. It does not affect the visible rankings.

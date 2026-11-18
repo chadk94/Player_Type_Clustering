@@ -12,7 +12,10 @@ from points_probability import PROBABILITY_COLUMNS
 from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT
 from todays_plays import edge_pick
 
-EDGE_TABLE_UI_VERSION = 'player_group_shading_v1'
+EDGE_TABLE_UI_VERSION = 'player_projection_hover_v1'
+
+PLAYER_PREVIEW_STATS = {'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', '3PM': 'FG3M',
+                        'STL': 'STL', 'BLK': 'BLK', 'TOV': 'TOV', 'PF': 'PF', 'PRA': 'PRA'}
 
 # Match the component statistics used by apply_matchup, including the attempts
 # effect on made threes. Keep the two rebound populations separate.
@@ -161,8 +164,33 @@ def group_player_edges(edges):
         ordered.groupby(['Team', 'PLAYER_ID'], sort=False, dropna=False), start=1)], ignore_index=True)
 
 
-def table_payload(edges, columns, roster, effects, team, game, book, day):
+def player_projection_cards(projections):
+    """Format the loaded final game frame, independently of qualifying prop filters."""
+    if projections is None or projections.empty:
+        return {}
+
+    def number(value, decimals=2):
+        try:
+            value = float(value)
+            return f'{value:.{decimals}f}' if isfinite(value) and value >= 0 else '—'
+        except (ValueError, TypeError):
+            return '—'
+
+    cards = {}
+    for key, rows in projections.groupby(['PLAYER_ID', 'Team', 'Opponent'], sort=False):
+        if len(rows) != 1:
+            continue  # Never pick an arbitrary conflicting game projection.
+        row = rows.iloc[0]
+        cards[key] = dict(player=str(row.Player), team=str(row.Team), opponent=str(row.Opponent),
+                          minutes=number(row.get('Projected minutes'), 1),
+                          stats=[dict(stat=label, value=number(row.get(field)))
+                                 for label, field in PLAYER_PREVIEW_STATS.items()])
+    return cards
+
+
+def table_payload(edges, columns, roster, effects, team, game, book, day, projections=None):
     players = roster.set_index('PLAYER_ID')
+    cards = player_projection_cards(projections)
     output = []
     grouped = group_player_edges(edges)
     counts = grouped['Rank'].value_counts()
@@ -197,6 +225,7 @@ def table_payload(edges, columns, roster, effects, team, game, book, day):
             badges.append(dict(label='✓' if row.get('Robust play') else 'Review',color='clear' if row.get('Robust play') else 'unchecked',detail=row.get('Review detail','')))
         output.append(dict(pick=edge_pick(row, game, book, day), values=values, labels=labels, styles=comparison_style(raw),
                            playerId=int(row.PLAYER_ID),
+                           projection=cards.get((row.PLAYER_ID, row.Team, row.Opponent)) if row.Rank != last_rank else None,
                            playerRowSpan=int(counts[row.Rank]) if row.Rank != last_rank else 0,
                            detail=rating_detail(row.Stat, player, row.Opponent, effects),reviewBadges=badges))
         last_rank = row.Rank
@@ -212,6 +241,6 @@ def _component(runtime, ui_version):
         css=Path(__file__).with_suffix('.css').read_text(), js=Path(__file__).with_name('play_storage.mjs').read_text()+'\n'+Path(__file__).with_suffix('.mjs').read_text())
 
 
-def render_edge_table(edges, columns, roster, effects, team, game, book, day):
-    _component(st.runtime.get_instance(), EDGE_TABLE_UI_VERSION)(data=table_payload(edges, columns, roster, effects, team, game, book, day),
+def render_edge_table(edges, columns, roster, effects, team, game, book, day, projections):
+    _component(st.runtime.get_instance(), EDGE_TABLE_UI_VERSION)(data=table_payload(edges, columns, roster, effects, team, game, book, day, projections),
                                           key='sportsbook_edge_table_' + team)

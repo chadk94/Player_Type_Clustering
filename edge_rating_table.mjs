@@ -34,15 +34,33 @@ export default function({data, parentElement}) {
         tip.style.top = (b.top >= t.height + 12 ? b.top - t.height - 6 :
             Math.max(8, Math.min(b.bottom + 6, innerHeight - t.height - 8))) + 'px';
     }
-    function show(button, text, technical) {
+    function show(button, text, technical, projection) {
         clearTimeout(closeTimer);
         if (active === button || restoringFocus) return;
         hide();
         active = button;
         tip.replaceChildren(make('div', text));
         tip.classList.toggle('role-popup', !!technical);
-        tip.setAttribute('role', technical ? 'dialog' : 'tooltip');
-        if (technical) {
+        tip.classList.toggle('projection-popup', !!projection);
+        tip.setAttribute('role', technical || projection ? 'dialog' : 'tooltip');
+        if (projection) {
+            tip.setAttribute('aria-label', projection.player + ' full projection');
+            const title = make('strong', projection.player);
+            title.className = 'projection-title';
+            const context = make('div', `${projection.team} vs ${projection.opponent} · ${projection.minutes} projected minutes`);
+            context.className = 'projection-context';
+            const stats = make('dl');
+            stats.className = 'projection-stats';
+            for (const {stat, value} of projection.stats) {
+                const cell = make('div');
+                cell.append(make('dt', stat), make('dd', value));
+                stats.append(cell);
+            }
+            const caption = make('div', 'Current game projections, including stats without a qualifying edge. PF = fouls; — = unavailable.');
+            caption.className = 'projection-caption';
+            tip.replaceChildren(title, context, stats, caption);
+            button.setAttribute('aria-expanded', 'true');
+        } else if (technical) {
             tip.setAttribute('aria-label', 'Play review details');
             const details = make('details');
             details.append(make('summary', 'Technical details'), make('div', technical));
@@ -70,8 +88,18 @@ export default function({data, parentElement}) {
     const selectors = new Map();
     const portraits = new Map();
     let portraitObserver;
-    function playerIdentity(name, id, plays) {
-        const identity = make('span'), avatar = make('span');
+    function playerIdentity(name, id, plays, projection) {
+        const identity = make('button'), avatar = make('span');
+        identity.type = 'button';
+        identity.setAttribute('aria-label', 'Full projection for ' + name);
+        identity.setAttribute('aria-haspopup', 'dialog');
+        identity.setAttribute('aria-controls', tip.id);
+        identity.setAttribute('aria-expanded', 'false');
+        const openProjection = () => show(identity, name + '’s full game projection is unavailable.', null, projection);
+        identity.onpointerenter = e => { if (e.pointerType !== 'touch') openProjection(); };
+        identity.onfocus = identity.onclick = openProjection;
+        identity.onpointerleave = leaveInteractive;
+        identity.onblur = e => { if (!tip.contains(e.relatedTarget)) hide(); };
         identity.className = 'player-identity';
         if (plays > 1) identity.classList.add('multiple-plays');
         if (plays > 2) identity.classList.add('many-plays');
@@ -94,6 +122,7 @@ export default function({data, parentElement}) {
             avatar.append(img);
         }
         const playerName = make('span', name);
+        playerName.className = 'player-name';
         if (plays > 1) identity.append(playerName, avatar);
         else identity.append(avatar, playerName);
         return identity;
@@ -217,7 +246,7 @@ export default function({data, parentElement}) {
                     button.onpointerleave = button.onblur = hide;
                     td.append(button);
                 } else if (data.columns[i] === 'Player') {
-                    td.append(playerIdentity(label, row.playerId, row.playerRowSpan));
+                    td.append(playerIdentity(label, row.playerId, row.playerRowSpan, row.projection));
                 } else {
                     td.textContent = label;
                     if (data.columns[i] === 'EV %' && pick && row.values[i] != null) {

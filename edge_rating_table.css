@@ -28,6 +28,8 @@ td[data-column="Player"] { background: var(--edge-group-bg); font-weight: 500; }
 .player-avatar.photo-loaded .player-initials { visibility: hidden; }
 th[data-column="Player"] { z-index: 3; }
 td button { width: 100%; text-align: start; text-decoration: underline dotted; text-underline-offset: .25rem; padding: .12rem .2rem; }
+td button.player-identity { width: auto; padding: 0; text-decoration: none; }
+.player-name { text-decoration: underline dotted; text-decoration-color: var(--st-border-color, #8888); text-underline-offset: .25rem; }
 button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: .2rem; }
 [popover] { pointer-events: none; position: fixed; inset: auto; margin: 0; box-sizing: border-box;
     max-width: min(28rem, calc(100vw - 16px)); padding: .85rem 1rem; white-space: pre-line; font: inherit;
@@ -38,6 +40,14 @@ button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; bor
 .role-popup summary { cursor: pointer; font-weight: 600; }
 .role-popup summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .role-popup details > div { margin-top: .5rem; font-size: .9375rem; }
+.projection-popup { pointer-events: auto; width: 24rem; max-height: calc(100vh - 16px); overflow-y: auto; white-space: normal; }
+.projection-title { display: block; font-size: 1.125rem; }
+.projection-context { margin-top: .15rem; font-size: .9375rem; }
+.projection-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; margin: .75rem 0; }
+.projection-stats > div { padding: .45rem .6rem; border: 1px solid var(--st-border-color, #8885); border-radius: .3rem; }
+.projection-stats dt { font-size: .8125rem; }
+.projection-stats dd { margin: 0; font-size: 1.125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.projection-caption { font-size: .8125rem; }
 
 td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; padding:.2rem .4rem; border-radius:.3rem; font-size:.875rem; font-weight:700; text-decoration:none; }
 .review-minutes { color:#713a00; background:#ffdfad; }

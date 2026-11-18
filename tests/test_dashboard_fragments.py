@@ -29,6 +29,15 @@ class DashboardFragmentTests(unittest.TestCase):
                 data = json.loads(element.proto.json)
                 tables.append(pd.DataFrame([r['values'] for r in data['rows']], columns=data['columns']))
                 self.assertTrue(all('Average per 36 minutes' in r['detail'] for r in data['rows']))
+                card = None
+                for row in data['rows']:
+                    if row['playerRowSpan']:
+                        card = row['projection']
+                        self.assertIsNotNone(card)
+                        self.assertEqual(len(card['stats']), 9)
+                    values = dict(zip(data['columns'], row['values']))
+                    self.assertEqual({s['stat']: s['value'] for s in card['stats']}[values['Stat']],
+                                     f"{values['Projected']:.2f}")
         return tables
 
     def setUp(self):
@@ -298,8 +307,12 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         player_teams = self.roster.set_index('PLAYER_NAME').TEAM_ABBREVIATION
         for team, table in zip(['ATL', 'HOU'], edge_tables):
             self.assertEqual(set(table.Player.map(player_teams)), {team})
-            self.assertEqual(table.Rank.tolist(), list(range(1, len(table) + 1)))
-            self.assertTrue(table['Edge %'].is_monotonic_decreasing)
+            self.assertEqual(table.Rank.drop_duplicates().tolist(), list(range(1, table.Player.nunique() + 1)))
+            self.assertTrue(table.Rank.is_monotonic_increasing)
+            self.assertTrue(table.groupby('Rank')['Edge %'].max().is_monotonic_decreasing)
+            for _, player_rows in table.groupby('Rank'):
+                self.assertEqual(player_rows.Player.nunique(), 1)
+                self.assertTrue(player_rows['Edge %'].is_monotonic_decreasing)
             self.assertTrue(table['Edge %'].gt(5).all())
             self.assertTrue(table['Good-to minutes'].between(.5, 48).all())
             self.assertIn(f'{team} — {len(table)} edges', [h.value for h in self.app.subheader])
@@ -333,7 +346,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         for before, table in zip(shown_edges, self.edge_frames()):
             pd.testing.assert_frame_equal(table[before.columns],before)
             self.assertNotIn('EV %', table)
-            self.assertTrue(table['Edge %'].is_monotonic_decreasing)
+            self.assertTrue(table.groupby('Rank')['Edge %'].max().is_monotonic_decreasing)
             self.assertIn('Exp. P(push)', table)
             self.assertTrue(table['Minutes cushion'].ge(0).all())
             np.testing.assert_allclose(table['Minutes cushion'],
