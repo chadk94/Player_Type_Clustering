@@ -12,7 +12,7 @@ from points_probability import PROBABILITY_COLUMNS
 from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT
 from todays_plays import edge_pick
 
-EDGE_TABLE_UI_VERSION = 'player_groups_v1'
+EDGE_TABLE_UI_VERSION = 'player_photos_v1'
 
 # Match the component statistics used by apply_matchup, including the attempts
 # effect on made threes. Keep the two rebound populations separate.
@@ -196,6 +196,7 @@ def table_payload(edges, columns, roster, effects, team, game, book, day):
         if not badges and 'Review group' in row:
             badges.append(dict(label='✓' if row.get('Robust play') else 'Review',color='clear' if row.get('Robust play') else 'unchecked',detail=row.get('Review detail','')))
         output.append(dict(pick=edge_pick(row, game, book, day), values=values, labels=labels, styles=comparison_style(raw),
+                           playerId=int(row.PLAYER_ID),
                            playerRowSpan=int(counts[row.Rank]) if row.Rank != last_rank else 0,
                            detail=rating_detail(row.Stat, player, row.Opponent, effects),reviewBadges=badges))
         last_rank = row.Rank

@@ -68,6 +68,50 @@ export default function({data, parentElement}) {
     note.setAttribute('role', 'status');
     root.append(note);
     const selectors = new Map();
+    const portraits = new Map();
+    let portraitObserver;
+    function playerIdentity(name, id) {
+        const identity = make('span'), avatar = make('span');
+        identity.className = 'player-identity';
+        avatar.className = 'player-avatar';
+        avatar.setAttribute('aria-hidden', 'true');
+        const parts = name.trim().split(/\s+/);
+        const initials = make('span', (parts[0]?.[0] || '') + (parts.length > 1 ? parts.at(-1)[0] : ''));
+        initials.className = 'player-initials';
+        avatar.append(initials);
+        if (Number.isSafeInteger(id) && id > 0) {
+            const img = make('img');
+            img.alt = '';
+            img.width = 44; img.height = 32;
+            img.loading = 'lazy'; img.decoding = 'async'; img.fetchPriority = 'low';
+            img.referrerPolicy = 'no-referrer';
+            img.onload = () => avatar.classList.add('photo-loaded');
+            img.onerror = () => img.remove();
+            // No request until the table is rendered and this portrait nears view.
+            portraits.set(img, `https://cdn.nba.com/headshots/nba/latest/260x190/${id}.png`);
+            avatar.append(img);
+        }
+        identity.append(avatar, make('span', name));
+        return identity;
+    }
+    function loadVisiblePortraits() {
+        const load = img => {
+            img.src = portraits.get(img);
+            portraits.delete(img);
+        };
+        if ('IntersectionObserver' in window) {
+            portraitObserver = new IntersectionObserver(entries => {
+                for (const entry of entries) if (entry.isIntersecting) {
+                    portraitObserver.unobserve(entry.target);
+                    load(entry.target);
+                }
+            }, {rootMargin: '100px'});
+            for (const img of portraits.keys()) portraitObserver.observe(img);
+        } else {
+            // Older browsers still get native lazy loading and low priority.
+            for (const img of portraits.keys()) load(img);
+        }
+    }
     function updateChecks() {
         try {
             for (const [group, {pick, inputs}] of selectors) {
@@ -168,6 +212,8 @@ export default function({data, parentElement}) {
                     button.onfocus = button.onclick = () => show(button, row.detail);
                     button.onpointerleave = button.onblur = hide;
                     td.append(button);
+                } else if (data.columns[i] === 'Player') {
+                    td.append(playerIdentity(label, row.playerId));
                 } else {
                     td.textContent = label;
                     if (data.columns[i] === 'EV %' && pick && row.values[i] != null) {
@@ -203,8 +249,12 @@ export default function({data, parentElement}) {
     window.addEventListener('scroll', pageScroll, true);
     window.addEventListener('resize', hide);
     render(); updateChecks();
+    const hasIdleCallback = 'requestIdleCallback' in window;
+    const portraitTask = hasIdleCallback ? window.requestIdleCallback(loadVisiblePortraits, {timeout:1500}) : setTimeout(loadVisiblePortraits, 0);
     const unwatch=watchPicks(updateChecks);
     return () => {
+        if (hasIdleCallback) window.cancelIdleCallback(portraitTask); else clearTimeout(portraitTask);
+        portraitObserver?.disconnect();
         unwatch();
         hide();
         document.removeEventListener('keydown', dismiss);

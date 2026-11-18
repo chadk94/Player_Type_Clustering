@@ -538,6 +538,11 @@ their team. **Player #** ranks players by their highest displayed **Edge %**;
 their props then run highest edge first. Names and player ranks appear once beside
 the group, with Lo / Med / Hi controls on every prop. Filters recalculate groups
 from the remaining props, and the game CSV uses the same grouping and player ranks.
+Small NBA headshots load once per player group, directly in the browser, after
+table rendering and only near the viewport. Images use low fetch priority,
+asynchronous decoding and stable URLs for normal browser caching. Fixed-size
+initials placeholders preserve the layout when an image is slow or unavailable.
+No photo downloads or lookups run on the projection server or block the table.
 Old EV sort preferences and column clicks cannot change that order. EV continues
 to be calculated for exports and tracking, using the unrounded win/loss probabilities
 and the selected side's quoted payout. It does not affect the visible rankings.

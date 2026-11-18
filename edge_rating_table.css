@@ -15,6 +15,14 @@ tbody tr:hover { --edge-row-bg: color-mix(in srgb, var(--st-primary-color, #2578
 td.numeric { text-align: end; }
 th[data-column="Player"], td[data-column="Player"] { position: sticky; left: 0; z-index: 2; border-inline-end-width: 2px; }
 td[data-column="Player"] { background: var(--edge-row-bg); font-weight: 500; }
+.player-identity { display: inline-flex; align-items: center; gap: .5rem; }
+.player-avatar { position: relative; display: inline-grid; place-items: center; flex: 0 0 44px;
+    width: 44px; height: 32px; overflow: hidden; border-radius: .3rem;
+    background: var(--st-secondary-background-color, #e8eaee); }
+.player-initials { font-size: .75rem; font-weight: 600; }
+.player-avatar img { position: absolute; inset: 0; width: 44px; height: 32px; object-fit: contain; opacity: 0; }
+.player-avatar.photo-loaded img { opacity: 1; }
+.player-avatar.photo-loaded .player-initials { visibility: hidden; }
 th[data-column="Player"] { z-index: 3; }
 td button { width: 100%; text-align: start; text-decoration: underline dotted; text-underline-offset: .25rem; padding: .12rem .2rem; }
 button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: .2rem; }
