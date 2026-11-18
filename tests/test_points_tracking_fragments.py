@@ -1,6 +1,8 @@
 """Reproduce browser acknowledgements inside nested Streamlit fragments."""
 from dataclasses import replace
 import json
+import base64
+import gzip
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -127,3 +129,15 @@ preview()
         self.assertEqual(state[key]['records'], [self.record, second])
         tracking.accept_tracking_reply(state, key, 'reset', dict(request='reset', full=True, status='ok', records=[]))
         self.assertFalse(state[key]['records'])
+
+    def test_compressed_restore_preserves_exact_forecasts_and_invalid_packets_keep_history(self):
+        state={'test':dict(records=[],results=[],status='loading')}
+        plain=dict(request='restore',status='ok',full=True,records=[json.dumps(self.record)],results=[])
+        packed=dict(request='restore',status='ok',encoding='gzip-base64',
+                    payload=base64.b64encode(gzip.compress(json.dumps(plain).encode())).decode())
+        tracking.accept_tracking_reply(state,'test','restore',packed)
+        self.assertEqual(state['test']['records'],[self.record])
+        for payload in ['invalid!',base64.b64encode(b'broken').decode(),packed['payload']]:
+            tracking.accept_tracking_reply(state,'test','next',packed|dict(request='next',payload=payload))
+            self.assertEqual(state['test']['records'],[self.record])
+            self.assertEqual(state['test']['status'],'unavailable')

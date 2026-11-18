@@ -66,6 +66,18 @@ export function readHistory(db, season, previous) {
     });
 }
 
+export async function packHistoryReply(reply) {
+    const body=new Blob([JSON.stringify(reply)],{type:'application/json'});
+    if (body.size<=1000000) return reply;
+    if (body.size>128000000 || typeof CompressionStream!=='function') throw Error('History transfer unavailable');
+    const bytes=new Uint8Array(await new Response(body.stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
+    // Keep room for the other widgets in Streamlit's 25 MB client message.
+    if (bytes.length>6000000) throw Error('History transfer too large');
+    let text='';
+    for (let i=0;i<bytes.length;i+=32768) text+=String.fromCharCode(...bytes.subarray(i,i+32768));
+    return {request:reply.request,status:reply.status,encoding:'gzip-base64',payload:btoa(text)};
+}
+
 export default function({data, parentElement, setTriggerValue}) {
     if (parentElement.pointsRequest === data.request) return;
     parentElement.pointsRequest = data.request;
@@ -79,9 +91,10 @@ export default function({data, parentElement, setTriggerValue}) {
             const prior = parentElement.pointsHistory;
             const previous = !data.restore && prior && prior.request === data.base ? prior.index : null;
             const history = await readHistory(db, data.season, previous);
+            const reply=await packHistoryReply({request:data.request,base:data.base,status:'ok',...history.reply});
             if (parentElement.pointsRequest === data.request) {
                 parentElement.pointsHistory = {request: data.request, index: history.index};
-                setTriggerValue('reply', {request: data.request, base: data.base, status: 'ok', ...history.reply});
+                setTriggerValue('reply', reply);
             }
         } catch (_) {
             if (parentElement.pointsRequest === data.request) {

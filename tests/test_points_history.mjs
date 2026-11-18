@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readHistory} from '../points_tracking.mjs';
+import {readHistory,packHistoryReply} from '../points_tracking.mjs';
+import {gunzipSync} from 'node:zlib';
 
 // Run IndexedDB callbacks in request order, including reads queued from onsuccess.
 function historyDB(rows, results) {
@@ -25,6 +26,20 @@ function historyDB(rows, results) {
         return tx;
     }};
 }
+
+test('a 30 MB history restores losslessly without closing the app connection',async()=>{
+    const record=JSON.stringify({id:'test',mean:1.23456789123456789,stat:'PTS',detail:'x'.repeat(1100)});
+    const reply={request:'current',status:'ok',full:true,records:Array(27000).fill(record),results:[]};
+    assert.ok(Buffer.byteLength(JSON.stringify(reply))>30000000);
+    const packed=await packHistoryReply(reply);
+    assert.equal(packed.encoding,'gzip-base64');assert.ok(JSON.stringify(packed).length<1000000);
+    assert.deepEqual(JSON.parse(gunzipSync(Buffer.from(packed.payload,'base64'))),reply);
+    const small={request:'small',status:'ok',records:[record]};
+    assert.deepEqual(await packHistoryReply(small),small);
+    const native=globalThis.CompressionStream;
+    try {globalThis.CompressionStream=undefined;await assert.rejects(packHistoryReply(reply));}
+    finally {globalThis.CompressionStream=native;}
+});
 
 test('restore once, read only new forecast bodies including other tabs, and recover from deletion', async () => {
     const season = '2026-27';

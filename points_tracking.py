@@ -5,6 +5,8 @@ from hashlib import sha256
 from pathlib import Path
 import json
 import math
+import base64
+import zlib
 
 import numpy as np
 import pandas as pd
@@ -199,7 +201,7 @@ def tracking_component():
     global _component
     if _component is None:
         from streamlit.components.v2 import component
-        _component = component('points_probability_tracking_v2', js=Path(__file__).with_suffix('.mjs').read_text())
+        _component = component('points_probability_tracking_v3', js=Path(__file__).with_suffix('.mjs').read_text())
     return _component
 
 
@@ -209,6 +211,21 @@ def accept_tracking_reply(state, key, request, reply):
         return
     if state[key].get('acknowledged') == request and state[key]['status'] == reply.get('status'):
         return
+    if reply.get('encoding') is not None:
+        try:
+            if reply['encoding']!='gzip-base64' or not isinstance(reply.get('payload'),str) or len(reply['payload'])>8000000:
+                raise ValueError('Invalid history encoding')
+            decoder=zlib.decompressobj(16+zlib.MAX_WBITS)
+            decoded=decoder.decompress(base64.b64decode(reply['payload'],validate=True),128000001)
+            if len(decoded)>128000000 or not decoder.eof or decoder.unused_data:
+                raise ValueError('Invalid history transfer')
+            unpacked=json.loads(decoded)
+            if not isinstance(unpacked,dict) or unpacked.get('request')!=request or unpacked.get('status')!='ok':
+                raise ValueError('History request mismatch')
+            reply=unpacked
+        except (ValueError,TypeError,zlib.error):
+            state[key]['status']='unavailable'
+            return
     if reply.get('status') == 'ok' and isinstance(reply.get('records'), list):
         saved = state[key]
         full = reply.get('full', True)
