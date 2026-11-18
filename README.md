@@ -1555,6 +1555,24 @@ existing strict roster validation.
 
 ### Sportsbook Edges review flags — November 18
 
+The live roster also includes `data/roster_additions.csv`: Leaky Black (SAC),
+Norchad Omier (CLE), Graham Ike (GSW), and Tony Bradley (UTA), added November 18.
+NBA identities/team sources and provisional role reasons are recorded in that file.
+These additions do not replace existing profiles or manual overrides, or allocate
+saved minutes. Their initial saved minutes are zero; exact-game approved rotations
+and the session's Tabs blend supply their effective minutes. The usual current-season
+ESPN summaries and historical NBA logs supply player rates. On November 18 all four
+matched usable current-season summaries (9, 4, 11, and 8 appearances, respectively).
+The existing explicitly labeled archetype fallback applies if individual data is
+unavailable. The published roster file contains no paid Tabs projections.
+
+The Tabs browser reader recognizes separate OUT badges even when rendered text
+touches the player's name, excluding photo initials from names. Unmatched reserves
+with explicit zero minutes do not block the entire team; unmatched positive-minute
+players still do. Every positive player in the user's rotation still needs an
+individually matched Tabs row. The PHI-only Labaron Philon Jr. name alias maps to
+the existing Labaron Philon profile. No missing row is inferred to mean OUT.
+
 Role badges explain the effect on the selected Over or Under in plain language,
 show the recent-role projection, and state whether its directional edge still
 clears the strict 5% cutoff. Unchecked categories say that the role could not be

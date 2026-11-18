@@ -12,7 +12,7 @@ import streamlit as st
 
 from live_projections import (CompletedTeamCache, ESPN, STAT_NAMES, build_projections, fetch_json, load_live_state, match_player_stats, name_key, regular_season_matchups, next_from_matchups, round_projected_minutes)
 from archetype_fallback import build_archetype_priors
-from roster_membership import roster_on_date, roster_for_approved_games
+from roster_membership import roster_on_date, roster_for_approved_games, add_roster_profiles
 from season_pipeline import ROOT, SEASON, OPENING_GAMES, apply_roster_rules
 from matchup_data import bundled_box_rows, load_game_logs
 from matchup_projections import (assign_game_archetypes, matchup_effects, apply_matchup, HEAT_STATS,
@@ -836,7 +836,7 @@ def render_archetypes_page(ui, roster):
 
 @st.fragment
 def render_live_dashboard(ui, roster):
-    source_roster = apply_roster_rules(roster)
+    source_roster = apply_roster_rules(add_roster_profiles(roster, SEASON))
     today = datetime.now(ZoneInfo('America/New_York')).date()
     roster = roster_on_date(source_roster, SEASON, today).copy()
     roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)

@@ -1,5 +1,8 @@
 """In-season team changes for the workbook roster. Dates are NBA game dates."""
 from datetime import date
+from pathlib import Path
+
+import pandas as pd
 
 from import_minutes import TEAM_IDS
 
@@ -10,6 +13,33 @@ ROSTER_MOVES = (
     ('2026-27', 1642383, date(2026, 10, 21), None, 'DAL'),
     ('2026-27', 1642363, date(2026, 11, 8), 'SAC', 'OKC'),
 )
+
+
+def add_roster_profiles(roster, season):
+    """Add reviewed in-season identities without replacing saved roster rows.
+
+    Zero is a reserve default, never a new allocation. Approved game rotations
+    and the session's Tabs blend supply minutes through the normal paths.
+    """
+    path = Path(__file__).parent / 'data/roster_additions.csv'
+    additions = pd.read_csv(path)
+    additions = additions.loc[additions.Season.eq(season) & ~additions.PLAYER_ID.isin(roster.PLAYER_ID)].copy()
+    if additions.empty:
+        return roster
+    if additions.PLAYER_ID.duplicated().any() or additions.PLAYER_NAME.duplicated().any():
+        raise ValueError('In-season roster additions must have unique player identities')
+    additions['TEAM_ID'] = additions.TEAM_ABBREVIATION.map(TEAM_IDS)
+    if additions.TEAM_ID.isna().any():
+        raise ValueError('Unknown team in roster additions')
+    additions['SEASON_ID'] = int(season[:4]) + 20000
+    additions['WorkbookPlayerName'] = additions.PLAYER_NAME
+    additions['PROJECTED_MIN'] = 0.
+    additions['HasHistoricalProfile'] = False
+    additions['ModelEligibleMinutes'] = False
+    additions['FeatureDataStatus'] = 'provisional_in_season_profile'
+    for side in ('Off', 'Def'):
+        additions[side+'AssignmentSource'] = 'provisional_in_season_review'
+    return pd.concat([roster, additions.reindex(columns=roster.columns)], ignore_index=True)
 
 
 def roster_on_date(roster, season, game_day):
