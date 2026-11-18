@@ -1566,7 +1566,20 @@ A gray question mark means a check is unavailable, never that it passed.
   the player's allocation weight by recent/current-season opportunity rate, holding minutes,
   team targets and normalized archetype effects fixed. An adverse 10% window-to-window opportunity
   change or loss of the 5% edge triggers purple. This is a sensitivity proxy, not a new production
-  baseline. REB/STL/BLK role checks are unchecked until verified opportunity measures are available.
+  baseline. Steal and block role checks remain unchecked.
+- **Recent rebounding trend:** compare total rebounds / total minutes in the last five
+  positive-minute appearances with the preceding five to ten, on the current team and
+  before tip-off. Require 45 recent / 60 preceding minutes, complete rebound records,
+  and a positive preceding rate. A decline of at least 20% flags an Over; an increase
+  of at least 20% flags an Under (equality counts). Recent-rate projection = recent
+  REB/min × the player's projected minutes. Remaining edge uses the same book-implied
+  total and bet direction. The combined comparison uses the stressed minutes instead.
+  This simple comparison is not normalized back to the team's rebound target and adds
+  no new opponent adjustment. It never replaces the main REB, PRA, probabilities, EV,
+  or rankings. Other role checks remain unchanged. A flagged rebound trend cannot
+  enter More robust plays; unflagged rebounds still need all other checks and scenario
+  edges above 5%. Missing samples stay unchecked. Sample totals and the calculation
+  are available under **Technical details** in the popup.
 - **Injuries:** use both teams' matched official report, at most 30 minutes old. Unresolved key
   questionable players, the selected player's own questionable status, or an Out/Doubtful player
   still in the rotation prevent clearance. Full verified alternative rotations are not yet supplied

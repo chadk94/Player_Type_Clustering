@@ -46,10 +46,17 @@ def role_popup(row):
         # Preserve the strict cutoff even when a rounded number looks like 5.0%.
         edge_label = f'{edge:.2f}' if round(edge, 1) == PLAY_THRESHOLD_PCT and edge != PLAY_THRESHOLD_PCT else f'{edge:.1f}'
         outcome = ('still clears' if edge > PLAY_THRESHOLD_PCT else 'no longer clears')
-        summary = (f'{player}’s recent {role} role weakens this {side}. '
-                   f'The recent-role projection is {value:.1f} {units}. '
-                   f'The {edge_label}% {side} edge {outcome} your {PLAY_THRESHOLD_PCT:g}% cutoff.')
-    elif stat in ('REB', 'STL', 'BLK'):
+        if stat == 'REB':
+            trend = row.get('Rebound trend %')
+            direction = f' ({"down" if trend < 0 else "up"} {abs(trend):.1f}% per minute)' if pd.notna(trend) else ''
+            summary = (f'{player}’s recent rebounding trend works against this {side}{direction}. '
+                       f'The recent-rate projection is {value:.1f} rebounds at your projected minutes. '
+                       f'The remaining {edge_label}% {side} edge {outcome} your {PLAY_THRESHOLD_PCT:g}% cutoff.')
+        else:
+            summary = (f'{player}’s recent {role} role weakens this {side}. '
+                       f'The recent-role projection is {value:.1f} {units}. '
+                       f'The {edge_label}% {side} edge {outcome} your {PLAY_THRESHOLD_PCT:g}% cutoff.')
+    elif stat in ('STL', 'BLK'):
         summary = (f'Recent-role checks for {units} aren’t available yet. '
                    'This bet has not passed the role check.')
     else:

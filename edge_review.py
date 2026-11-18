@@ -26,6 +26,7 @@ def unavailable_review(edges):
         out[kind+' test projection']=np.nan;out[kind+' test edge %']=np.nan
     out['Robust play']=False;out['Review group']='Unchecked';out['Review flags']='? Unchecked'
     out['Reference minutes']=np.nan;out['Minutes difference']=np.nan;out['Reference source']='Unavailable'
+    out['Rebound trend %']=np.nan
     return out
 
 
@@ -120,7 +121,8 @@ def role_evidence(player, observed, logs, as_of, passing=None):
 Passing is optional verified player/game tracking: PLAYER_ID, GAME_ID,
 POTENTIAL_AST, PASSES_MADE. Missing tracking is not replaced by noisy assists.
 """
-    result=dict(ratios={},trends={},detail='Insufficient recent opportunity history.')
+    result=dict(ratios={},trends={},detail='Insufficient recent opportunity history.',
+                rebound_detail='Needs five recent and at least five preceding appearances on this team, with 45/60 minutes and complete rebound records.')
     if observed is None or logs.empty:return result
     sample=logs.loc[logs.ESPN_PLAYER_ID.astype(str).eq(str(observed.ESPN_PLAYER_ID))].copy()
     dates=pd.to_datetime(sample.GAME_DATE,utc=True,errors='coerce')
@@ -136,7 +138,27 @@ POTENTIAL_AST, PASSES_MADE. Missing tracking is not replaced by noisy assists.
     previous=sample.iloc[max(0,len(sample)-n-CONFIG['previous_games']):-n]
     if recent.MIN.sum()<CONFIG['minimum_recent_minutes'] or previous.MIN.sum()<CONFIG['minimum_previous_minutes']:
         return result
+    # Rebounds need no shooting or passing tracking. Keep this simple observed
+    # rate comparison separate from the normalized opportunity scenarios below.
+    if len(recent) == CONFIG['recent_games'] and 'REB' in sample:
+        window = pd.concat([previous, recent])
+        if np.isfinite(window[['REB','MIN']].to_numpy(float)).all() and window.REB.ge(0).all():
+            recent_rate = float(recent.REB.sum()/recent.MIN.sum())
+            previous_rate = float(previous.REB.sum()/previous.MIN.sum())
+            if previous_rate > 0:
+                change = recent_rate/previous_rate-1
+                result['rebound'] = dict(rate=recent_rate, previous_rate=previous_rate, change=change)
+                result['rebound_detail'] = (
+                    f'{len(recent)} recent vs {len(previous)} preceding appearances on {player.Team}. '
+                    f'Recent: {recent.REB.sum():g} rebounds / {recent.MIN.sum():g} minutes = {recent_rate:.4f} REB/min. '
+                    f'Previous: {previous.REB.sum():g} rebounds / {previous.MIN.sum():g} minutes = {previous_rate:.4f} REB/min. '
+                    f'Change: {change:+.1%}. A decline of at least {CONFIG["rebound_change_fraction"]:.0%} flags Overs; '
+                    f'an increase of at least {CONFIG["rebound_change_fraction"]:.0%} flags Unders. '
+                    'This is an observed rebounding trend, not proof of a role change; missed-shot opportunities can affect it.')
+            else:
+                result['rebound_detail'] = 'The preceding window has zero rebounds, so a percentage trend cannot be calculated.'
     fields=['FGA','FG3A','FTA','FGM','FG3M','FTM','MIN']
+    if not set(fields).issubset(sample):return result
     if not np.isfinite(sample[fields].to_numpy(float)).all() or sample[fields].lt(0).any().any():return result
     season=sample[fields].sum()
     if ((sample.FGM>sample.FGA)|(sample.FG3M>sample.FG3A)|(sample.FG3A>sample.FGA)|(sample.FTM>sample.FTA)).any():return result
@@ -172,7 +194,7 @@ POTENTIAL_AST, PASSES_MADE. Missing tracking is not replaced by noisy assists.
 
 
 def required_roles(stat):
-    return {'PTS':('PTS',),'3PM':('FG3A',),'AST':('AST',),'PRA':('PTS','AST')}.get(stat,())
+    return {'PTS':('PTS',),'3PM':('FG3A',),'AST':('AST',),'REB':('REB',),'PRA':('PTS','AST')}.get(stat,())
 
 
 def minute_reference(references, row, game, as_of):
@@ -235,6 +257,7 @@ Affected games remain Waiting on news rather than inventing an in/out forecast.
             'Injury detail':'Current, complete injury report unavailable.',
             'Minutes test projection':np.nan,'Minutes test edge %':np.nan,
             'Recent test projection':np.nan,'Recent test edge %':np.nan,
+            'Rebound trend %':np.nan,
             'Combined test projection':np.nan,'Combined test edge %':np.nan,
             'Reference minutes':np.nan,'Minutes difference':np.nan,'Reference source':'Unavailable',
             'Robust play':False,'Review group':'Unchecked'})
@@ -264,7 +287,27 @@ Affected games remain Waiting on news rather than inventing an in/out forecast.
         signal=evidence.get(pid,dict(ratios={},trends={}))
         covered=bool(needed) and all(s in signal['ratios'] for s in needed)
         if not needed:record['Role detail']='No verified recent opportunity measure for this category; not treated as a clean role check.'
-        if covered:
+        if row.Stat == 'REB':
+            rebound=signal.get('rebound')
+            covered=bool(rebound)
+            record['Role detail']=signal.get('rebound_detail',signal.get('detail','Recent rebound history unavailable.'))
+            if covered:
+                # Diagnostic only: recent REB / recent MIN × selected minutes.
+                # Do not replace model rebounds, PRA, team targets or probabilities.
+                value=rebound['rate']*float(row['Projected minutes'])
+                edge=side_edge(value,row['Book implied total'],side)
+                adverse=rebound['change']*(1 if side=='Over' else -1)
+                flag=adverse<=-CONFIG['rebound_change_fraction']+1e-12
+                record.update({'Recent test projection':value,'Recent test edge %':edge,
+                               'Rebound trend %':100*rebound['change'], 'Role flag':'ROLE' if flag else 'Clear'})
+                record['Role detail']+=(f'\nRecent-rate projection: {rebound["rate"]:.4f} REB/min × '
+                    f'{row["Projected minutes"]:g} projected minutes = {value:.2f} REB. '
+                    f'Remaining {side} edge: {edge:+.1f}% versus the book-implied total. '
+                    'This comparison does not apply another matchup adjustment or rebalance team totals; the main model is unchanged.')
+                if minute_case:
+                    value=rebound['rate']*minute_case[pid]
+                    record.update({'Combined test projection':value,'Combined test edge %':side_edge(value,row['Book implied total'],side)})
+        elif covered:
             role={pid:signal['ratios']}
             try:
                 tested=scenario_projection(team,role=role)
@@ -297,7 +340,8 @@ Affected games remain Waiting on news rather than inventing an in/out forecast.
             record['Injury flag']='Clear';record['Injury detail']='Both teams have complete, recent reports; no unresolved key questionable players.'
         gaps=[side_edge(row.Projected,row['Book implied total'],side),record['Minutes test edge %'],record['Recent test edge %'],record['Combined test edge %']]
         robust=(row.Play in ('Over','Under') and reference is not None and covered and injury_ok
-                and np.isfinite(gaps).all() and min(round(g,2) for g in gaps)>PLAY_THRESHOLD_PCT)
+                and np.isfinite(gaps).all() and min(round(g,2) for g in gaps)>PLAY_THRESHOLD_PCT
+                and (row.Stat!='REB' or record['Role flag']=='Clear'))
         record['Robust play']=bool(robust)
         record['Review group']='More robust' if robust else 'Waiting on news' if row_pending else 'Unchecked' if reference is None or not covered or not complete else 'Needs review'
         record['Review detail']='All checks covered; each scenario retains more than 5% directional edge.' if robust else 'Not cleared by all review checks.'
