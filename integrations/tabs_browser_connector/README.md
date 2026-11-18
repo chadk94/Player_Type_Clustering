@@ -31,8 +31,10 @@ Personal minute/boost edits on Tabs suspend the independent browser comparison. 
 instead export a CSV and use **CSV upload**, which reads the separate **Tabs Min** column.
 CSV imports require the selected scenario and visible publication time and do not auto-refresh.
 Publication timestamps over two hours old cannot clear the minutes check. Closing the connected
-Tabs tab, leaving the projections page entirely, or losing access clears the comparison on the
-next check. Switching between its Projections and Props views keeps the comparison connected.
+Tabs tab, leaving the projections page entirely, or losing access retains the last validated
+snapshot for its matching games. The prop app labels it **Saved Tabs minutes**, preserves the
+original timestamp and blend, and leaves the current minutes check pending. Fresh valid data
+replaces it automatically on reconnection. Switching between Projections and Props stays connected.
 
 ## Access and privacy
 
@@ -45,6 +47,10 @@ next check. Switching between its Projections and Props views keeps the comparis
   it in that tab's private session. Nothing is published to GitHub or shared with other visitors.
 - The extension stores only the selected source tab ID, in Chrome session storage. No paid
   projection dataset is saved by the extension. Disable/remove the extension to disconnect.
+- The prop app stores its last Python-validated snapshot in this browser's local storage so it
+  survives page refreshes and app restarts. It is never bundled, globally cached or shared with
+  other visitors. Restores revalidate the slate, players and original capture/publication times;
+  a snapshot cannot carry into a different game. Clearing site data removes this backup.
 
 After installation, check the connection status in Sportsbook Edges. Before Tabs publishes a slate,
 the comparison stays unchecked. Automated tests cover parsing,

@@ -225,7 +225,7 @@ def required_roles(stat):
     return {'PTS':('PTS',),'3PM':('FG3A',),'AST':('AST',),'REB':('REB',),'PRA':('PTS','AST')}.get(stat,())
 
 
-def minute_reference(references, row, game, as_of):
+def minute_reference(references, row, game, as_of, *, allow_saved=False):
     if references is None or references.empty:return None
     day=pd.Timestamp(game['GameTimeUTC']).tz_convert('America/New_York').date().isoformat()
     found=references.loc[references.PLAYER_ID.eq(row.PLAYER_ID)&references.Team.eq(row.Team)&
@@ -233,14 +233,19 @@ def minute_reference(references, row, game, as_of):
     if len(found)!=1:return None
     ref=found.iloc[0]
     try:
+        saved_value=ref.get('source_saved',False)
+        saved=isinstance(saved_value,(bool,np.bool_)) and bool(saved_value)
+        if saved and (not allow_saved or ref.source!='TabsNBA' or ref.get('source_mode')!='Browser comparison'):return None
         stamp=pd.Timestamp(ref.updated_at)
         age=(pd.Timestamp(as_of)-stamp).total_seconds()/3600
-        if stamp.tzinfo is None or not 0<=age<=CONFIG['minutes_source_max_hours'] or not isinstance(ref.independent,(bool,np.bool_)) or not ref.independent:return None
+        if pd.isna(stamp) or stamp.tzinfo is None or age<0 or (not saved and age>CONFIG['minutes_source_max_hours']) or not isinstance(ref.independent,(bool,np.bool_)) or not ref.independent:return None
         if ref.get('requires_source_timestamp',False):
             published=pd.Timestamp(ref.get('source_updated_at'))
             if pd.isna(published) or published.tzinfo is None:return None
             source_age=(pd.Timestamp(as_of)-published).total_seconds()/3600
-            if not 0<=source_age<=float(ref.get('source_max_age_hours',CONFIG['minutes_source_max_hours'])):return None
+            maximum=float(ref.get('source_max_age_hours',CONFIG['minutes_source_max_hours']))
+            if source_age<0 or (not saved and source_age>maximum):return None
+            if saved and not 0<=(stamp-published).total_seconds()/3600<=maximum:return None
         if not np.isfinite(ref.minutes) or not 0<=ref.minutes<=48:return None
     except (ValueError,TypeError):return None
     return ref
@@ -363,6 +368,8 @@ warnings are a screening rule, not a numerical in/out forecast.
         elif row.Stat == 'PRA':
             record['Role detail']+='\n'+passing_detail
         reference=minute_reference(references,row,game,now)
+        saved_minutes=bool(team.get('Tabs minutes saved',pd.Series(False,index=team.index)).fillna(False).any())
+        record['Tabs minutes saved']=saved_minutes
         target=max(0.,row['Projected minutes']-CONFIG['minutes_stress']) if side=='Over' else min(48.,row['Projected minutes']+CONFIG['minutes_stress'])
         if reference is not None:
             target=min(target,float(reference.minutes)) if side=='Over' else max(target,float(reference.minutes))
@@ -396,7 +403,7 @@ warnings are a screening rule, not a numerical in/out forecast.
             # as a zero-allocation inference. It is a risk, not an unchecked feed.
             inferred_zero = (len(source_cases)==2 and record['Tabs minutes']==0 and
                 source_cases[1].loc[source_cases[1].PLAYER_ID.eq(pid)].iloc[0].get('Tabs minutes basis','').startswith('Assumed 0'))
-            if len(source_cases)==2 and (reference is not None or inferred_zero):
+            if len(source_cases)==2 and not saved_minutes and (reference is not None or inferred_zero):
                 worst=min(('Your','Tabs'),key=lambda name:record[name+' minutes edge %'])
                 minutes_ok=all(record[name+' minutes']>0 and round(record[name+' minutes edge %'],2)>PLAY_THRESHOLD_PCT for name in ('Your','Tabs'))
                 record.update({'Minutes flag':'Clear' if minutes_ok else 'MIN',
@@ -410,6 +417,8 @@ warnings are a screening rule, not a numerical in/out forecast.
                     record['Minutes detail']+=' Tabs does not list this player in its complete 240-minute rotation; zero is an allocation assumption, not an OUT designation.'
             else:
                 source_cases=[]
+                if saved_minutes:
+                    record['Minutes detail']='Using the last saved Tabs rotation. The blended projection is preserved, but live minutes have not been rechecked. Reconnect Tabs to complete the current minutes check.'
         else:
             try:
                 minute_case=rebalance_minutes(team,pid,target)

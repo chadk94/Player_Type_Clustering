@@ -31,11 +31,11 @@ def rotation_240(values):
 
 
 def minutes_plan(base, references, game, now):
-    """Require complete, fresh team coverage before changing that team's minutes.
+    """Require complete team coverage; retain explicitly saved browser snapshots.
 
     Only an explicit Tabs OUT status overrides the arithmetic mean. An omitted
-    player has a zero Tabs allocation only in a fresh, fully matched browser
-    rotation totaling 240; omissions are not injury designations.
+    player has a zero Tabs allocation only in a fully matched browser rotation
+    totaling 240, fresh when captured; omissions are not injury designations.
     Source-only scenarios retain the two complete source rotations separately.
     """
     metadata = base[['PLAYER_ID', 'Team', 'Projected minutes']].copy()
@@ -44,6 +44,7 @@ def minutes_plan(base, references, game, now):
     metadata['Tabs minutes basis'] = 'Unavailable'
     metadata['Minutes blend status'] = 'Pending — fresh TabsNBA rotation unavailable'
     metadata['Tabs source time'] = ''
+    metadata['Tabs minutes saved'] = False
     plans = dict(blended={}, yours={}, tabs={})
     for team, rows in base.groupby('Team', sort=False):
         positions = metadata.Team.eq(team)
@@ -52,13 +53,14 @@ def minutes_plan(base, references, game, now):
             metadata.loc[positions, 'Minutes blend status'] = 'Pending — your full 240-minute rotation is required'
             continue
         opponent = game['Away'] if team == game['Home'] else game['Home']
-        ref_values, stamps, statuses = {}, [], {}
+        ref_values, stamps, statuses, saved = {}, [], {}, False
         for player in rows.itertuples():
-            ref = minute_reference(references, pd.Series(dict(PLAYER_ID=player.PLAYER_ID, Team=team, Opponent=opponent)), game, now)
+            ref = minute_reference(references, pd.Series(dict(PLAYER_ID=player.PLAYER_ID, Team=team, Opponent=opponent)), game, now, allow_saved=True)
             if ref is not None and ref.source == 'TabsNBA':
                 ref_values[int(player.PLAYER_ID)] = float(ref.minutes)
                 statuses[int(player.PLAYER_ID)] = ref.get('source_status','Unknown')
                 stamps.append(str(ref.get('source_updated_at', ref.updated_at)))
+                saved = saved or bool(ref.get('source_saved',False))
         metadata.loc[positions, 'Tabs minutes'] = metadata.loc[positions, 'PLAYER_ID'].map(ref_values)
         metadata.loc[positions, 'Tabs minutes basis'] = metadata.loc[positions, 'PLAYER_ID'].map(
             {pid:'Explicit OUT' if status=='Out' else 'Published minutes' for pid,status in statuses.items()}).fillna('Unavailable')
@@ -101,5 +103,8 @@ def minutes_plan(base, references, game, now):
         for key, values in [('blended', blended), ('yours', own), ('tabs', tab_rotation)]:
             plans[key].update(values.to_dict())
         metadata.loc[positions, 'Minutes blend status'] = '50/50 your + TabsNBA; explicit OUT stays out; 240-minute rotation'
+        metadata.loc[positions, 'Tabs minutes saved'] = saved
+        if saved:
+            metadata.loc[positions, 'Minutes blend status'] += '; using saved Tabs minutes — live check pending'
         metadata.loc[positions, 'Tabs source time'] = min(stamps) if stamps else ''
     return plans, metadata

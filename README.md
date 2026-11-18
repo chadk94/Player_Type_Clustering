@@ -1615,7 +1615,13 @@ does not blur their different effects on an Over or Under.
   The CSV reads **Tabs Min**, never **My Min** or fantasy-platform player IDs. Match player,
   team, opponent and Eastern slate date; explicit browser OUT rows can supply zero, while
   absent CSV rows never imply zero. Tabs publication time must be verified and within two hours.
-  Paid references stay in the user's Streamlit session and are never bundled or globally cached.
+  The last validated browser snapshot is backed up in the user's browser local storage and
+  restored into their private Streamlit session; it is never bundled or globally cached.
+  A disconnect, stale feed or invalid new read preserves that snapshot for the same game/date,
+  including its original scenario, OUT statuses and timestamps. Refreshing the app also restores
+  it. **Saved Tabs minutes** identifies retained data: projections keep the last valid blend,
+  while the live minutes check remains pending and cannot qualify a play as more robust.
+  Fresh valid data replaces the backup on reconnection; other dates cannot use it.
   See `integrations/tabs_browser_connector/README.md` for permissions and installation.
   A fresh, matched full rotation now blends 50/50 with the user's minutes, before player
   rates, matchup effects and normal team allocation, on all projection pages. If either

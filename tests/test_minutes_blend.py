@@ -103,6 +103,24 @@ class MinutesBlendTests(unittest.TestCase):
         valid.attrs['incomplete_teams']=['BOS']
         self.assertFalse(minutes_plan(base,valid,GAME,NOW)[0]['blended'])
 
+    def test_saved_rotation_preserves_blend_but_never_passes_live_robustness(self):
+        base=raw_team();values=base.set_index('PLAYER_ID')['Projected minutes'].to_dict()
+        values.update({1:36.,2:24.})
+        live=references(values).assign(source_mode='Browser comparison',source_status='Projected',source_saved=False)
+        original,_=minutes_plan(base,live,GAME,NOW)
+        saved=live.assign(source_saved=True)
+        retained,meta=minutes_plan(base,saved,GAME,NOW+pd.Timedelta(hours=5))
+        self.assertEqual(original,retained);self.assertTrue(meta['Tabs minutes saved'].all())
+        self.assertTrue(meta['Minutes blend status'].str.contains('saved Tabs').all())
+        self.assertFalse(minutes_plan(base,saved.assign(game_date='2026-11-16'),GAME,NOW)[0]['blended'])
+        self.assertFalse(minutes_plan(base,saved.assign(Opponent='NYK'),GAME,NOW)[0]['blended'])
+        main=finalized(base);main['Tabs minutes saved']=True
+        with patch('edge_review.role_evidence',return_value=dict(ratios={'PTS':1.},trends={'PTS':0.},detail='Stable')):
+            row=assess_edges(edge(15,10),main,GAME,pd.DataFrame(),{},saved,healthy(),NOW,NOW,
+                             minutes_cases={'yours':main,'tabs':main}).iloc[0]
+        self.assertEqual(row['Minutes flag'],'Unchecked');self.assertFalse(row['Robust play'])
+        self.assertIn('last saved Tabs minutes',minutes_popup(row)['detail'])
+
     def test_endpoint_flags_in_both_directions_and_no_extra_three_minute_stress(self):
         main=finalized(raw_team())
         yours=main.copy();tabs=main.copy()

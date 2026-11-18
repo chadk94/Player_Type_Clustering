@@ -52,6 +52,10 @@ def minutes_popup(row):
     def finite(value):
         return isinstance(value, (int, float)) and isfinite(value)
 
+    if row.get('Tabs minutes saved',False):
+        return dict(detail='Your projection is still using your minutes averaged with the last saved Tabs minutes. Tabs is disconnected or has no fresh update. Reconnect it to verify this bet against current minutes.',
+                    technical=str(row.get('Minutes detail','')))
+
     if row.get('Minutes comparison mode') == 'Both sources':
         units = {'PTS':'points','REB':'rebounds','AST':'assists','3PM':'threes','PRA':'PRA',
                  'STL':'steals','BLK':'blocks'}.get(row.get('Stat'), row.get('Stat',''))
@@ -205,6 +209,10 @@ def minutes_source_detail(row):
     elif basis == 'Explicit OUT':
         lines.append('TabsNBA lists this player as OUT.')
     status = str(row.get('Minutes blend status', ''))
+    if row.get('Tabs minutes saved',False):
+        stamp=pd.to_datetime(row.get('Tabs source time'),utc=True,errors='coerce')
+        time=stamp.tz_convert('America/Denver').strftime('%b %d at %I:%M %p %Z') if pd.notna(stamp) else 'the last successful connection'
+        lines.append(f'Using saved Tabs minutes from {time}; live check pending.')
     if status.startswith('Pending'):
         lines.append(status)
     return '\n'.join(lines)
@@ -268,6 +276,7 @@ def table_payload(edges, columns, roster, effects, team, game, book, day, projec
             status=row.get(flag+' flag')
             if status in ('MIN','ROLE','Q','Unchecked'):
                 label = ('Minutes unverified' if status == 'Unchecked' else 'Minutes risk') if flag == 'Minutes' else (title if status != 'Unchecked' else title+'?')
+                if flag == 'Minutes' and row.get('Tabs minutes saved',False):label='Saved Tabs minutes'
                 popup = minutes_popup(row) if flag == 'Minutes' else role_popup(row) if flag == 'Role' else dict(detail=row.get(flag+' detail','Unchecked'))
                 badges.append(dict(label=label,
                     color=color if status!='Unchecked' else 'unchecked',

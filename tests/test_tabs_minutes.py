@@ -109,7 +109,7 @@ class TabsTests(unittest.TestCase):
         state={'tabs_minutes_reference':refs,'tabs_minutes_browser':{'result':{'ok':True,'snapshot':fresh}}}
         real_parse=parse_tabs_browser_snapshot
         with patch.object(tabs_minutes.st,'session_state',state), \
-             patch.object(tabs_minutes,'parse_tabs_browser_snapshot',side_effect=lambda s,r,g:real_parse(s,r,g,NOW+pd.Timedelta(minutes=1))), \
+             patch.object(tabs_minutes,'parse_tabs_browser_snapshot',side_effect=lambda s,r,g,a=None,**kw:real_parse(s,r,g,NOW+pd.Timedelta(minutes=1),**kw)), \
              patch.object(tabs_minutes.st,'rerun') as rerun:
             tabs_minutes._remember_browser_result(ROSTER,[GAME])
             rerun.assert_not_called()
@@ -121,6 +121,38 @@ class TabsTests(unittest.TestCase):
         stale=refs.assign(source_updated_at=(NOW-pd.Timedelta(hours=3)).isoformat())
         self.assertNotEqual(tabs_minutes._reference_signature(refs,NOW),
                             tabs_minutes._reference_signature(stale,NOW))
+
+    def test_disconnect_and_page_restore_keep_original_minutes_and_timestamps(self):
+        refs,details,saved,error=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':browser()},None,ROSTER,[GAME],NOW)
+        self.assertFalse(error);self.assertFalse(refs.source_saved.any())
+        for state,last in [({'ok':False,'error':'Disconnected'},saved),
+                           ({'ok':False,'saved_snapshot':saved},None), (None,saved)]:
+            retained,_,stored,error=tabs_minutes.resolve_browser_result(state,last,ROSTER,[GAME],NOW+pd.Timedelta(hours=5))
+            self.assertEqual(retained.minutes.tolist(),refs.minutes.tolist())
+            self.assertEqual(retained.source_updated_at.tolist(),refs.source_updated_at.tolist())
+            self.assertEqual(retained.updated_at.tolist(),refs.updated_at.tolist())
+            self.assertTrue(retained.source_saved.all());self.assertEqual(stored,saved)
+            row=pd.Series(dict(PLAYER_ID=1,Team='POR',Opponent='MIN'))
+            self.assertIsNone(minute_reference(retained,row,GAME,NOW+pd.Timedelta(hours=5)))
+            self.assertEqual(minute_reference(retained,row,GAME,NOW+pd.Timedelta(hours=5),allow_saved=True).minutes,19)
+
+    def test_invalid_update_does_not_replace_saved_data_and_reconnect_replaces_it(self):
+        saved=browser()
+        bad=saved|dict(manual_edits=True)
+        refs,_,stored,error=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':bad},saved,ROSTER,[GAME],NOW)
+        self.assertTrue(error);self.assertTrue(refs.source_saved.all());self.assertEqual(stored,saved)
+        fresh=copy.deepcopy(saved);fresh['rows'][0]['minutes']=24
+        refs,_,stored,error=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':fresh},saved,ROSTER,[GAME],NOW)
+        self.assertFalse(error);self.assertFalse(refs.source_saved.any());self.assertEqual(refs.minutes.tolist(),[24,0])
+        self.assertEqual(stored,fresh)
+
+    def test_saved_snapshot_stays_bound_to_its_game_and_must_have_been_valid_at_capture(self):
+        next_game=GAME|dict(GameTimeUTC=GAME['GameTimeUTC']+pd.Timedelta(days=1))
+        self.assertIsNone(tabs_minutes.resolve_browser_result(None,browser(),ROSTER,[next_game],NOW+pd.Timedelta(days=1))[0])
+        for changes in [dict(manual_edits=True),dict(source_url='https://other.example'),
+                        dict(source_updated_at=(NOW-pd.Timedelta(hours=3)).isoformat()),
+                        dict(observed_at=(NOW+pd.Timedelta(days=3)).isoformat())]:
+            self.assertIsNone(tabs_minutes.resolve_browser_result(None,browser()|changes,ROSTER,[GAME],NOW)[0])
 
     def test_real_minutes_out_scenario_disconnect_and_stale_changes_refresh_projections(self):
         original=browser()
@@ -140,7 +172,7 @@ class TabsTests(unittest.TestCase):
             with self.subTest(result=result):
                 state={'tabs_minutes_reference':refs,'tabs_minutes_browser':{'result':result}}
                 with patch.object(tabs_minutes.st,'session_state',state), \
-                     patch.object(tabs_minutes,'parse_tabs_browser_snapshot',side_effect=lambda s,r,g:real_parse(s,r,g,NOW)), \
+                     patch.object(tabs_minutes,'parse_tabs_browser_snapshot',side_effect=lambda s,r,g,a=None,**kw:real_parse(s,r,g,NOW,**kw)), \
                      patch.object(tabs_minutes.st,'rerun') as rerun:
                     tabs_minutes._remember_browser_result(ROSTER,[GAME])
                     rerun.assert_called_once_with(scope='projection_dashboard')

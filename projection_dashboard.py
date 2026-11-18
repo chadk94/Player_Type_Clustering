@@ -1121,6 +1121,8 @@ def render_live_dashboard(ui, roster):
             if 'Minutes blend status' in row:
                 if str(row['Minutes blend status']).startswith('50/50'):
                     ui.caption(f"Your minutes: {row['Your minutes']:.1f} · TabsNBA: {row['Tabs minutes']:.1f}. Healthy zeroes are averaged; explicit Tabs OUT stays at zero. Team minutes stay at 240. A manual slider setting overrides the blend for this preview.")
+                    if row.get('Tabs minutes saved',False):
+                        ui.caption('Using the last saved Tabs minutes while the live comparison reconnects.')
                 else:
                     ui.caption(str(row['Minutes blend status']) + '. Retaining your model minutes.')
             ui.caption(f"Stat baseline: {row['Stat baseline']} · Opponent history: {row['Matchup data']} · Offensive samples: {row['Off prior samples']} prior / {row['Off current samples']} current · Defensive samples: {row['Def prior samples']} prior / {row['Def current samples']} current")

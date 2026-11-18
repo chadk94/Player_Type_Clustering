@@ -114,7 +114,7 @@ class FragmentStabilityTests(TestCase):
         self.storage=None
         self.queue=[]
         with patch.object(tabs_minutes,'_browser_component',return_value=component), \
-             patch.object(tabs_minutes,'parse_tabs_browser_snapshot',side_effect=lambda s,r,g:real_parse(s,r,g,NOW)):
+             patch.object(tabs_minutes,'parse_tabs_browser_snapshot',side_effect=lambda s,r,g,a=None,**kw:real_parse(s,r,g,NOW,**kw)):
             self.app=AppTest.from_string('''
 import streamlit as st
 from tabs_minutes import render_tabs_comparison
@@ -143,7 +143,13 @@ dashboard()
             pending={'ok':False,'error':'Disconnected'}
             deliver()
             self.assertEqual(self.app.session_state['model_runs'],4)
-            self.assertIsNone(self.app.session_state['tabs_minutes_reference'])
+            retained=self.app.session_state['tabs_minutes_reference']
+            self.assertEqual(retained.minutes.iloc[0],21)
+            self.assertTrue(retained.source_saved.all())
+            self.assertEqual(retained.source_updated_at.iloc[0],NOW.isoformat())
+            deliver()
+            self.assertEqual(self.app.session_state['model_runs'],4)
             pending={'ok':True,'snapshot':browser()}
             deliver()
             self.assertEqual(self.app.session_state['model_runs'],5)
+            self.assertFalse(self.app.session_state['tabs_minutes_reference'].source_saved.any())

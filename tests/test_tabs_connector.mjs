@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-import render from '../tabs_browser_bridge.mjs';
+import render, {readSavedTabs, SAVED_TABS_KEY} from '../tabs_browser_bridge.mjs';
 
 const source=readFileSync(new URL('../integrations/tabs_browser_connector/reader.js',import.meta.url),'utf8');
 const context=vm.createContext({Date,Error});vm.runInContext(source,context);
@@ -109,6 +109,41 @@ test('only changed snapshots update Python; disconnect clears; cleanup stops pol
         button.onclick();reply({ok:true,snapshot:{...snapshot,scenario:'Default'}});assert.equal(saved.length,1);
         button.onclick();reply({ok:false,error:'Source tab closed'});assert.equal(saved.length,2);assert.equal(saved.at(-1).ok,false);
         cleanup();assert.equal(timers.size,0);assert.equal(handlers.message,undefined);
+    } finally {Object.assign(globalThis,real);}
+});
+
+test('validated minutes persist through disconnect, timeout and reload; raw replies never replace backup',()=>{
+    const handlers={},requests=[],saved=[],timers=new Map(),items=new Map();let tid=0;
+    const real={setTimeout,clearTimeout,setInterval,clearInterval,localStorage:globalThis.localStorage};
+    globalThis.localStorage={getItem:key=>items.get(key),setItem:(key,value)=>items.set(key,value)};
+    globalThis.location={origin:'https://cktest2.streamlit.app'};
+    globalThis.window={addEventListener:(name,cb)=>handlers[name]=cb,removeEventListener:(name,cb)=>{if(handlers[name]===cb)delete handlers[name];},postMessage:msg=>requests.push(msg)};
+    globalThis.setTimeout=globalThis.setInterval=cb=>{timers.set(++tid,cb);return tid;};
+    globalThis.clearTimeout=globalThis.clearInterval=id=>timers.delete(id);
+    const status={},button={},snapshot=JSON.parse(JSON.stringify(capture(doc())));
+    const mount=data=>render({data,parentElement:{querySelector:k=>k==='button'?button:status},setStateValue:(_key,value)=>saved.push(value)});
+    const reply=result=>handlers.message({source:window,origin:location.origin,data:{channel:'nba-tabs-minutes-v1',type:'response',id:requests.at(-1).id,result}});
+    try {
+        let cleanup=mount({previous:{ok:true,snapshot},saved_snapshot:snapshot});
+        reply({ok:false,error:'Source tab closed'});
+        assert.deepEqual(saved.at(-1).saved_snapshot,snapshot);assert.equal(saved.at(-1).ok,false);
+        assert.match(status.textContent,/Using saved Tabs minutes/);
+        assert.deepEqual(readSavedTabs(localStorage),snapshot);
+        cleanup();saved.length=0;
+        cleanup=mount({}); // A completely new Streamlit/browser page restores its private backup.
+        assert.deepEqual(saved[0].saved_snapshot,snapshot);
+        const raw={...snapshot,manual_edits:true,rows:[]};
+        reply({ok:true,snapshot:raw});
+        assert.deepEqual(readSavedTabs(localStorage),snapshot);
+        button.onclick();timers.get(tid)();
+        assert.deepEqual(saved.at(-1).saved_snapshot,snapshot);
+        assert.equal(saved.at(-1).saved_snapshot.source_updated_at,snapshot.source_updated_at);
+        cleanup();
+        const newer={...snapshot,scenario:'Default'};
+        cleanup=mount({previous:{ok:true,snapshot:newer},saved_snapshot:newer});
+        assert.deepEqual(readSavedTabs(localStorage),newer);cleanup();
+        items.set(SAVED_TABS_KEY,'broken');assert.equal(readSavedTabs(localStorage),null);
+        assert.equal(readSavedTabs({getItem:()=>{throw Error('Blocked storage');}}),null);
     } finally {Object.assign(globalThis,real);}
 });
 

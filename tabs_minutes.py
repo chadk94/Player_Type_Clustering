@@ -1,4 +1,4 @@
-"""Private, session-only TabsNBA minutes source for blending and review."""
+"""Private TabsNBA minutes source, with a browser-local last-valid snapshot."""
 from datetime import datetime
 from hashlib import sha256
 from functools import lru_cache
@@ -20,7 +20,7 @@ ALIASES = {('POR','robert williams'):'robert williams iii',
 SOURCE_MAX_AGE_HOURS = 2
 
 
-def parse_tabs_browser_snapshot(snapshot, roster, games, as_of=None):
+def parse_tabs_browser_snapshot(snapshot, roster, games, as_of=None, *, saved=False):
     """Validate a displayed-page snapshot, reusing the strict same-game name map."""
     now=pd.Timestamp(as_of if as_of is not None else pd.Timestamp.now(tz='UTC'))
     if not isinstance(snapshot,dict) or len(json.dumps(snapshot))>150000:
@@ -30,8 +30,13 @@ def parse_tabs_browser_snapshot(snapshot, roster, games, as_of=None):
         raise ValueError('Use an unedited TabsNBA projections view for an independent comparison.')
     observed=pd.Timestamp(snapshot.get('observed_at'));published=pd.Timestamp(snapshot.get('source_updated_at'))
     for stamp in (observed,published):
-        if pd.isna(stamp) or stamp.tzinfo is None or not 0<=(now-stamp).total_seconds()<=SOURCE_MAX_AGE_HOURS*3600:
+        if (pd.isna(stamp) or stamp.tzinfo is None or (now-stamp).total_seconds()<0 or
+                (not saved and (now-stamp).total_seconds()>SOURCE_MAX_AGE_HOURS*3600)):
             raise ValueError('Tabs comparison is stale or its timestamp cannot be verified.')
+    # A retained snapshot must have been current when captured. Preserve its real
+    # timestamps; allowing older saved minutes never manufactures a fresh check.
+    if not 0<=(observed-published).total_seconds()<=SOURCE_MAX_AGE_HOURS*3600:
+        raise ValueError('Tabs minutes were not current when captured.')
     rows=snapshot.get('rows')
     if not isinstance(rows,list) or not 1<=len(rows)<=600:raise ValueError('No usable players in the Tabs view.')
     frame=pd.DataFrame(rows)
@@ -42,13 +47,14 @@ def parse_tabs_browser_snapshot(snapshot, roster, games, as_of=None):
     refs,details=parse_tabs_minutes(frame.to_csv(index=False).encode(),f"Tabs_DK_{snapshot.get('slate_date')}.csv",
         roster,games,observed,snapshot.get('scenario'),published)
     refs['source_mode']='Browser comparison'
+    refs['source_saved']=saved
     details['scope']=str(snapshot.get('scope','Displayed players'))[:120]
     return refs,details
 
 
 @lru_cache(maxsize=1)
 def _browser_component(runtime):
-    return st.components.v2.component('tabs_minutes_browser',
+    return st.components.v2.component('tabs_minutes_browser_saved_v1',
         html='<div><button type="button">Check Tabs connection</button> <span role="status">Connecting to Tabs…</span></div>',
         css='button {font:inherit;padding:.35rem .7rem;border:1px solid #8888;border-radius:.4rem;color:var(--st-text-color);background:var(--st-background-color);cursor:pointer} span {font-size:.9rem}',
         js=Path(__file__).with_name('tabs_browser_bridge.mjs').read_text())
@@ -76,16 +82,41 @@ def _refresh_dashboard():
     st.rerun(scope='projection_dashboard')
 
 
+def resolve_browser_result(value, saved_snapshot, roster, games, as_of=None):
+    """Accept fresh reads, or keep the last validated snapshot for its exact slate."""
+    error='Tabs is reconnecting.'
+    if isinstance(value,dict) and value.get('ok'):
+        try:
+            refs,details=parse_tabs_browser_snapshot(value['snapshot'],roster,games,as_of)
+            if refs.empty:raise ValueError('Tabs has no matching players for the loaded schedule.')
+            return refs,details,value['snapshot'],''
+        except (ValueError,TypeError,KeyError,OverflowError) as exc:
+            error=str(exc)
+    elif isinstance(value,dict):
+        error=str(value.get('error') or error)[:250]
+    # The browser only persists snapshots acknowledged by Python. Revalidate on
+    # restore anyway, including player identity, game date, scenario and OUT rows.
+    candidate=saved_snapshot or (value.get('saved_snapshot') if isinstance(value,dict) else None)
+    if candidate is not None:
+        try:
+            refs,details=parse_tabs_browser_snapshot(candidate,roster,games,as_of,saved=True)
+            if not refs.empty:return refs,details,candidate,error
+        except (ValueError,TypeError,KeyError,OverflowError):
+            pass
+    return None,None,saved_snapshot,error
+
+
+def _apply_browser_result(value,roster,games):
+    refs,details,saved,error=resolve_browser_result(value,st.session_state.get('tabs_browser_saved_snapshot'),roster,games)
+    st.session_state['tabs_browser_last_result']=value
+    st.session_state['tabs_browser_saved_snapshot']=saved
+    return refs,details,error
+
+
 def _remember_browser_result(roster, games):
     state=st.session_state.get('tabs_minutes_browser',{})
     value=state.get('result') if isinstance(state,dict) else None
-    st.session_state['tabs_browser_last_result']=value
-    refs=None
-    if isinstance(value,dict) and value.get('ok'):
-        try:
-            refs,_=parse_tabs_browser_snapshot(value['snapshot'],roster,games)
-        except (ValueError,TypeError,KeyError,OverflowError):
-            pass
+    refs,_,_=_apply_browser_result(value,roster,games)
     changed=_reference_signature(refs)!=_reference_signature(st.session_state.get('tabs_minutes_reference'))
     st.session_state['tabs_minutes_reference']=refs
     # Renew freshness without rebuilding the league for a publication-time-only
@@ -101,17 +132,21 @@ def render_tabs_comparison(ui,roster,games):
         ui.caption('Fresh, complete rotations blend 50/50 with your minutes, including healthy-player zeroes. Explicit Tabs OUT statuses stay at zero. Players omitted from a complete 240-minute browser rotation count as zero for that source. Team minutes stay at 240; your saved rotation is preserved.')
         if mode=='CSV upload':return render_tabs_upload(ui,roster,games)
         previous=st.session_state.get('tabs_browser_last_result')
-        result=_browser_component(st.runtime.get_instance())(data={'previous':previous},
+        result=_browser_component(st.runtime.get_instance())(data={'previous':previous,
+            'saved_snapshot':st.session_state.get('tabs_browser_saved_snapshot')},
             key='tabs_minutes_browser',on_result_change=lambda:_remember_browser_result(roster,games))
         value=result.result
-        st.session_state['tabs_browser_last_result']=value
+        refs,details,error=_apply_browser_result(value,roster,games)
         ui.caption('Keep TabsNBA and this app open in Chrome. Connector 0.2.0 works in either Projections or Props view and checks every 30 seconds. Timestamp-only updates stay in this panel; changed minutes or availability refresh projections. Select All games and clear Tabs filters for full coverage.')
-        if not value or not isinstance(value,dict) or not value.get('ok'):
+        ui.caption('The last valid Tabs minutes are saved privately in this browser. If the connection drops, matching-game projections keep using them until a fresh update arrives. Saved minutes are labeled and do not count as a current minutes check.')
+        if refs is None:
             ui.info('Waiting for a current Tabs comparison. Missing data remains unchecked.')
+            if error:ui.caption(error)
             return None
-        try:refs,details=parse_tabs_browser_snapshot(value['snapshot'],roster,games)
-        except (ValueError,TypeError,KeyError,OverflowError) as exc:
-            ui.warning(str(exc));return None
+        if refs.source_saved.any():
+            stamp=pd.Timestamp(refs.source_updated_at.iloc[0]).tz_convert('America/Denver')
+            ui.warning(f'Using saved Tabs minutes from {stamp:%b %d at %I:%M %p %Z}. Your blended projections are preserved while Tabs reconnects. The current minutes check is pending.')
+            ui.caption(error)
         ui.caption(f"{details['export_date']} · {details['scope']} · {details['scenario']} · {len(refs)} matched players")
         if details['unmatched']:
             ui.warning(f"{len(details['unmatched'])} displayed players have no matching roster profile. Their comparisons remain unchecked.")
