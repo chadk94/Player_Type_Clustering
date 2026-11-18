@@ -18,23 +18,52 @@ export default function({data, parentElement}) {
     tip.setAttribute('role', 'tooltip');
     tip.setAttribute('popover', 'manual');
     root.append(scroll, tip);
-    let active;
+    let active, closeTimer, restoringFocus = false;
     function hide() {
-        if (active) active.removeAttribute('aria-describedby');
+        clearTimeout(closeTimer);
+        if (active) {
+            active.removeAttribute('aria-describedby');
+            if (active.hasAttribute('aria-expanded')) active.setAttribute('aria-expanded', 'false');
+        }
         active = null;
         if (tip.matches(':popover-open')) tip.hidePopover();
     }
-    function show(button, text) {
-        hide();
-        active = button;
-        tip.textContent = text;
-        button.setAttribute('aria-describedby', tip.id);
-        tip.showPopover();
-        const b = button.getBoundingClientRect(), t = tip.getBoundingClientRect();
+    function position() {
+        if (!active) return;
+        const b = active.getBoundingClientRect(), t = tip.getBoundingClientRect();
         tip.style.left = Math.max(8, Math.min(b.left, innerWidth - t.width - 8)) + 'px';
         tip.style.top = (b.top >= t.height + 12 ? b.top - t.height - 6 :
             Math.max(8, Math.min(b.bottom + 6, innerHeight - t.height - 8))) + 'px';
     }
+    function show(button, text, technical) {
+        clearTimeout(closeTimer);
+        if (active === button || restoringFocus) return;
+        hide();
+        active = button;
+        tip.replaceChildren(make('div', text));
+        tip.classList.toggle('role-popup', !!technical);
+        tip.setAttribute('role', technical ? 'dialog' : 'tooltip');
+        if (technical) {
+            tip.setAttribute('aria-label', 'Recent role review');
+            const details = make('details');
+            details.append(make('summary', 'Technical details'), make('div', technical));
+            details.ontoggle = position;
+            tip.append(details);
+            button.setAttribute('aria-expanded', 'true');
+        } else tip.removeAttribute('aria-label');
+        button.setAttribute('aria-describedby', tip.id);
+        tip.showPopover();
+        position();
+    }
+    function leaveInteractive() {
+        clearTimeout(closeTimer);
+        closeTimer = setTimeout(() => {
+            if (!tip.contains(tip.getRootNode().activeElement)) hide();
+        }, 200);
+    }
+    tip.onpointerenter = () => clearTimeout(closeTimer);
+    tip.onpointerleave = leaveInteractive;
+    tip.onfocusout = e => { if (!tip.contains(e.relatedTarget) && e.relatedTarget !== active) hide(); };
     let sort = data.columns.indexOf(root.dataset.sort || 'Rank');
     if (sort < 0) sort = 0;
     let direction = Number(root.dataset.direction || 1);
@@ -90,9 +119,22 @@ export default function({data, parentElement}) {
                         const button=make('button',badge.label);
                         button.type='button';button.className='review-badge review-'+badge.color;
                         button.setAttribute('aria-label',badge.label+': '+badge.detail);
-                        button.onpointerenter=e=>{if(e.pointerType!=='touch')show(button,badge.detail);};
-                        button.onfocus=button.onclick=()=>show(button,badge.detail);
-                        button.onpointerleave=button.onblur=hide;
+                        button.onpointerenter=e=>{if(e.pointerType!=='touch')show(button,badge.detail,badge.technical);};
+                        button.onfocus=()=>show(button,badge.detail,badge.technical);
+                        if (badge.technical) {
+                            button.setAttribute('aria-haspopup','dialog');
+                            button.setAttribute('aria-controls',tip.id);
+                            button.setAttribute('aria-expanded','false');
+                            button.onclick=()=>{
+                                show(button,badge.detail,badge.technical);
+                                tip.querySelector('summary').focus();
+                            };
+                            button.onpointerleave=leaveInteractive;
+                            button.onblur=e=>{if(!tip.contains(e.relatedTarget))hide();};
+                        } else {
+                            button.onclick=()=>show(button,badge.detail);
+                            button.onpointerleave=button.onblur=hide;
+                        }
                         td.append(button);
                     }
                 } else if (data.columns[i] === 'Matchup rating') {
@@ -128,12 +170,22 @@ export default function({data, parentElement}) {
         th.append(button);
         headers.append(th);
     });
-    const dismiss = e => { if (e.key === 'Escape') hide(); };
-    const outside = e => { if (active && !e.composedPath().includes(active)) hide(); };
+    const dismiss = e => {
+        if (e.key !== 'Escape') return;
+        const button = active, returnFocus = tip.contains(tip.getRootNode().activeElement);
+        hide();
+        if (button && returnFocus) {
+            restoringFocus = true;
+            button.focus();
+            restoringFocus = false;
+        }
+    };
+    const outside = e => { if (active && !e.composedPath().includes(active) && !e.composedPath().includes(tip)) hide(); };
     document.addEventListener('keydown', dismiss);
     document.addEventListener('pointerdown', outside, true);
     scroll.onscroll = hide;
-    window.addEventListener('scroll', hide, true);
+    const pageScroll = e => { if (!tip.contains(e.target)) hide(); };
+    window.addEventListener('scroll', pageScroll, true);
     window.addEventListener('resize', hide);
     render(); updateChecks();
     const unwatch=watchPicks(updateChecks);
@@ -142,7 +194,7 @@ export default function({data, parentElement}) {
         hide();
         document.removeEventListener('keydown', dismiss);
         document.removeEventListener('pointerdown', outside, true);
-        window.removeEventListener('scroll', hide, true);
+        window.removeEventListener('scroll', pageScroll, true);
         window.removeEventListener('resize', hide);
     };
 }

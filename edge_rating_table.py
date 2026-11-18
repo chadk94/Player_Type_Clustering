@@ -1,6 +1,7 @@
 """Sortable sportsbook edges with opponent-specific evidence on each rating."""
 from collections import defaultdict
 from functools import lru_cache
+from math import isfinite
 from pathlib import Path
 
 import pandas as pd
@@ -8,7 +9,7 @@ import streamlit as st
 
 from matchup_projections import RECENT_OPPONENT_GAMES
 from points_probability import PROBABILITY_COLUMNS
-from sportsbook_lines import comparison_style
+from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT
 from todays_plays import edge_pick
 
 
@@ -23,6 +24,38 @@ ROLE_STATS = {
 FORMATS = {'Projected minutes': '.1f', 'Reference minutes': '.1f', 'Good-to minutes': 'g', 'Projected': '.2f', 'Recent role': '.2f',
            'Recent change %': '+.1f', 'Book implied total': '.2f', 'Edge %': '+.2f',
            'Over odds': '+.0f', 'Under odds': '+.0f', **{key: '.1%' for key in PROBABILITY_COLUMNS}}
+
+
+def role_popup(row):
+    """Explain the existing role check without changing any model values."""
+    stat = row.get('Stat')
+    role, units = {
+        'PTS': ('scoring', 'points'), '3PM': ('three-point shooting', 'threes'),
+        'AST': ('passing', 'assists'), 'PRA': ('scoring and passing', 'points + rebounds + assists'),
+        'REB': ('rebounding', 'rebounds'), 'STL': ('defensive', 'steals'),
+        'BLK': ('defensive', 'blocks'),
+    }.get(stat, ('playing', str(stat)))
+    technical = str(row.get('Role detail', 'Recent role history unavailable.'))
+    if stat in ('PTS', '3PM'):
+        technical = technical.replace(' Passing-opportunity trend unavailable; assists not inferred from raw assist counts.', '')
+    player = row.get('Player', 'This player')
+    value, edge = row.get('Recent test projection'), row.get('Recent test edge %')
+    side = row.get('Play')
+    valid = all(isinstance(x, (int, float)) and isfinite(x) for x in (value, edge))
+    if row.get('Role flag') == 'ROLE' and valid and side in ('Over', 'Under'):
+        # Preserve the strict cutoff even when a rounded number looks like 5.0%.
+        edge_label = f'{edge:.2f}' if round(edge, 1) == PLAY_THRESHOLD_PCT and edge != PLAY_THRESHOLD_PCT else f'{edge:.1f}'
+        outcome = ('still clears' if edge > PLAY_THRESHOLD_PCT else 'no longer clears')
+        summary = (f'{player}’s recent {role} role weakens this {side}. '
+                   f'The recent-role projection is {value:.1f} {units}. '
+                   f'The {edge_label}% {side} edge {outcome} your {PLAY_THRESHOLD_PCT:g}% cutoff.')
+    elif stat in ('REB', 'STL', 'BLK'):
+        summary = (f'Recent-role checks for {units} aren’t available yet. '
+                   'This bet has not passed the role check.')
+    else:
+        summary = (f'{player}’s recent {role} role couldn’t be fully checked. '
+                   'There isn’t enough reliable recent data to assess this bet’s role risk.')
+    return dict(detail=summary, technical=technical)
 
 
 def rating_detail(stat, player, opponent, effects):
@@ -83,7 +116,8 @@ def table_payload(edges, columns, roster, effects, team, game, book, day):
             status=row.get(flag+' flag')
             if status in ('MIN','ROLE','Q','Unchecked'):
                 badges.append(dict(label=title if status!='Unchecked' else title+'?',
-                    color=color if status!='Unchecked' else 'unchecked',detail=row.get(flag+' detail','Unchecked')))
+                    color=color if status!='Unchecked' else 'unchecked',
+                    **(role_popup(row) if flag == 'Role' else dict(detail=row.get(flag+' detail','Unchecked')))))
         if not badges and 'Review group' in row:
             badges.append(dict(label='✓' if row.get('Robust play') else 'Review',color='clear' if row.get('Robust play') else 'unchecked',detail=row.get('Review detail','')))
         output.append(dict(pick=edge_pick(row, game, book, day), values=values, labels=labels, styles=comparison_style(raw),

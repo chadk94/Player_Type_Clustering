@@ -1528,6 +1528,13 @@ existing strict roster validation.
 
 ### Sportsbook Edges review flags — November 18
 
+Role badges explain the effect on the selected Over or Under in plain language,
+show the recent-role projection, and state whether its directional edge still
+clears the strict 5% cutoff. Unchecked categories say that the role could not be
+assessed. Click a role badge to open **Technical details** for sample sizes and
+the existing calculation. These display changes do not alter projections,
+probabilities, rankings, review flags, or saved plays.
+
 `edge_review.py` appends review evidence and scenario values without replacing model means,
 probabilities, prices, EV or existing edge ordering. `edge_review.json` holds the initial,
 unvalidated sensitivity thresholds. The default **All plays** view retains every eligible

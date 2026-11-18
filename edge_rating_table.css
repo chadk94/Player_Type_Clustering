@@ -10,10 +10,15 @@ th[aria-sort="ascending"] button::after { content: ' ↑'; }
 th[aria-sort="descending"] button::after { content: ' ↓'; }
 td button { width: 100%; text-align: start; text-decoration: underline dotted; text-underline-offset: .25rem; padding: .12rem .2rem; }
 button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: .2rem; }
-[role="tooltip"] { pointer-events: none; position: fixed; inset: auto; margin: 0; box-sizing: border-box;
+[popover] { pointer-events: none; position: fixed; inset: auto; margin: 0; box-sizing: border-box;
     max-width: min(24rem, calc(100vw - 16px)); padding: .7rem .95rem; white-space: pre-line; font: inherit;
     font-size: .875rem; line-height: 1.45; color: var(--st-text-color, CanvasText); background: var(--st-background-color, Canvas);
     border: 1px solid var(--st-border-color, #8886); border-radius: .5rem; box-shadow: 0 3px 16px #0003; }
+.role-popup { pointer-events: auto; max-height: calc(100vh - 16px); overflow-y: auto; }
+.role-popup details { margin-top: .7rem; border-top: 1px solid var(--st-border-color, #8885); padding-top: .5rem; }
+.role-popup summary { cursor: pointer; font-weight: 600; }
+.role-popup summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.role-popup details > div { margin-top: .5rem; font-size: .8rem; }
 
 .saved-play { background: color-mix(in srgb, var(--st-primary-color, #25785c) 8%, transparent); }
 td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; padding:.15rem .35rem; border-radius:.3rem; font-size:.75rem; font-weight:700; text-decoration:none; }
