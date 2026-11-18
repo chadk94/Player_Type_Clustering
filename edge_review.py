@@ -222,24 +222,52 @@ def minute_reference(references, row, game, as_of):
 
 def directional_injury_review(row, side, pending, team_frames, injury_info):
     """Screen availability by bet direction without inventing in/out projections."""
-    affected, informational = [], []
+    affected, informational = {}, {}
+    def add(groups, team, name, status, reason):
+        names = groups.setdefault((team, reason), [])
+        if (name, status) not in names:
+            names.append((name, status))
+
+    def join_names(names):
+        return names[0] if len(names) == 1 else ' and '.join(names) if len(names) == 2 else ', '.join(names[:-1]) + ', and ' + names[-1]
+
+    def describe(groups):
+        messages = []
+        for (team, reason), players in groups.items():
+            statuses = {}
+            for name, status in players:
+                statuses.setdefault(status, []).append(name)
+            clauses = [f'{join_names(names)} {"is" if len(names) == 1 else "are"} {status.lower()}'
+                       for status, names in sorted(statuses.items(), key=lambda item: {'Out':0,'Doubtful':1,'Questionable':2}.get(item[0],3))]
+            status_text = clauses[0] if len(clauses) == 1 else ', '.join(clauses[:-1]) + ', and ' + clauses[-1]
+            explanation = {
+                'own': 'The player’s own availability affects both Overs and Unders.',
+                'opponent': f'Opponent availability could affect this {side}; its direction has not been verified.',
+                'under': f'If {"this teammate sits" if len(players) == 1 else "any of these teammates sits"}, {row.Player} could gain minutes or production, hurting this Under.',
+                'included': 'They are already included in your rotation. No teammate-Q warning on this Over; an absence could free up opportunity. This is a screening rule, not a calculated injury boost.',
+                'return': f'{"He is" if len(players) == 1 else "They are"} currently excluded (0 projected minutes). A return could reduce {row.Player}’s opportunity and hurt this Over.',
+                'unknown': 'Their minutes in this rotation could not be verified, so this Over still needs review.',
+                'out': f'{"He still has" if len(players) == 1 else "They still have"} projected minutes. The rotation needs review for both directions.',
+            }[reason]
+            messages.append(f'{team}: {status_text}. {explanation}')
+        return messages
+
     personal = injury_info.get(row.Team)
     own_status = personal.statuses.get(row.Player) if personal is not None else None
     if own_status in ('Questionable', 'Doubtful'):
-        affected.append(f'{row.Player} ({row.Team}) is {own_status.lower()}. The player’s own availability affects both Overs and Unders.')
+        add(affected, row.Team, row.Player, own_status, 'own')
     for item in pending:
         team, name, status = item['Team'], item['Player'], item['Status']
         if team == row.Team and name == row.Player and own_status in ('Questionable', 'Doubtful'):
             continue
-        label = f'{name} ({team}) is {status.lower()}'
         if status == 'Out':
-            affected.append(f'{label} but still has projected minutes. The rotation needs review for both directions.')
+            add(affected, team, name, status, 'out')
         elif team != row.Team:
-            affected.append(f'{label}. Opponent availability could affect this {side}; its direction has not been verified.')
+            add(affected, team, name, status, 'opponent')
         elif name == row.Player:
-            affected.append(f'{label}. The player’s own availability affects both Overs and Unders.')
+            add(affected, team, name, status, 'own')
         elif side == 'Under':
-            affected.append(f'{label}. If this teammate sits, {row.Player} could gain minutes or production, hurting this Under.')
+            add(affected, team, name, status, 'under')
         else:
             minutes = item['Minutes']
             players = team_frames.get(team)
@@ -251,12 +279,12 @@ def directional_injury_review(row, side, pending, team_frames, injury_info):
             except (TypeError, ValueError):
                 minutes = np.nan
             if np.isfinite(minutes) and 0 < minutes <= 48:
-                informational.append(f'{label}, already included at {minutes:g} projected minutes. No teammate-Q warning on this Over; an absence could free up opportunity. This is a screening rule, not a calculated injury boost.')
+                add(informational, team, name, status, 'included')
             elif minutes == 0:
-                affected.append(f'{label}, currently excluded (0 projected minutes). A return could reduce {row.Player}’s opportunity and hurt this Over.')
+                add(affected, team, name, status, 'return')
             else:
-                affected.append(f'{label}. Their minutes in this rotation could not be verified, so this Over still needs review.')
-    return affected, informational
+                add(affected, team, name, status, 'unknown')
+    return describe(affected), describe(informational)
 
 
 def assess_edges(edges, final, game, logs, matches, references=None, injury_info=None,

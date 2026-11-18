@@ -1552,6 +1552,9 @@ shows the what-if minutes, projected stat and remaining directional edge, and ke
 check pending. The rotation redistribution and source timestamps sit under **Technical details**.
 The display uses the actual tested minutes, including a more adverse reference when available;
 the test is not presented as another source's forecast. Projections and review thresholds are unchanged.
+Injury popups group names by status and team, with one explanation per type of risk.
+Own-player, opponent, teammate-absence, and possible-return risks remain separate so grouping
+does not blur their different effects on an Over or Under.
 
 - **Minutes:** TabsNBA is the default independent comparison, via the prepared Chrome connector
   or a private CSV upload. The connector reads only the displayed unedited projection table,
