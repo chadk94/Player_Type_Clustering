@@ -149,7 +149,7 @@ dashboard()
             self.assertEqual(retained.source_updated_at.iloc[0],NOW.isoformat())
             deliver()
             self.assertEqual(self.app.session_state['model_runs'],4)
-            pending={'ok':True,'snapshot':browser()}
+            pending={'ok':True,'snapshot':browser()|{'source_updated_at':NOW.isoformat()}}
             deliver()
             self.assertEqual(self.app.session_state['model_runs'],5)
             self.assertFalse(self.app.session_state['tabs_minutes_reference'].source_saved.any())

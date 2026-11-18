@@ -32,7 +32,9 @@ instead export a CSV and use **CSV upload**, which reads the separate **Tabs Min
 CSV imports require the selected scenario and visible publication time and do not auto-refresh.
 Publication timestamps over two hours old cannot clear the minutes check. Closing the connected
 Tabs tab, leaving the projections page entirely, or losing access retains the last validated
-snapshot for its matching games. The prop app labels it **Saved Tabs minutes**, preserves the
+snapshot for each team and its matching game. Filtering Tabs to one team cannot erase the
+other teams; a partial player/search view cannot replace a complete team backup.
+The prop app labels it **Saved Tabs minutes**, preserves the
 original timestamp and blend, and leaves the current minutes check pending. Fresh valid data
 replaces it automatically on reconnection. Switching between Projections and Props stays connected.
 

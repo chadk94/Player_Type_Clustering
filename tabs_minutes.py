@@ -54,7 +54,7 @@ def parse_tabs_browser_snapshot(snapshot, roster, games, as_of=None, *, saved=Fa
 
 @lru_cache(maxsize=1)
 def _browser_component(runtime):
-    return st.components.v2.component('tabs_minutes_browser_saved_v1',
+    return st.components.v2.component('tabs_minutes_browser_saved_v2',
         html='<div><button type="button">Check Tabs connection</button> <span role="status">Connecting to Tabs…</span></div>',
         css='button {font:inherit;padding:.35rem .7rem;border:1px solid #8888;border-radius:.4rem;color:var(--st-text-color);background:var(--st-background-color);cursor:pointer} span {font-size:.9rem}',
         js=Path(__file__).with_name('tabs_browser_bridge.mjs').read_text())
@@ -82,28 +82,75 @@ def _refresh_dashboard():
     st.rerun(scope='projection_dashboard')
 
 
+def _saved_parts(cache):
+    """Migrate the original single snapshot; never let one filtered team erase others."""
+    if not isinstance(cache,dict) or len(json.dumps(cache))>450000:return []
+    if cache.get('schema')==1:return [cache]
+    parts=cache.get('snapshots',[])
+    if cache.get('schema')==2 and isinstance(parts,list) and len(parts)<=90:
+        return parts
+    return []
+
+
+def _team_parts(snapshot):
+    grouped={}
+    for row in snapshot['rows']:
+        grouped.setdefault((snapshot['slate_date'],row['Team'],row['Opp']),[]).append(row)
+    return [(key,snapshot|{'rows':rows,'scope':f'{key[1]} vs {key[2]}'}) for key,rows in grouped.items()]
+
+
+def _complete_rotation(refs):
+    return (not refs.empty and not refs.attrs.get('incomplete_teams') and
+            refs.minutes.gt(0).sum()>=5 and abs(refs.minutes.sum()-240)<=2)
+
+
 def resolve_browser_result(value, saved_snapshot, roster, games, as_of=None):
-    """Accept fresh reads, or keep the last validated snapshot for its exact slate."""
-    error='Tabs is reconnecting.'
+    """Merge exact-game team snapshots, preserving complete backups under filters."""
+    entries={};error='Tabs is reconnecting.'
+    # Include the browser backup even with a successful fresh reply: the first
+    # reply can beat the restore callback after a page reload.
+    candidates=[value.get('saved_snapshot') if isinstance(value,dict) else None,saved_snapshot]
+    for candidate in candidates:
+        for snapshot in _saved_parts(candidate):
+            try:
+                parse_tabs_browser_snapshot(snapshot,roster,games,as_of,saved=True)
+                for key,part in _team_parts(snapshot):
+                    refs,details=parse_tabs_browser_snapshot(part,roster,games,as_of,saved=True)
+                    if refs.empty:continue
+                    previous=entries.get(key)
+                    if previous and _complete_rotation(previous[1]) and not _complete_rotation(refs):continue
+                    if previous and pd.Timestamp(previous[0]['source_updated_at'])>pd.Timestamp(part['source_updated_at']):continue
+                    entries[key]=(part,refs,details)
+            except (ValueError,TypeError,KeyError,OverflowError):
+                continue
     if isinstance(value,dict) and value.get('ok'):
         try:
-            refs,details=parse_tabs_browser_snapshot(value['snapshot'],roster,games,as_of)
-            if refs.empty:raise ValueError('Tabs has no matching players for the loaded schedule.')
-            return refs,details,value['snapshot'],''
+            snapshot=value['snapshot']
+            parsed,_=parse_tabs_browser_snapshot(snapshot,roster,games,as_of)
+            if parsed.empty:raise ValueError('Tabs has no matching players for the loaded schedule.')
+            error=''
+            for key,part in _team_parts(snapshot):
+                refs,details=parse_tabs_browser_snapshot(part,roster,games,as_of)
+                if refs.empty:continue
+                previous=entries.get(key)
+                if previous and ((_complete_rotation(previous[1]) and not _complete_rotation(refs)) or
+                        pd.Timestamp(previous[0]['source_updated_at'])>pd.Timestamp(part['source_updated_at'])):
+                    # A search/position filter or delayed response is not a new rotation.
+                    continue
+                entries[key]=(part,refs,details)
         except (ValueError,TypeError,KeyError,OverflowError) as exc:
             error=str(exc)
     elif isinstance(value,dict):
         error=str(value.get('error') or error)[:250]
-    # The browser only persists snapshots acknowledged by Python. Revalidate on
-    # restore anyway, including player identity, game date, scenario and OUT rows.
-    candidate=saved_snapshot or (value.get('saved_snapshot') if isinstance(value,dict) else None)
-    if candidate is not None:
-        try:
-            refs,details=parse_tabs_browser_snapshot(candidate,roster,games,as_of,saved=True)
-            if not refs.empty:return refs,details,candidate,error
-        except (ValueError,TypeError,KeyError,OverflowError):
-            pass
-    return None,None,saved_snapshot,error
+    if not entries:return None,None,saved_snapshot,error
+    ordered=[entries[key] for key in sorted(entries)]
+    refs=pd.concat([item[1] for item in ordered],ignore_index=True)
+    refs.attrs['incomplete_teams']=sorted({team for _,r,_ in ordered for team in r.attrs.get('incomplete_teams',[])})
+    stored={'schema':2,'snapshots':[item[0] for item in ordered]}
+    details=dict(export_date=', '.join(sorted({k[0] for k in entries})),
+        scope=f"{len(entries)} team rotations", scenario=' / '.join(sorted({r['scenario'] for _,_,r in ordered})),
+        unmatched=[row for _,_,d in ordered for row in d['unmatched']])
+    return refs,details,stored,error
 
 
 def _apply_browser_result(value,roster,games):
@@ -138,15 +185,27 @@ def render_tabs_comparison(ui,roster,games):
         value=result.result
         refs,details,error=_apply_browser_result(value,roster,games)
         ui.caption('Keep TabsNBA and this app open in Chrome. Connector 0.2.0 works in either Projections or Props view and checks every 30 seconds. Timestamp-only updates stay in this panel; changed minutes or availability refresh projections. Select All games and clear Tabs filters for full coverage.')
-        ui.caption('The last valid Tabs minutes are saved privately in this browser. If the connection drops, matching-game projections keep using them until a fresh update arrives. Saved minutes are labeled and do not count as a current minutes check.')
+        ui.caption('Each team’s last valid Tabs rotation is saved privately in this browser. Filtering to one team or player cannot erase the other saved rotations. Saved minutes stay in projections until that team has a valid fresh update; the live minutes check remains pending.')
         if refs is None:
             ui.info('Waiting for a current Tabs comparison. Missing data remains unchecked.')
             if error:ui.caption(error)
             return None
         if refs.source_saved.any():
-            stamp=pd.Timestamp(refs.source_updated_at.iloc[0]).tz_convert('America/Denver')
-            ui.warning(f'Using saved Tabs minutes from {stamp:%b %d at %I:%M %p %Z}. Your blended projections are preserved while Tabs reconnects. The current minutes check is pending.')
-            ui.caption(error)
+            saved_refs=refs.loc[refs.source_saved]
+            names=', '.join(sorted(saved_refs.Team.unique()))
+            ui.warning(f'Using saved Tabs minutes for {names}. Blended projections are preserved; their live minutes check is pending. Select all teams in Tabs to refresh the whole slate.')
+            if error:ui.caption(error)
+        coverage=refs.groupby(['Team','Opponent','source_saved','source_updated_at','scenario'],dropna=False).agg(Players=('PLAYER_ID','size'),Minutes=('minutes','sum')).reset_index()
+        coverage['Status']=coverage.source_saved.map({True:'Saved Tabs minutes',False:'Live Tabs minutes'})
+        coverage['Tabs updated']=pd.to_datetime(coverage.source_updated_at,utc=True).dt.tz_convert('America/Denver').dt.strftime('%b %d %I:%M %p %Z')
+        ui.dataframe(coverage[['Team','Opponent','Status','Tabs updated','Players','Minutes','scenario']].rename(columns={'scenario':'Scenario'}),hide_index=True,width='stretch')
+        with ui.expander('View saved player minutes',expanded=False):
+            saved_rows=refs.merge(roster[['PLAYER_ID','TEAM_ABBREVIATION','PLAYER_NAME']].drop_duplicates(),
+                left_on=['PLAYER_ID','Team'],right_on=['PLAYER_ID','TEAM_ABBREVIATION'],how='left')
+            saved_rows['Status']=saved_rows.source_saved.map({True:'Saved',False:'Live'})
+            saved_rows['Tabs updated']=pd.to_datetime(saved_rows.source_updated_at,utc=True).dt.tz_convert('America/Denver').dt.strftime('%b %d %I:%M %p %Z')
+            ui.dataframe(saved_rows[['PLAYER_NAME','Team','Opponent','minutes','source_status','Status','Tabs updated']].rename(
+                columns={'PLAYER_NAME':'Player','minutes':'Tabs minutes','source_status':'Availability'}),hide_index=True,width='stretch')
         ui.caption(f"{details['export_date']} · {details['scope']} · {details['scenario']} · {len(refs)} matched players")
         if details['unmatched']:
             ui.warning(f"{len(details['unmatched'])} displayed players have no matching roster profile. Their comparisons remain unchecked.")

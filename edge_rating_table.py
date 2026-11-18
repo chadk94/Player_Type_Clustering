@@ -53,7 +53,7 @@ def minutes_popup(row):
         return isinstance(value, (int, float)) and isfinite(value)
 
     if row.get('Tabs minutes saved',False):
-        return dict(detail='Your projection is still using your minutes averaged with the last saved Tabs minutes. Tabs is disconnected or has no fresh update. Reconnect it to verify this bet against current minutes.',
+        return dict(detail='Your projection is still using your minutes averaged with the last saved Tabs minutes. Tabs is not currently showing a fresh, complete rotation for this team. Show all teams in Tabs or reconnect it to refresh the minutes check.',
                     technical=str(row.get('Minutes detail','')))
 
     if row.get('Minutes comparison mode') == 'Both sources':

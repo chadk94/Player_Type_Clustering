@@ -140,11 +140,59 @@ class TabsTests(unittest.TestCase):
         saved=browser()
         bad=saved|dict(manual_edits=True)
         refs,_,stored,error=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':bad},saved,ROSTER,[GAME],NOW)
-        self.assertTrue(error);self.assertTrue(refs.source_saved.all());self.assertEqual(stored,saved)
+        self.assertTrue(error);self.assertTrue(refs.source_saved.all());self.assertEqual(stored['snapshots'][0]['rows'],saved['rows'])
         fresh=copy.deepcopy(saved);fresh['rows'][0]['minutes']=24
         refs,_,stored,error=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':fresh},saved,ROSTER,[GAME],NOW)
         self.assertFalse(error);self.assertFalse(refs.source_saved.any());self.assertEqual(refs.minutes.tolist(),[24,0])
-        self.assertEqual(stored,fresh)
+        self.assertEqual(stored['snapshots'][0]['rows'],fresh['rows'])
+
+    def test_all_30_teams_survive_filtered_views_partial_updates_reload_and_disconnect(self):
+        from minutes_blend import minutes_plan
+        teams='ATL BOS BKN CHA CHI CLE DAL DEN DET GSW HOU IND LAC LAL MEM MIA MIL MIN NOP NYK OKC ORL PHI PHX POR SAC SAS TOR UTA WAS'.split()
+        roster=[];rows=[];base=[];games=[]
+        for n,team in enumerate(teams):
+            opponent=teams[n^1]
+            if n%2==0:games.append(dict(Away=team,Home=opponent,GameTimeUTC=GAME['GameTimeUTC']))
+            for i in range(7):
+                pid=n*10+i+1;name=f'{team} Player {i}';minutes=40 if i<6 else 0
+                roster.append(dict(PLAYER_ID=pid,PLAYER_NAME=name,TEAM_ABBREVIATION=team))
+                rows.append(dict(Player=name,Team=team,Opp=opponent,minutes=minutes,status='Projected' if minutes else 'Out'))
+                base.append(dict(PLAYER_ID=pid,Player=name,Team=team,**{'Projected minutes':minutes}))
+        roster=pd.DataFrame(roster);base=pd.DataFrame(base)
+        snapshot=browser()|dict(rows=rows,scenario='Default',scope='All games')
+        initial,_,cache,_=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':snapshot},None,roster,games,NOW)
+        original=[minutes_plan(base[base.Team.isin([g['Away'],g['Home']])],initial,g,NOW)[0] for g in games]
+        selected=copy.deepcopy(snapshot);selected['rows']=selected['rows'][:7]
+        selected['rows'][0]['minutes']=35;selected['rows'][1]['minutes']=45
+        current,_,cache,_=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':selected},cache,roster,games,NOW)
+        self.assertEqual(len(current),210);self.assertEqual(len(cache['snapshots']),30)
+        self.assertEqual(set(current.loc[~current.source_saved,'Team']),{'ATL'})
+        self.assertEqual(current.loc[current.PLAYER_ID.eq(1),'minutes'].iloc[0],35)
+        partial=selected|dict(rows=[selected['rows'][0]|dict(minutes=42)])
+        current,_,cache,_=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':partial},cache,roster,games,NOW)
+        self.assertEqual(len(current),210);self.assertTrue(current.source_saved.all())
+        self.assertEqual(current.loc[current.PLAYER_ID.eq(1),'minutes'].iloc[0],35)
+        # On refresh a raw filtered reply can arrive before the restore callback.
+        current,_,cache,_=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':partial,'saved_snapshot':cache},None,roster,games,NOW)
+        self.assertEqual(len(current),210)
+        restored,_,cache,_=tabs_minutes.resolve_browser_result({'ok':False,'saved_snapshot':cache},None,roster,games,NOW+pd.Timedelta(hours=4))
+        for i,g in enumerate(games):
+            plan,meta=minutes_plan(base[base.Team.isin([g['Away'],g['Home']])],restored,g,NOW+pd.Timedelta(hours=4))
+            self.assertEqual(len(plan['blended']),14);self.assertTrue(meta['Tabs minutes saved'].all())
+            if i: self.assertEqual(plan,original[i])
+        self.assertEqual(restored.loc[restored.source_status.eq('Out'),'minutes'].sum(),0)
+        fresh,_,_,_=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':snapshot},cache,roster,games,NOW)
+        self.assertFalse(fresh.source_saved.any())
+
+    def test_filtered_team_cannot_replace_complete_snapshot_with_unmapped_player_or_old_update(self):
+        rows=[dict(Player=f'Player {i}',Team='POR',Opp='MIN',minutes=40,status='Projected') for i in range(6)]
+        roster=pd.DataFrame([dict(PLAYER_ID=i,PLAYER_NAME=r['Player'],TEAM_ABBREVIATION='POR') for i,r in enumerate(rows)])
+        snapshot=browser()|dict(rows=rows)
+        _,_,cache,_=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':snapshot},None,roster,[GAME],NOW)
+        for changed in [snapshot|dict(rows=rows[:-1]+[rows[-1]|dict(Player='Unknown')]),
+                        snapshot|dict(source_updated_at=(NOW-pd.Timedelta(minutes=10)).isoformat())]:
+            kept,_,_,_=tabs_minutes.resolve_browser_result({'ok':True,'snapshot':changed},cache,roster,[GAME],NOW)
+            self.assertEqual(kept.minutes.tolist(),[40]*6);self.assertTrue(kept.source_saved.all())
 
     def test_saved_snapshot_stays_bound_to_its_game_and_must_have_been_valid_at_capture(self):
         next_game=GAME|dict(GameTimeUTC=GAME['GameTimeUTC']+pd.Timedelta(days=1))

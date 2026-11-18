@@ -1617,7 +1617,11 @@ does not blur their different effects on an Over or Under.
   absent CSV rows never imply zero. Tabs publication time must be verified and within two hours.
   The last validated browser snapshot is backed up in the user's browser local storage and
   restored into their private Streamlit session; it is never bundled or globally cached.
-  A disconnect, stale feed or invalid new read preserves that snapshot for the same game/date,
+  Backups are retained separately for each team and exact game date/opponent. Viewing one team
+  in Tabs cannot replace the other teams' saved rotations. A partial player/search view, an
+  unmapped active player or an older response cannot replace a complete saved rotation.
+  The connection panel lists every stored team and timestamp; **View saved player minutes**
+  shows the actual retained allocations. A disconnect, stale feed or invalid new read preserves that snapshot for the same game/date,
   including its original scenario, OUT statuses and timestamps. Refreshing the app also restores
   it. **Saved Tabs minutes** identifies retained data: projections keep the last valid blend,
   while the live minutes check remains pending and cannot qualify a play as more robust.

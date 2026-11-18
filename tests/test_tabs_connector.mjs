@@ -135,6 +135,7 @@ test('validated minutes persist through disconnect, timeout and reload; raw repl
         const raw={...snapshot,manual_edits:true,rows:[]};
         reply({ok:true,snapshot:raw});
         assert.deepEqual(readSavedTabs(localStorage),snapshot);
+        assert.deepEqual(saved.at(-1).saved_snapshot,snapshot); // Fresh reply cannot race away restored teams.
         button.onclick();timers.get(tid)();
         assert.deepEqual(saved.at(-1).saved_snapshot,snapshot);
         assert.equal(saved.at(-1).saved_snapshot.source_updated_at,snapshot.source_updated_at);
@@ -142,6 +143,13 @@ test('validated minutes persist through disconnect, timeout and reload; raw repl
         const newer={...snapshot,scenario:'Default'};
         cleanup=mount({previous:{ok:true,snapshot:newer},saved_snapshot:newer});
         assert.deepEqual(readSavedTabs(localStorage),newer);cleanup();
+        const teams={schema:2,snapshots:[snapshot,newer]};
+        cleanup=mount({saved_snapshot:teams});cleanup();saved.length=0;
+        cleanup=mount({});
+        assert.deepEqual(saved[0].saved_snapshot,teams);
+        reply({ok:true,snapshot:newer});
+        assert.deepEqual(saved.at(-1).saved_snapshot,teams);
+        assert.deepEqual(readSavedTabs(localStorage),teams);cleanup();
         items.set(SAVED_TABS_KEY,'broken');assert.equal(readSavedTabs(localStorage),null);
         assert.equal(readSavedTabs({getItem:()=>{throw Error('Blocked storage');}}),null);
     } finally {Object.assign(globalThis,real);}
