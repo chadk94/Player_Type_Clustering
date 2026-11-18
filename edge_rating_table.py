@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from edge_calculation_cache import GameCalculationCache
 from matchup_projections import RECENT_OPPONENT_GAMES
 from matchup_evidence import peer_panels
 from points_probability import PROBABILITY_COLUMNS
@@ -306,5 +307,14 @@ def _component(runtime, ui_version):
 
 
 def render_edge_table(edges, columns, roster, effects, team, game, book, day, projections, games=None):
-    _component(st.runtime.get_instance(), EDGE_TABLE_UI_VERSION)(data=table_payload(edges, columns, roster, effects, team, game, book, day, projections, games),
+    # Browser components remount on game switches. Reuse their display payload,
+    # including peer history, without caching UI calls or anyone's saved picks.
+    memo = st.session_state.get('edge_table_payload_cache')
+    if memo is None or memo[0] is not roster or memo[1] is not effects:
+        memo = (roster, effects, GameCalculationCache())
+        st.session_state['edge_table_payload_cache'] = memo
+    display_edges = edges.drop(columns='Review captured UTC', errors='ignore')
+    payload = memo[2].get((display_edges, columns, team, game, book, day, projections, games),
+        pd.Timestamp(0), lambda: table_payload(display_edges, columns, roster, effects, team, game, book, day, projections, games))
+    _component(st.runtime.get_instance(), EDGE_TABLE_UI_VERSION)(data=payload,
                                           key='sportsbook_edge_table_' + team)

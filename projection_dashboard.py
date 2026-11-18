@@ -1,6 +1,7 @@
 """Streamlit player-stat projections, opponent previews and sportsbook comparison."""
 from datetime import datetime, timezone
 from functools import lru_cache
+from edge_calculation_cache import GameCalculationCache, source_deadlines
 from pathlib import Path
 import tempfile
 import hashlib
@@ -972,11 +973,16 @@ def render_live_dashboard(ui, roster):
                     [projections[~projections.PLAYER_ID.isin(changed_ids)], changed], ignore_index=True)
             return game_projection_cache[key]
 
+        rotation_plan_cache = GameCalculationCache()
         def game_minutes_plan(team, opponent, start):
             own = own_projections_for_game(team, opponent, start)
             own = own.loc[own.Team.isin((team, opponent))].copy()
             game = dict(Home=team, Away=opponent, GameTimeUTC=pd.Timestamp(start))
-            return own, *minutes_plan(own, st.session_state.get('tabs_minutes_reference'), game, pd.Timestamp.now(tz='UTC'))
+            refs = st.session_state.get('tabs_minutes_reference')
+            now = pd.Timestamp.now(tz='UTC')
+            plan = rotation_plan_cache.get((own, refs, game), now,
+                lambda: minutes_plan(own, refs, game, now), lambda: source_deadlines(refs))
+            return own, *plan
 
         def project_for_game(team, opponent, start, mode='blended'):
             own, plans, metadata = game_minutes_plan(team, opponent, start)
@@ -1372,6 +1378,22 @@ def render_live_dashboard(ui, roster):
     # One session-local set per league snapshot. Check quote freshness at every
     # interaction before reusing calculated probabilities, minute cushions or EV.
     edge_cache = {}
+    review_cache = GameCalculationCache()
+    # Logs/matches belong to this immutable dashboard snapshot. Reuse role checks
+    # across game switches; new minutes, quotes, passing or injury inputs miss.
+    log_deadlines = tuple(pd.to_datetime(logs.GAME_DATE, utc=True, errors='coerce').dropna().astype('int64').unique()) if not logs.empty else ()
+    def reviewed_game(edges, combined, game, base, book, api_key):
+        refs, info, stamp, passing = edge_review_inputs(game, roster, base, approved_bundle, logs, matched_players)
+        cases = source_minutes_cases(game, book, api_key)
+        now = pd.Timestamp.now(tz='UTC')
+        key = (edges, combined, game, refs, info, stamp, passing, cases, now.year, now.month < 7)
+        result = review_cache.get(key, now,
+            lambda: assess_edges(edges, combined, game, logs, matched_players, refs, info, stamp,
+                                 now, passing=passing, minutes_cases=cases),
+            lambda: (*source_deadlines(refs, stamp), *log_deadlines, pd.Timestamp(game['GameTimeUTC']).value))
+        result['Review captured UTC'] = now.isoformat()
+        return result
+
     def source_minutes_cases(game, book, api_key):
         cases = {}
         event = {**game, 'commence_time':game['GameTimeUTC'].isoformat()}
@@ -1438,10 +1460,7 @@ def render_live_dashboard(ui, roster):
                     row['Status'] = 'No eligible current quotes / projections'
                 else:
                     try:
-                        refs, info, stamp, passing = edge_review_inputs(game, roster, base, approved_bundle, logs, matched_players)
-                        reviewed = assess_edges(edges, combined, game, logs, matched_players, refs, info, stamp,
-                                                datetime.now(timezone.utc), passing=passing,
-                                                minutes_cases=source_minutes_cases(game, BOOKS[book_name], api_key))
+                        reviewed = reviewed_game(edges, combined, game, base, BOOKS[book_name], api_key)
                     except (requests.RequestException, ValueError, KeyError, TypeError, IndexError):
                         reviewed = unavailable_review(edges)
                     row['Eligible plays'] = len(reviewed)
@@ -1539,7 +1558,9 @@ def render_live_dashboard(ui, roster):
             plays_only = ui.checkbox('Only show plays above 5% edge',value=True,key='edges_plays_only')
             review_view = ui.pills('Play review',REVIEW_VIEWS,default='All plays',selection_mode='single',key='edges_review_view') or 'All plays'
             ui.caption('🟠 Minutes risk: the play fails with your minutes or TabsNBA’s · Gray Minutes unverified: a full source rotation is missing · 🟣 ROLE: recent role works against the bet · 🔵 Q: availability could hurt this bet. Click a badge for details. More robust requires more than 5% edge under both sources and the role checks.')
-            ui.button('Refresh review checks',key='edges_review_refresh',help='Read any completed background minutes and passing updates. Your model projections stay unchanged.')
+            if ui.button('Refresh review checks',key='edges_review_refresh',help='Read any completed background minutes and passing updates. Your model projections stay unchanged.'):
+                review_cache.clear()
+                rotation_plan_cache.clear()
             show_recent = ui.toggle('Show recent-role comparison', value=False, key='edges_recent_role',
                                     help='Compare recent shot volume and assists beside the current model. Rankings and the 5% rule stay unchanged.')
             edge_schedule = schedule_for_view(ui, edge_date, 'edges_schedule_reload')
@@ -1586,10 +1607,7 @@ def render_live_dashboard(ui, roster):
                     reviewed = ranked
                     if not ranked.empty:
                         try:
-                            refs, injury_info, injury_stamp, passing = edge_review_inputs(game,roster,game_projections,approved_bundle,logs,matched_players)
-                            reviewed = assess_edges(ranked,combined,game,logs,matched_players,refs,injury_info,injury_stamp,
-                                                    datetime.now(timezone.utc),passing=passing,
-                                                    minutes_cases=source_minutes_cases(game, BOOKS[edge_book_name], edge_key))
+                            reviewed = reviewed_game(ranked, combined, game, game_projections, BOOKS[edge_book_name], edge_key)
                         except (requests.RequestException,ValueError,KeyError,TypeError,IndexError):
                             reviewed = unavailable_review(ranked)
                         ranked = filter_review(reviewed,review_view)

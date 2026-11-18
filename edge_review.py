@@ -330,7 +330,7 @@ warnings are a screening rule, not a numerical in/out forecast.
     deadline=min(now,pd.Timestamp(game['GameTimeUTC']))
     team_frames={team:rows.reset_index(drop=True) for team,rows in final.groupby('Team')}
     evidence={}
-    for _,p in final.loc[final['Projected minutes'].gt(0)].iterrows():
+    for _,p in final.loc[final['Projected minutes'].gt(0) & final.PLAYER_ID.isin(out.PLAYER_ID)].iterrows():
         evidence[int(p.PLAYER_ID)]=role_evidence(p,matches.get(int(p.PLAYER_ID)),logs,deadline,passing)
     stale=True
     if injury_stamp is not None:
@@ -347,6 +347,15 @@ warnings are a screening rule, not a numerical in/out forecast.
         pending.extend(dict(Team=team,Player=name,Status=status,Minutes=None)
                        for name,status in info.statuses.items()
                        if name in active_names and status in ('Out','Doubtful') and (team,name) not in listed)
+    # Each role scenario produces every stat. PTS/AST/3PM/PRA for one player
+    # share the same calculation; only the compared line/direction differs.
+    scenarios = {}
+    def role_scenario(frame, pid, ratios, source='blended'):
+        key = (source, pid)
+        if key not in scenarios:
+            scenarios[key] = scenario_projection(frame, role={pid: ratios})
+        return scenarios[key]
+
     entries=[]
     for _,row in out.iterrows():
         side=row.Play if row.Play in ('Over','Under') else ('Over' if row.get('Signed edge %',0)>0 else 'Under')
@@ -462,7 +471,7 @@ warnings are a screening rule, not a numerical in/out forecast.
         elif covered:
             role={pid:signal['ratios']}
             try:
-                tested=scenario_projection(team,role=role)
+                tested=role_scenario(team,pid,signal['ratios'])
                 value=float(tested.loc[tested.PLAYER_ID.eq(pid),stat].iloc[0])
                 edge=side_edge(value,row['Book implied total'],side)
                 trend=any(signal['trends'][s]*(1 if side=='Over' else -1)<=-CONFIG['role_change_fraction'] for s in needed)
@@ -475,7 +484,7 @@ warnings are a screening rule, not a numerical in/out forecast.
                     value=float(joint.loc[joint.PLAYER_ID.eq(pid),stat].iloc[0])
                     record.update({'Combined test projection':value,'Combined test edge %':side_edge(value,row['Book implied total'],side)})
                 elif source_cases:
-                    values=[float(scenario_projection(case,role=role).loc[lambda f:f.PLAYER_ID.eq(pid),stat].iloc[0]) for case in source_cases]
+                    values=[float(role_scenario(case,pid,signal['ratios'],source).loc[lambda f:f.PLAYER_ID.eq(pid),stat].iloc[0]) for source,case in enumerate(source_cases)]
                     value=min(values,key=lambda value:side_edge(value,row['Book implied total'],side))
                     record.update({'Combined test projection':value,'Combined test edge %':side_edge(value,row['Book implied total'],side)})
             except (ValueError,KeyError,IndexError):covered=False

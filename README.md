@@ -1114,6 +1114,16 @@ their five-minute cache and normal event/quote-age checks; a new game or expired
 feed cache can still require a short network wait. Initial loading and an explicit
 refresh still load the full dashboard.
 
+Game switches also reuse private, bounded snapshots of rotation plans, robustness
+checks and table/hover content when their inputs are identical. A changed price,
+projection, source rotation, injury report or verified passing sample invalidates
+its result. Source age boundaries are checked on every interaction, including the
+exact moment a minutes source or injury report expires; caching does not extend
+freshness or turn saved Tabs minutes into a live verification. Multiple props for
+one player share their role scenario calculation. **Refresh review checks** clears
+the review and rotation caches. The first visit to a game still calculates its
+projections and may fetch odds. No projection formulas or selection rules change.
+
 `tests/test_dashboard_fragments.py` exercises actual fragment-scoped reruns with
 external feeds stubbed: player changes do not refetch league data or execute hidden
 tabs, manual minutes still recalculate and reset, Refresh rebuilds all tabs, and a
