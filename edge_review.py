@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from sportsbook_lines import PLAY_THRESHOLD_PCT
 from team_threes import exceeds_projected_points
+from sportsbook_injuries import pending_key_players
 
 CONFIG = json.loads(Path(__file__).with_suffix('.json').read_text())
 FLAG_COLUMNS = ['Minutes flag', 'Role flag', 'Injury flag']
@@ -218,13 +219,51 @@ def minute_reference(references, row, game, as_of):
     return ref
 
 
+def directional_injury_review(row, side, pending, team_frames, injury_info):
+    """Screen availability by bet direction without inventing in/out projections."""
+    affected, informational = [], []
+    personal = injury_info.get(row.Team)
+    own_status = personal.statuses.get(row.Player) if personal is not None else None
+    if own_status in ('Questionable', 'Doubtful'):
+        affected.append(f'{row.Player} ({row.Team}) is {own_status.lower()}. The player’s own availability affects both Overs and Unders.')
+    for item in pending:
+        team, name, status = item['Team'], item['Player'], item['Status']
+        if team == row.Team and name == row.Player and own_status in ('Questionable', 'Doubtful'):
+            continue
+        label = f'{name} ({team}) is {status.lower()}'
+        if status == 'Out':
+            affected.append(f'{label} but still has projected minutes. The rotation needs review for both directions.')
+        elif team != row.Team:
+            affected.append(f'{label}. Opponent availability could affect this {side}; its direction has not been verified.')
+        elif name == row.Player:
+            affected.append(f'{label}. The player’s own availability affects both Overs and Unders.')
+        elif side == 'Under':
+            affected.append(f'{label}. If this teammate sits, {row.Player} could gain minutes or production, hurting this Under.')
+        else:
+            minutes = item['Minutes']
+            players = team_frames.get(team)
+            matches = players.loc[players.Player.eq(name)] if players is not None else pd.DataFrame()
+            if len(matches) == 1:
+                minutes = matches.iloc[0]['Projected minutes']
+            try:
+                minutes = float(minutes)
+            except (TypeError, ValueError):
+                minutes = np.nan
+            if np.isfinite(minutes) and 0 < minutes <= 48:
+                informational.append(f'{label}, already included at {minutes:g} projected minutes. No teammate-Q warning on this Over; an absence could free up opportunity. This is a screening rule, not a calculated injury boost.')
+            elif minutes == 0:
+                affected.append(f'{label}, currently excluded (0 projected minutes). A return could reduce {row.Player}’s opportunity and hurt this Over.')
+            else:
+                affected.append(f'{label}. Their minutes in this rotation could not be verified, so this Over still needs review.')
+    return affected, informational
+
+
 def assess_edges(edges, final, game, logs, matches, references=None, injury_info=None,
                  injury_stamp=None, as_of=None, passing=None):
     """Append explanations, scenario means, directional gaps and eligibility only.
 
-No data source is interpreted as clear when missing. Injury branches need saved,
-verified alternative rotations, which the current feed does not provide.
-Affected games remain Waiting on news rather than inventing an in/out forecast.
+No data source is interpreted as clear when missing. Direction-aware injury
+warnings are a screening rule, not a numerical in/out forecast.
 """
     out=edges.copy(deep=True)
     now=pd.Timestamp(as_of or pd.Timestamp.now(tz='UTC'))
@@ -239,13 +278,15 @@ Affected games remain Waiting on news rather than inventing an in/out forecast.
         stale=stamp.tzinfo is None or not 0<=(now-stamp).total_seconds()<=60*CONFIG['injury_max_age_minutes']
     injury_info=injury_info or {}
     complete=not stale and all(t in injury_info and injury_info[t].complete for t in (game['Away'],game['Home']))
-    pending=[(team,q[2]) for team,info in injury_info.items() if team in (game['Away'],game['Home']) for q in info.questionables]
+    injury_info={team:info for team,info in injury_info.items() if team in (game['Away'],game['Home'])}
+    pending=pending_key_players(injury_info)
     for team,info in injury_info.items():
         if team not in team_frames:continue
         active_names=set(team_frames[team].loc[team_frames[team]['Projected minutes'].gt(0),'Player'])
-        pending.extend((team,name) for name,status in info.statuses.items()
-                       if name in active_names and status in ('Out','Doubtful'))
-    pending=list(dict.fromkeys(pending))
+        listed={(item['Team'],item['Player']) for item in pending}
+        pending.extend(dict(Team=team,Player=name,Status=status,Minutes=None)
+                       for name,status in info.statuses.items()
+                       if name in active_names and status in ('Out','Doubtful') and (team,name) not in listed)
     entries=[]
     for _,row in out.iterrows():
         side=row.Play if row.Play in ('Over','Under') else ('Over' if row.get('Signed edge %',0)>0 else 'Under')
@@ -323,21 +364,16 @@ Affected games remain Waiting on news rather than inventing an in/out forecast.
                     value=float(joint.loc[joint.PLAYER_ID.eq(pid),stat].iloc[0])
                     record.update({'Combined test projection':value,'Combined test edge %':side_edge(value,row['Book implied total'],side)})
             except (ValueError,KeyError,IndexError):covered=False
-        row_pending=pending.copy()
-        personal=injury_info.get(row.Team)
-        if personal is not None and personal.statuses.get(row.Player) in ('Questionable','Doubtful'):
-            row_pending=list(dict.fromkeys([*row_pending,(row.Team,row.Player)]))
-        # An out player with nonzero model minutes is a conflict, never a clear check.
-        if personal is not None and personal.statuses.get(row.Player)=='Out' and row['Projected minutes']>0:
-            row_pending=list(dict.fromkeys([*row_pending,(row.Team,row.Player)]))
+        row_pending, informational=directional_injury_review(row,side,pending,team_frames,injury_info)
         injury_ok=complete and not row_pending
         if row_pending:
             record['Injury flag']='Q'
-            record['Injury detail']='Unresolved availability or rotation conflict: '+', '.join(f'{name} ({team})' for team,name in row_pending)+'.'
+            record['Injury detail']='\n'.join(row_pending)
             if stale:record['Injury detail']+=' Report is stale; refresh required.'
             record['Injury detail']+='\nNo verified in/out rotations saved. Needs review; no guessed conditional projection.'
         elif injury_ok:
-            record['Injury flag']='Clear';record['Injury detail']='Both teams have complete, recent reports; no unresolved key questionable players.'
+            record['Injury flag']='Clear';record['Injury detail']='Both teams have complete, recent reports; no adverse availability warning under the direction-aware rules.'
+        if informational:record['Injury detail']+='\n'+'\n'.join(informational)
         gaps=[side_edge(row.Projected,row['Book implied total'],side),record['Minutes test edge %'],record['Recent test edge %'],record['Combined test edge %']]
         robust=(row.Play in ('Over','Under') and reference is not None and covered and injury_ok
                 and np.isfinite(gaps).all() and min(round(g,2) for g in gaps)>PLAY_THRESHOLD_PCT

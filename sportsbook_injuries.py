@@ -124,6 +124,20 @@ class TeamInjuries:
     unverified: list = field(default_factory=list)
 
 
+def pending_key_players(observations):
+    """Key unresolved players, including excluded players who could return."""
+    rows = []
+    for team, info in observations.items():
+        listed = {q[2]: (q[3], q[4]) for q in info.questionables}
+        minutes = {**listed, **info.key_minutes}
+        for name, values in minutes.items():
+            status = info.statuses.get(name, 'Questionable' if name in listed else None)
+            if status in ('Questionable', 'Doubtful'):
+                rows.append(dict(Team=team, Player=name, Status=status,
+                                 Minutes=values[0] if values is not None else None))
+    return sorted(rows, key=lambda row: (row['Team'], row['Player']))
+
+
 def game_injuries(game, reports, roster, automatic, bundle):
     """Match each official status to this game's roster, approvals and minutes."""
     away, home, tip = game['Away'], game['Home'], game['GameTimeUTC']

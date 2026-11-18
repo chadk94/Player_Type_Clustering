@@ -1,5 +1,5 @@
 {
-  "version": "edge-review-rebound-trend-v2",
+  "version": "edge-review-directional-injury-v3",
   "minutes_disagreement": 3.0,
   "minutes_stress": 3.0,
   "minutes_source_max_hours": 6,

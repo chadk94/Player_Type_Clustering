@@ -145,6 +145,79 @@ class ReviewTests(unittest.TestCase):
         stale=assess_edges(edge(),finalized(raw_team()),GAME,pd.DataFrame(),{},reference(),healthy(),NOW-pd.Timedelta(minutes=31),NOW)
         self.assertEqual(stale.iloc[0]['Injury flag'],'Unchecked')
 
+    def test_teammate_q_is_directional_and_preserves_every_model_value(self):
+        frame=finalized(raw_team()); saved=frame.copy(deep=True)
+        info=healthy()
+        info['BOS'].statuses={'Player 2':'Questionable'}
+        info['BOS'].key_minutes={'Player 2':(30.,30.)}
+        signal=dict(ratios={'PTS':1.,'AST':1.,'FG3A':1.},trends={'PTS':0.,'AST':0.,'FG3A':0.},detail='Stable')
+        with patch('edge_review.role_evidence',return_value=signal):
+            for stat,mean in [('PTS',15.),('PRA',24.),('3PM',2.)]:
+                for side in ['Over','Under']:
+                    edges=edge(mean,mean*.6 if side=='Over' else mean*1.5,side,stat)
+                    before=edges.copy(deep=True)
+                    result=assess_edges(edges,frame,GAME,pd.DataFrame(),{},reference(),info,NOW,NOW)
+                    row=result.iloc[0]
+                    self.assertEqual(row['Injury flag'],'Clear' if side=='Over' else 'Q')
+                    self.assertEqual(row['Review group'],'More robust' if side=='Over' else 'Waiting on news')
+                    self.assertEqual(row['Robust play'],side=='Over')
+                    self.assertIn('already included' if side=='Over' else 'could gain',row['Injury detail'])
+                    pd.testing.assert_frame_equal(result[edges.columns],before)
+                    pd.testing.assert_frame_equal(edges,before)
+        pd.testing.assert_frame_equal(frame,saved)
+
+    def test_q_rotation_assumptions_unknowns_and_multiple_risks(self):
+        frame=finalized(raw_team())
+        info=healthy();info['BOS'].statuses={'Player 9':'Questionable'}
+        # A key player excluded from this game's rotation can return and hurt an Over.
+        info['BOS'].key_minutes={'Player 9':(0.,30.)}
+        def review(info=info,frame=frame,stamp=NOW):
+            return assess_edges(edge(),frame,GAME,pd.DataFrame(),{},reference(),info,stamp,NOW).iloc[0]
+        self.assertEqual(review()['Injury flag'],'Q')
+        self.assertIn('currently excluded',review()['Injury detail'])
+        info['BOS'].statuses={'Missing teammate':'Questionable'}
+        for minutes in [None,float('nan'),float('inf'),-1.,49.]:
+            info['BOS'].key_minutes={'Missing teammate':None if minutes is None else (minutes,30.)}
+            self.assertEqual(review()['Injury flag'],'Q')
+            self.assertIn('could not be verified',review()['Injury detail'])
+        # Valid game minutes can still be used when a zero-stat player is absent from final rows.
+        info['BOS'].key_minutes={'Missing teammate':(30.,30.)}
+        self.assertEqual(review()['Injury flag'],'Clear')
+        self.assertEqual(review(stamp=NOW-pd.Timedelta(minutes=31))['Injury flag'],'Unchecked')
+        info['DET'].complete=False
+        self.assertEqual(review()['Injury flag'],'Unchecked')
+        info['DET'].complete=True
+        info['DET'].statuses={'Opponent':'Questionable'}
+        info['DET'].key_minutes={'Opponent':(30.,30.)}
+        self.assertEqual(review()['Injury flag'],'Q')
+        self.assertIn('Opponent availability',review()['Injury detail'])
+        info['DET']=TeamInjuries(True,True)
+        info['BOS'].statuses['Player 1']='Doubtful'
+        self.assertIn('own availability',review()['Injury detail'])
+        self.assertEqual(review()['Injury flag'],'Q')
+
+    def test_own_status_conflicts_and_doubtful_teammates(self):
+        frame=finalized(raw_team())
+        for status in ['Questionable','Doubtful','Out']:
+            for side in ['Over','Under']:
+                info=healthy();info['BOS'].statuses={'Player 1':status}
+                row=assess_edges(edge(side=side),frame,GAME,pd.DataFrame(),{},reference(),info,NOW,NOW).iloc[0]
+                self.assertEqual(row['Injury flag'],'Q')
+        info=healthy();info['BOS'].statuses={'Player 2':'Doubtful'}
+        info['BOS'].key_minutes={'Player 2':(30.,30.)}
+        row=assess_edges(edge(),frame,GAME,pd.DataFrame(),{},reference(),info,NOW,NOW).iloc[0]
+        self.assertEqual(row['Injury flag'],'Clear')
+        info['BOS'].statuses={'Player 2':'Out'}
+        row=assess_edges(edge(),frame,GAME,pd.DataFrame(),{},reference(),info,NOW,NOW).iloc[0]
+        self.assertEqual(row['Injury flag'],'Q')
+        self.assertIn('still has projected minutes',row['Injury detail'])
+        info['BOS'].statuses={'Player 9':'Out'}
+        info['BOS'].key_minutes={'Player 9':(0.,30.)}
+        # Resolved Out at zero minutes, and a Q in another game, should not warn this game.
+        info['NYK']=TeamInjuries(True,True,{'Other game':'Questionable'},{'Other game':(30.,30.)})
+        row=assess_edges(edge(),frame,GAME,pd.DataFrame(),{},reference(),info,NOW,NOW).iloc[0]
+        self.assertEqual(row['Injury flag'],'Clear')
+
     def test_filters_preserve_order_ranks_and_empty_case(self):
         rows=pd.concat([unavailable_review(edge()),unavailable_review(edge())],ignore_index=True)
         rows.loc[0,'Rank']=7;rows.loc[1,'Rank']=2;rows.loc[1,'Robust play']=True

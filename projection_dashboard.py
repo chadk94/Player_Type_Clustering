@@ -32,7 +32,7 @@ from team_rate_blend import (season_rates, blend_team_rates, PRIOR_GAMES, POLICY
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
 from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, filter_game_edges, add_play_ev, EDGE_STATS, EVENT_TIME_TOLERANCE
-from sportsbook_injuries import KEY_MINUTES, game_injuries, injury_alert_changes, latest_report
+from sportsbook_injuries import KEY_MINUTES, game_injuries, injury_alert_changes, latest_report, pending_key_players
 from edge_rating_table import render_edge_table
 from edge_review import assess_edges, filter_review, unavailable_review, REVIEW_VIEWS
 from edge_review_sources import MinutesReferenceFeed, parse_minutes, review_passing
@@ -132,8 +132,10 @@ def render_edge_injuries(ui, game, games, roster, projections, bundle):
         render_injury_voice(())
         return
     selected = game if game is not None and game['GameTimeUTC'] > now else None
+    summary_panel = ui.container()
     if selected:
-        ui.markdown(f"**Key questionable players** · {game['Away']} @ {game['Home']}")
+        with summary_panel:
+            ui.markdown(f"**Key questionable players** · {game['Away']} @ {game['Home']}")
     scope = ui.radio('Injury alerts', ['All games on this slate', 'Selected game', 'Off'],
                      key='injury_alert_scope', horizontal=True,
                      help=f'Top-right pop-ups for NBA status changes to players above {KEY_MINUTES} minutes in either rotation. Checks every five minutes while the dashboard is open.')
@@ -148,7 +150,8 @@ def render_edge_injuries(ui, game, games, roster, projections, bundle):
     report = edge_injury_report()
     if report is None:
         render_injury_voice(active_ids)
-        ui.caption(f'Current injury status unavailable. [NBA injury reports](https://official.nba.com/nba-injury-report-{SEASON}-season/)')
+        with summary_panel:
+            ui.warning(f'Current injury status unavailable. [NBA injury reports](https://official.nba.com/nba-injury-report-{SEASON}-season/)')
         return
     stamp, url, teams_reported = report
     automatic = projections.set_index('PLAYER_ID')['Projected minutes'].to_dict()
@@ -175,23 +178,28 @@ def render_edge_injuries(ui, game, games, roster, projections, bundle):
     render_injury_voice(active_ids, stamp.isoformat(), spoken)
     if not selected:
         return
-    rows = [row for info in selected_teams.values() for row in info.questionables]
+    rows = pending_key_players(selected_teams)
     pending = [team for team, info in selected_teams.items() if not info.submitted]
     unverified = [text for info in selected_teams.values() for text in info.unverified]
-    if rows:
-        players = sorted(rows, key=lambda r: (-r[4], r[2]))
-        names = [f"{name} ({team}, {mins:g} min)" if pd.notna(mins) else f"{name} ({team}, minutes unknown)"
-                 for _, team, name, mins, _ in players]
-        ui.markdown(' · '.join(names))
-    elif not pending and not unverified:
-        ui.write('No key players listed as questionable for this game.')
-    if pending:
-        ui.caption('Awaiting a verified team report · ' + ', '.join(pending))
-    if unverified:
-        ui.caption('Coverage to verify · ' + ' · '.join(unverified))
-    older = ' · Latest quarter-hour update unconfirmed' if now - stamp >= pd.Timedelta(minutes=30) else ''
-    ui.caption(f'Over {KEY_MINUTES} minutes in the workbook rotation or game projection. Minutes shown are for this game. '
-               f'[NBA report · {stamp:%b %d, %I:%M %p %Z}]({url}){older} · Checks every 5 minutes.')
+    older = now - stamp >= pd.Timedelta(minutes=30)
+    with summary_panel:
+        if rows:
+            names = [f"**{r['Player']} ({r['Team']}) — {r['Status']}**"
+                     + (f" · {r['Minutes']:g} projected min" if pd.notna(r['Minutes']) else ' · minutes unknown')
+                     for r in rows]
+            ui.warning('**Awaiting injury news for this game**\n\n' + '\n\n'.join(names))
+        elif not pending and not unverified and not older:
+            ui.info('No key questionable or doubtful players listed for this game.')
+        else:
+            ui.warning('Injury coverage is not fully verified for this game. Check the report details below.')
+        if pending:
+            ui.caption('Awaiting a verified team report · ' + ', '.join(pending))
+        if unverified:
+            ui.caption('Coverage to verify · ' + ' · '.join(unverified))
+        if older:
+            ui.caption('Latest quarter-hour update unconfirmed. Statuses above may be stale.')
+        ui.caption(f'Over {KEY_MINUTES} minutes in the workbook rotation or game projection. Minutes shown are for this game. '
+                   f'[NBA report · {stamp:%b %d, %I:%M %p %Z}]({url}) · Checks every 5 minutes.')
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -1331,7 +1339,6 @@ def render_live_dashboard(ui, roster):
     def render_edges_page():
         probability_observations = []
         ui.subheader('💰 Sportsbook Edges by Team')
-        injury_panel = ui.container()
         ui.caption('Edges are ranked within each team by the gap from the juice-adjusted book total. Steals and blocks Unders require an Under price of −160 or better.')
         # Only fetch props for the selected game, never the full slate.
         try:
@@ -1371,7 +1378,7 @@ def render_live_dashboard(ui, roster):
                         selected_stats.append(stat)
             plays_only = ui.checkbox('Only show plays above 5% edge',value=True,key='edges_plays_only')
             review_view = ui.pills('Play review',REVIEW_VIEWS,default='All plays',selection_mode='single',key='edges_review_view') or 'All plays'
-            ui.caption('🟠 MIN: minutes risk · 🟣 ROLE: recent role works against the bet · 🔵 Q: availability unresolved · ? Unchecked. Click a badge for details. More robust requires all checks and more than 5% edge in each stress test; it is not a calibrated win-confidence score.')
+            ui.caption('🟠 MIN: minutes risk · 🟣 ROLE: recent role works against the bet · 🔵 Q: availability could hurt this bet · ? Unchecked. Click a badge for details. More robust requires all checks and more than 5% edge in each stress test; it is not a calibrated win-confidence score.')
             ui.button('Refresh review checks',key='edges_review_refresh',help='Read any completed background minutes and passing updates. Your model projections stay unchanged.')
             show_recent = ui.toggle('Show recent-role comparison', value=False, key='edges_recent_role',
                                     help='Compare recent shot volume and assists beside the current model. Rankings and the 5% rule stay unchanged.')
@@ -1390,8 +1397,7 @@ def render_live_dashboard(ui, roster):
                 if st.session_state.get('edges_game') not in by_id:
                     st.session_state['edges_game'] = games[0]['id']
                 game_id = ui.pills('Choose a game',list(by_id),format_func=lambda value:labels[value],selection_mode='single',key='edges_game')
-                with injury_panel:
-                    render_edge_injuries(ui, by_id.get(game_id), games, roster, projections, approved_bundle)
+                render_edge_injuries(ui, by_id.get(game_id), games, roster, projections, approved_bundle)
                 if game_id is None:
                     ui.info('Select a game to see its top edges.')
                 else:
@@ -1447,7 +1453,8 @@ def render_live_dashboard(ui, roster):
                     with ui.expander('Review assumptions and scenario comparisons'):
                         ui.write('Minutes: compare with your selected source; stress an Over down or an Under up by at least 3 minutes, or to the more adverse source estimate. Redistribute active teammates to keep 240 minutes; excluded players stay out. TabsNBA follows your connected browser scenario, or Tabs Min from a CSV snapshot. Its publication time must be within two hours. Missing, stale or unmatched sources remain unchecked. Tabs comparisons never replace your approved minutes.')
                         ui.write('Role: compare up to 5 recent appearances with up to 10 preceding appearances, holding shooting conversion and minutes fixed. Points use shot/free-throw volume; threes use attempts; assists use verified potential assists and passes made. At least 3 recent and 5 preceding games are required. Rebounds compare the last 5 appearances with the preceding 5–10, using rebounds per minute; a 20% decline flags Overs and a 20% increase flags Unders. The rebound comparison uses the recent rate at your projected minutes, without changing the main model. Steal and block role checks remain unchecked. Other role scenarios retain team targets and normalized archetype effects.')
-                        ui.write('More robust: original, minutes-only, role-only and combined scenarios each retain more than 5% directional edge. Both teams need complete injury reports no older than 30 minutes and no unresolved key players. In/out projections require verified alternative rotations; missing branches are not guessed. These are sensitivity checks, not a backtested selection rule.')
+                        ui.write('Q flags: a key questionable or doubtful teammate flags Unders. For Overs, it flags when that teammate is excluded (0 minutes) or their rotation minutes are unknown; positive projected minutes count as already included. The player’s own questionable/doubtful status, opponent uncertainty and Out players still assigned minutes flag both directions. The game banner keeps all key unresolved players visible, including those that do not flag a particular bet. This is a screening rule, not an estimated injury boost.')
+                        ui.write('More robust: original, minutes-only, role-only and combined scenarios each retain more than 5% directional edge. Both teams need complete injury reports no older than 30 minutes and no adverse availability warning under the direction-aware rules. In/out projections require verified alternative rotations; missing branches are not guessed. These are sensitivity checks, not a backtested selection rule.')
                         if not reviewed.empty:
                             detail_cols=['Player','Team','Stat','Play','Review group','Projected','Projected minutes','Reference minutes','Minutes difference','Reference source','Minutes test projection','Minutes test edge %','Recent test projection','Recent test edge %','Rebound trend %','Combined test projection','Combined test edge %','Minutes detail','Role detail','Injury detail','Review detail']
                             ui.dataframe(reviewed[detail_cols],hide_index=True,width='stretch')

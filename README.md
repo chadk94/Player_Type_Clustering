@@ -1580,13 +1580,21 @@ A gray question mark means a check is unavailable, never that it passed.
   enter More robust plays; unflagged rebounds still need all other checks and scenario
   edges above 5%. Missing samples stay unchecked. Sample totals and the calculation
   are available under **Technical details** in the popup.
-- **Injuries:** use both teams' matched official report, at most 30 minutes old. Unresolved key
-  questionable players, the selected player's own questionable status, or an Out/Doubtful player
-  still in the rotation prevent clearance. Full verified alternative rotations are not yet supplied
-  by the feed, so no numerical in/out projection is fabricated.
+- **Injuries:** use both teams' matched official report, at most 30 minutes old. A key
+  Questionable/Doubtful teammate flags Unders; an Over is flagged when that teammate is
+  excluded (0 projected minutes) or their minutes are unknown. Positive projected minutes
+  count as included, so that teammate alone does not flag an Over. This is a direction-aware
+  screening rule, not proof that every absence helps an Over. The player's own Q/Doubtful
+  status (even below the key-player threshold), unresolved key opponents, and Out players
+  still assigned minutes flag both directions. Missing/stale reports remain unchecked.
+  The banner immediately below the selected game lists key Q/Doubtful players and their
+  statuses even when they do not flag a given bet; it follows game changes independently
+  of the notification scope. Full verified alternative rotations are not yet supplied by
+  the feed, so no numerical in/out projection is fabricated. No projections, PRA,
+  probabilities, EV or original edge rankings change.
 - **More robust:** the existing qualifying play, minutes-only, role-only, and combined scenarios
   must all retain an edge strictly greater than 5%, rounded consistently to two decimal places.
-  Missing/stale sources, incomplete reports or unresolved availability prevent qualification.
+  Missing/stale sources, incomplete reports or adverse availability warnings prevent qualification.
   Passing this filter is not a calibrated win-confidence rating or demonstrated profitable rule.
 
 Optional minutes and passing retrieval runs in the background only when the Edges view needs it.
