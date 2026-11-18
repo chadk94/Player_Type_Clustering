@@ -8,13 +8,13 @@ tr:last-child td { border-bottom: 0; }
 button { color: inherit; font: inherit; padding: 0; border: 0; background: transparent; cursor: pointer; }
 th[aria-sort="other"]::after { content: ' ↓'; }
 tbody + tbody tr:first-child td { border-top: 2px solid var(--st-border-color, #8886); }
-td.player-group { vertical-align: top; font-weight: 600; background: var(--st-background-color, Canvas); }
-tbody tr { --edge-row-bg: var(--st-background-color, Canvas); background: var(--edge-row-bg); }
-tbody tr:nth-child(even) { --edge-row-bg: color-mix(in srgb, var(--st-secondary-background-color, #888) 25%, var(--st-background-color, Canvas)); }
-tbody tr:hover { --edge-row-bg: color-mix(in srgb, var(--st-primary-color, #25785c) 7%, var(--st-background-color, Canvas)); }
+tbody { --edge-group-bg: var(--st-background-color, Canvas); }
+tbody:nth-of-type(even) { --edge-group-bg: color-mix(in srgb, #708dab 16%, var(--st-background-color, Canvas)); }
+tbody tr { background: var(--edge-group-bg); }
+td.player-group { vertical-align: top; font-weight: 600; background: var(--edge-group-bg); }
 td.numeric { text-align: end; }
 th[data-column="Player"], td[data-column="Player"] { position: sticky; left: 0; z-index: 2; border-inline-end-width: 2px; }
-td[data-column="Player"] { background: var(--edge-row-bg); font-weight: 500; }
+td[data-column="Player"] { background: var(--edge-group-bg); font-weight: 500; }
 .player-identity { display: inline-flex; align-items: center; gap: .5rem; --photo-width: 44px; --photo-height: 32px; }
 .player-identity.multiple-plays { flex-direction: column; align-items: flex-start; gap: .25rem;
     --photo-width: 72px; --photo-height: 52px; }
@@ -39,7 +39,6 @@ button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; bor
 .role-popup summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .role-popup details > div { margin-top: .5rem; font-size: .9375rem; }
 
-tbody tr.saved-play { --edge-row-bg: color-mix(in srgb, var(--st-primary-color, #25785c) 8%, var(--st-background-color, Canvas)); }
 td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; padding:.2rem .4rem; border-radius:.3rem; font-size:.875rem; font-weight:700; text-decoration:none; }
 .review-minutes { color:#713a00; background:#ffdfad; }
 .review-role { color:#56249b; background:#eadcff; }

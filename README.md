@@ -555,7 +555,10 @@ and the selected side's quoted payout. It does not affect the visible rankings.
 season weights and all team-adjustment explanations. The default table uses shorter
 headings, keeps player names visible during horizontal scrolling, and scrolls with
 the page instead of trapping vertical scrolling inside each team's table. Grid lines
-and subtle row shading help track a play across columns. **Show extra columns**
+and alternating player-group shading keep every prop aligned with its player;
+the name, rank and all neutral cells share one background per group. Edge/Play
+colors and selected confidence controls retain their meaning. Saved props keep
+their left-edge marker without changing the group's background. **Show extra columns**
 reveals reference minutes, minutes cushion, implied totals, the separate Over price
 and push probability without refetching odds or recalculating projections. The Over
 price remains beside the line and Under odds remain visible in the compact view.
