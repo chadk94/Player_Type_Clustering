@@ -1,4 +1,4 @@
-"""Sortable sportsbook edges with opponent-specific evidence on each rating."""
+"""Edge-ranked sportsbook tables with opponent-specific evidence on each rating."""
 from collections import defaultdict
 from functools import lru_cache
 from math import isfinite
@@ -24,6 +24,20 @@ ROLE_STATS = {
 FORMATS = {'Projected minutes': '.1f', 'Reference minutes': '.1f', 'Good-to minutes': 'g', 'Projected': '.2f', 'Recent role': '.2f',
            'Recent change %': '+.1f', 'Book implied total': '.2f', 'Edge %': '+.2f',
            'Over odds': '+.0f', 'Under odds': '+.0f', **{key: '.1%' for key in PROBABILITY_COLUMNS}}
+HEADER_LABELS = {'Rank':'#', 'Projected minutes':'Min', 'Reference minutes':'Ref. min',
+                 'Good-to minutes':'Good-to min', 'Minutes cushion':'Cushion',
+                 'Matchup rating':'Matchup', 'Review flags':'Flags', 'Projected':'Projection',
+                 'Book line (Over)':'Line / Over odds', 'Book implied total':'Implied total',
+                 'Exp. P(over)':'Over %', 'Exp. P(under)':'Under %', 'Exp. P(push)':'Push %'}
+HEADER_HELP = {
+    'Edge %':'Projection gap from the juice-adjusted book total, ranked highest first. This is not win probability or expected return.',
+    'Good-to minutes':'Minutes at which this side still clears 5% edge: lower limit for an Over, upper limit for an Under. Tested in half-minute steps through 48.',
+    'Matchup rating':'1 = poor, 3 = average, 5 = excellent. Click a rating for archetype matchup evidence.',
+    'Review flags':'MIN = minutes risk; ROLE = recent-role risk; Q = availability risk; ? = unchecked. Click a badge for details.',
+    'Book line (Over)':'Sportsbook line followed by the Over price. Under prices appear in the next column.',
+    'Exp. P(over)':'Experimental probability of going Over, conditional on playing. Whole-number lines can push.',
+    'Exp. P(under)':'Experimental probability of going Under, conditional on playing. Whole-number lines can push.',
+}
 
 
 def role_popup(row):
@@ -129,7 +143,9 @@ def table_payload(edges, columns, roster, effects, team, game, book, day):
             badges.append(dict(label='✓' if row.get('Robust play') else 'Review',color='clear' if row.get('Robust play') else 'unchecked',detail=row.get('Review detail','')))
         output.append(dict(pick=edge_pick(row, game, book, day), values=values, labels=labels, styles=comparison_style(raw),
                            detail=rating_detail(row.Stat, player, row.Opponent, effects),reviewBadges=badges))
-    return dict(columns=columns, rows=output, team=team)
+    return dict(columns=columns, rows=output, team=team,
+                headers=[HEADER_LABELS.get(c,c) for c in columns],
+                headerHelp=[HEADER_HELP.get(c,c) for c in columns])
 
 
 @lru_cache(maxsize=1)

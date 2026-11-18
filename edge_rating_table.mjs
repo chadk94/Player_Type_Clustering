@@ -64,9 +64,7 @@ export default function({data, parentElement}) {
     tip.onpointerenter = () => clearTimeout(closeTimer);
     tip.onpointerleave = leaveInteractive;
     tip.onfocusout = e => { if (!tip.contains(e.relatedTarget) && e.relatedTarget !== active) hide(); };
-    let sort = data.columns.indexOf(root.dataset.sort || 'Rank');
-    if (sort < 0) sort = 0;
-    let direction = Number(root.dataset.direction || 1);
+    const sort = data.columns.indexOf('Edge %');
     const note = make('div');
     note.setAttribute('role', 'status');
     root.append(note);
@@ -87,13 +85,12 @@ export default function({data, parentElement}) {
         hide();
         body.replaceChildren();
         for (const [i, th] of [...headers.cells].slice(1).entries()) {
-            th.setAttribute('aria-sort', i !== sort ? 'none' : direction === 1 ? 'ascending' : 'descending');
+            th.setAttribute('aria-sort', i === sort ? 'descending' : 'none');
         }
         const rows = [...data.rows].sort((a, b) => {
             const x = a.values[sort], y = b.values[sort];
             if (x == null || y == null) return Number(x == null) - Number(y == null);
-            return direction * (typeof x === 'number' && typeof y === 'number' ? x - y :
-                String(x).localeCompare(String(y), undefined, {numeric: true}));
+            return typeof x === 'number' && typeof y === 'number' ? y - x : 0;
         });
         for (const row of rows) {
             const tr = body.insertRow();
@@ -113,6 +110,8 @@ export default function({data, parentElement}) {
             }
             for (const [i, label] of row.labels.entries()) {
                 const td = tr.insertCell();
+                td.dataset.column = data.columns[i];
+                if (typeof row.values[i] === 'number' || data.columns[i] === 'Book line (Over)') td.classList.add('numeric');
                 if (row.styles[i]) td.style.cssText = row.styles[i];
                 if (data.columns[i] === 'Review flags') {
                     for (const badge of row.reviewBadges || []) {
@@ -155,19 +154,12 @@ export default function({data, parentElement}) {
             }
         }
     }
-    const saveHeader=make('th','Save / confidence');saveHeader.scope='col';headers.append(saveHeader);
+    const saveHeader=make('th','Save');saveHeader.scope='col';saveHeader.title='Save to Today’s Plays and choose confidence';headers.append(saveHeader);
     data.columns.forEach((label, i) => {
-        const th = make('th'), button = make('button', label);
+        const th = make('th', data.headers?.[i] || label);
         th.scope = 'col';
-        button.type = 'button';
-        button.onclick = () => {
-            direction = sort === i ? -direction : (label === 'EV %' ? -1 : 1);
-            sort = i;
-            root.dataset.sort = label;
-            root.dataset.direction = direction;
-            render(); updateChecks();
-        };
-        th.append(button);
+        th.dataset.column = label;
+        th.title = data.headerHelp?.[i] || label;
         headers.append(th);
     });
     const dismiss = e => {

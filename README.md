@@ -533,13 +533,19 @@ opponent-adjusted projection and the no-vig, Poisson-implied book total. This is
 not a probability edge or expected return. Both sides' American prices and the
 posted line remain visible. Multiple props for one player can be correlated.
 
-**EV %** is the model’s expected net profit per $100 staked at the selected sportsbook.
-It uses the unrounded win and loss probabilities for the indicated Over or Under and
-that side’s quoted payout. A push earns zero net profit. For example, a play at +150
-with a 40% win chance, 50% loss chance and 10% push chance has +10% EV.
-Choose **EV % across game** to rank both teams together, highest first, or click
-the EV column heading within a team. Missing probabilities or prices leave EV blank.
-With the 5% filter off, a below-threshold row shows the side used alongside its EV.
+The table hides **EV %** and always sorts each team by **Edge %**, highest first;
+old EV sort preferences and column clicks cannot change that order. EV continues
+to be calculated for exports and tracking, using the unrounded win/loss probabilities
+and the selected side's quoted payout. It does not affect the visible rankings.
+
+**Game projection details** starts collapsed and contains the minutes sources,
+season weights and all team-adjustment explanations. The default table uses shorter
+headings, keeps player names visible during horizontal scrolling, and scrolls with
+the page instead of trapping vertical scrolling inside each team's table. Grid lines
+and subtle row shading help track a play across columns. **Show extra columns**
+reveals reference minutes, minutes cushion, implied totals, the separate Over price
+and push probability without refetching odds or recalculating projections. The Over
+price remains beside the line and Under odds remain visible in the compact view.
 
 **Filter by player** accepts a full or partial name (case and accents are ignored).
 Press Enter to apply it; clear it to restore all players in the selected game.

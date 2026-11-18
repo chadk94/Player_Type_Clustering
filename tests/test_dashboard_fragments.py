@@ -251,6 +251,7 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
             dict(TEAM_ID=TEAM_IDS[side],Opponent=opp,Venue=venue,GameTimeUTC=start,GameStatus='Scheduled')
             for side,opp,venue in [('HOU','ATL','home'),('ATL','HOU','away'),
                                    ('CHA','CLE','home'),('CLE','CHA','away')]])
+        self.app.session_state['edges_ranking'] = 'EV % across game'  # Previous UI preference must no longer apply.
         self.app.run()
         self.assert_no_errors()
         self.assertTrue(any('**Key questionable players** · ATL @ HOU' in m.value for m in self.app.markdown))
@@ -279,6 +280,11 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         edge_tables = self.edge_frames()
         self.assertEqual(len(edge_tables), 2)
         self.assertTrue(all('Review flags' in table for table in edge_tables))
+        self.assertTrue(all('EV %' not in table and 'Reference minutes' not in table for table in edge_tables))
+        self.assertFalse(any(r.key == 'edges_ranking' for r in self.app.radio))
+        details = next(e for e in self.app.expander if e.label == 'Game projection details')
+        self.assertFalse(details.proto.expanded)
+        self.assertTrue(any('Minutes for this game' in c.value for c in details.caption))
         # The optional filter changes visibility only and does not recompute prices.
         review_widget=next(w for w in self.app.get('button_group') if w.key=='edges_review_view')
         self.fragment_id=self.fragment_for(review_widget)
@@ -296,9 +302,6 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
             self.assertTrue(table['Edge %'].is_monotonic_decreasing)
             self.assertTrue(table['Edge %'].gt(5).all())
             self.assertTrue(table['Good-to minutes'].between(.5, 48).all())
-            self.assertTrue(table['Minutes cushion'].ge(0).all())
-            np.testing.assert_allclose(table['Minutes cushion'],
-                                       (table['Projected minutes'] - table['Good-to minutes']).abs())
             self.assertIn(f'{team} — {len(table)} edges', [h.value for h in self.app.subheader])
         self.assertTrue({r['id'] for r in rows}.issubset({r['id'] for r in edge_observations}))
         self.assertEqual(rows[1]['stat'],'AST')
@@ -321,24 +324,20 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
             self.app.text_input(key='edges_player_search').set_value('').run()
             self.assert_no_errors()
         self.assertEqual([m.call_count for m in (self.live,self.logs,self.effects,self.imported)],feeds)
-        ranking = self.app.radio(key='edges_ranking')
-        self.fragment_id = self.fragment_for(ranking)
-        with patch.object(dashboard, 'sportsbook_props', side_effect=AssertionError('Sort refetched odds')):
-            ranking.set_value('EV % across game').run()
+        extra = self.app.toggle(key='edges_extra_columns')
+        self.fragment_id = self.fragment_for(extra)
+        with (patch.object(dashboard, 'sportsbook_props', side_effect=AssertionError('Display toggle refetched odds')),
+              patch.object(dashboard, 'game_quote_probabilities', side_effect=AssertionError('Display toggle recalculated probabilities'))):
+            extra.set_value(True).run()
         self.assert_no_errors()
-        game_table, = self.edge_frames()
-        self.assertEqual(set(game_table.Team), {'ATL', 'HOU'})
-        self.assertEqual(len(game_table), sum(map(len, shown_edges)))
-        self.assertEqual(game_table.Rank.tolist(), list(range(1,len(game_table)+1)))
-        ev = game_table['EV %']
-        self.assertGreater(ev.count(), 1)
-        self.assertTrue(ev.iloc[:ev.count()].is_monotonic_decreasing)
-        self.assertTrue(ev.iloc[ev.count():].isna().all())
-        over = game_table.Play.eq('Over')
-        win = game_table['Exp. P(over)'].where(over, game_table['Exp. P(under)'])
-        loss = game_table['Exp. P(under)'].where(over, game_table['Exp. P(over)'])
-        # This fixture quotes both sides at -110, including the whole-number assists line.
-        np.testing.assert_allclose(ev, 100 * (win * 100 / 110 - loss), equal_nan=True)
+        for before, table in zip(shown_edges, self.edge_frames()):
+            pd.testing.assert_frame_equal(table[before.columns],before)
+            self.assertNotIn('EV %', table)
+            self.assertTrue(table['Edge %'].is_monotonic_decreasing)
+            self.assertIn('Exp. P(push)', table)
+            self.assertTrue(table['Minutes cushion'].ge(0).all())
+            np.testing.assert_allclose(table['Minutes cushion'],
+                                       (table['Projected minutes'] - table['Good-to minutes']).abs())
         # AppTest exposes only the most recently rerun fragment's elements.
         # Restore the full test tree before the separate player-slider check.
         self.fragment_id = None

@@ -483,21 +483,16 @@ def reset_manual_minutes(flag_key, slider_key):
 
 @st.fragment
 def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day):
-    ranking = ui.radio('Rank edges by', ['Edge % by team', 'EV % across game'],
-                       horizontal=True, key='edges_ranking')
-    ui.caption('EV % is the model’s expected net profit per $100 staked at the odds for that side. '
-               'A push returns the stake. Hover over EV to see the price used.')
-    if ranking == 'EV % across game':
-        ordered = ranked.sort_values('EV %', ascending=False, na_position='last', kind='stable')
-        groups = [('Game', ordered)]
-        columns = ['Rank', 'Player', 'Team', *columns[2:]]
-    else:
-        groups = [(team, ranked.loc[ranked.Team.eq(team)]) for team in (game['Away'], game['Home'])]
+    extra = ui.toggle('Show extra columns', value=False, key='edges_extra_columns',
+                      help='Show reference minutes, minutes cushion, implied totals, both odds and push probability. Rankings stay highest Edge % first.')
+    secondary = {'Reference minutes', 'Minutes cushion', 'Book implied total', 'Over odds', 'Exp. P(push)'}
+    columns = [column for column in columns if column != 'EV %' and (extra or column not in secondary)]
+    ordered = ranked.sort_values('Edge %', ascending=False, na_position='last', kind='stable')
+    groups = [(team, ordered.loc[ordered.Team.eq(team)]) for team in (game['Away'], game['Home'])]
 
     exports = []
     for group, rows in groups:
-        if group != 'Game':
-            ui.subheader(f'{group} — {len(rows)} edges')
+        ui.subheader(f'{group} — {len(rows)} edges')
         if rows.empty:
             ui.info('No eligible edges for this team match the current filters.')
             continue
@@ -505,7 +500,7 @@ def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day):
         exports.append(rows.drop(columns='PLAYER_ID'))
         render_edge_table(rows, columns, roster, effects, group, game, book, day)
     ui.caption('Experimental probabilities use each player’s final projection and the saved line, conditional on playing. '
-               'The 5% play filter uses Edge %. EV can be positive or negative for either side.')
+               'Tables stay ranked by Edge %, highest first. Extra columns include push probability.')
     ui.caption('Hover or tap a matchup rating for recent results by archetype. Ratings range from 1 (poor) to 5 (excellent).')
     ui.download_button('Download all edges for this game', pd.concat(exports, ignore_index=True).to_csv(index=False),
                        f"{game['Away']}_{game['Home']}_edges.csv", 'text/csv', key='edges_download')
@@ -1407,14 +1402,15 @@ def render_live_dashboard(ui, roster):
                         ui.warning(blocked)
                         return
                     game_projections, combined = game_frames(game['Away'], game['Home'], game['GameTimeUTC'])
-                    ui.caption(game_minutes_caption(game_projections, [game['Away'], game['Home']]))
                     notice = unmatched_minutes_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
                     if notice:
                         ui.warning(notice)
                     payload = sportsbook_props(game_id,BOOKS[edge_book_name],edge_key)
-                    if not combined.empty:
-                        market_event = {**game,'commence_time':game['GameTimeUTC'].isoformat()}
-                        combined = team_projection_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key,team_rates)
+                    with ui.expander('Game projection details', expanded=False):
+                        ui.caption(game_minutes_caption(game_projections, [game['Away'], game['Home']]))
+                        if not combined.empty:
+                            market_event = {**game,'commence_time':game['GameTimeUTC'].isoformat()}
+                            combined = team_projection_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key,team_rates)
                     ranked, probability_observations = edge_snapshot(combined, payload, game, BOOKS[edge_book_name], now)
                     ranked, total_edges = filter_game_edges(ranked, plays_only, edge_direction, selected_stats, player_search)
                     reviewed = ranked
@@ -1440,8 +1436,8 @@ def render_live_dashboard(ui, roster):
                     else:
                         ui.success(f'Showing {len(ranked)} of {total_edges} eligible player-stat edges · {int(reviewed["Robust play"].sum())} pass all robustness checks')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
-                        display_columns = ['Rank','Player','Stat','Play','Review flags','EV %','Projected minutes','Reference minutes','Good-to minutes','Minutes cushion','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
-                        ui.caption('Good-to minutes shows how low an Over or how high an Under can go while its edge stays above 5%. Minutes cushion is the room from the projection. Tested in half-minute steps through 48 with the same prices and teammate minutes.')
+                        display_columns = ['Rank','Player','Stat','Play','Edge %','Projected','Book line (Over)','Under odds','Projected minutes','Good-to minutes','Matchup rating','Review flags','Reference minutes','Minutes cushion','Book implied total','Over odds', *PROBABILITY_COLUMNS]
+                        ui.caption('Highest Edge % first within each team. Click a flag or matchup rating for details; hover over column headings for definitions.')
                         if show_recent:
                             recent = recent_role_comparison(combined, roster, players, logs, SEASON, matched_players=matched_players)
                             ranked = add_recent_columns(ranked, recent)

@@ -1,13 +1,19 @@
 section { font: inherit; color: var(--st-text-color); }
-.edges-scroll { max-height: 29rem; overflow: auto; border: 1px solid var(--st-border-color, #8886); border-radius: .55rem; }
+.edges-scroll { overflow-x: auto; border: 1px solid var(--st-border-color, #8886); border-radius: .55rem; }
 table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .875rem; font-variant-numeric: tabular-nums; }
-th, td { white-space: nowrap; text-align: start; padding: .4rem .65rem; border-bottom: 1px solid var(--st-border-color, #8885); }
+th, td { white-space: nowrap; text-align: start; padding: .45rem .55rem; border-bottom: 1px solid var(--st-border-color, #8885); }
 th:not(:last-child), td:not(:last-child) { border-inline-end: 1px solid var(--st-border-color, #8885); }
 th { position: sticky; top: 0; z-index: 1; font-weight: 600; background: var(--st-secondary-background-color, #838383); }
 tr:last-child td { border-bottom: 0; }
 button { color: inherit; font: inherit; padding: 0; border: 0; background: transparent; cursor: pointer; }
-th[aria-sort="ascending"] button::after { content: ' ↑'; }
-th[aria-sort="descending"] button::after { content: ' ↓'; }
+th[aria-sort="descending"]::after { content: ' ↓'; }
+tbody tr { --edge-row-bg: var(--st-background-color, Canvas); background: var(--edge-row-bg); }
+tbody tr:nth-child(even) { --edge-row-bg: color-mix(in srgb, var(--st-secondary-background-color, #888) 25%, var(--st-background-color, Canvas)); }
+tbody tr:hover { --edge-row-bg: color-mix(in srgb, var(--st-primary-color, #25785c) 7%, var(--st-background-color, Canvas)); }
+td.numeric { text-align: end; }
+th[data-column="Player"], td[data-column="Player"] { position: sticky; left: 0; z-index: 2; border-inline-end-width: 2px; }
+td[data-column="Player"] { background: var(--edge-row-bg); font-weight: 500; }
+th[data-column="Player"] { z-index: 3; }
 td button { width: 100%; text-align: start; text-decoration: underline dotted; text-underline-offset: .25rem; padding: .12rem .2rem; }
 button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: .2rem; }
 [popover] { pointer-events: none; position: fixed; inset: auto; margin: 0; box-sizing: border-box;
@@ -20,7 +26,7 @@ button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; bor
 .role-popup summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .role-popup details > div { margin-top: .5rem; font-size: .8rem; }
 
-.saved-play { background: color-mix(in srgb, var(--st-primary-color, #25785c) 8%, transparent); }
+tbody tr.saved-play { --edge-row-bg: color-mix(in srgb, var(--st-primary-color, #25785c) 8%, var(--st-background-color, Canvas)); }
 td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; padding:.15rem .35rem; border-radius:.3rem; font-size:.75rem; font-weight:700; text-decoration:none; }
 .review-minutes { color:#713a00; background:#ffdfad; }
 .review-role { color:#56249b; background:#eadcff; }
