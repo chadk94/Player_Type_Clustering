@@ -49,6 +49,25 @@ button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; bor
 .projection-stats dd { margin: 0; font-size: 1.125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .projection-caption { font-size: .8125rem; }
 
+.matchup-popup { pointer-events: auto; width: 43rem; max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px); overflow-y: auto; white-space: normal; }
+.matchup-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.matchup-heading strong { font-size: 1.125rem; }
+.matchup-popup .matchup-close { font-size: .875rem; text-decoration: underline; }
+.matchup-peer-section { margin-top: .8rem; }
+.matchup-peer-scroll { overflow-x: auto; margin: .3rem 0; }
+.matchup-peer-section table { font-size: .9375rem; line-height: 1.35; border: 1px solid var(--st-border-color, #8885); }
+.matchup-peer-section th, .matchup-peer-section td { padding: .4rem .5rem; text-align: right; }
+.matchup-peer-section th:first-child, .matchup-peer-section td:first-child { text-align: left; white-space: normal; min-width: 9rem; }
+.matchup-peer-section td:first-child small { display: block; opacity: .8; }
+.matchup-peer-section tbody tr:nth-child(even) { background: var(--st-secondary-background-color, #f0f2f6); }
+.matchup-peer-section small { font-size: .8125rem; }
+.matchup-peer-section .peer-primary { font-weight: 700; }
+.matchup-more { margin-top: .65rem; padding: .4rem .65rem; border: 1px solid var(--st-border-color, #8886); border-radius: .3rem; font-weight: 600; }
+.matchup-popup details { margin-top: .7rem; border-top: 1px solid var(--st-border-color, #8885); padding-top: .5rem; }
+.matchup-popup summary { cursor: pointer; font-weight: 600; }
+.matchup-popup details > div { margin-top: .5rem; font-size: .875rem; white-space: pre-line; }
+
 td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; padding:.2rem .4rem; border-radius:.3rem; font-size:.875rem; font-weight:700; text-decoration:none; }
 .review-minutes { color:#713a00; background:#ffdfad; }
 .review-role { color:#56249b; background:#eadcff; }

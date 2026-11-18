@@ -17,7 +17,7 @@ export default function({data, parentElement}) {
     tip.setAttribute('role', 'tooltip');
     tip.setAttribute('popover', 'manual');
     root.append(scroll, tip);
-    let active, closeTimer, restoringFocus = false;
+    let active, closeTimer, restoringFocus = false, pinned = false;
     function hide() {
         clearTimeout(closeTimer);
         if (active) {
@@ -25,25 +25,100 @@ export default function({data, parentElement}) {
             if (active.hasAttribute('aria-expanded')) active.setAttribute('aria-expanded', 'false');
         }
         active = null;
+        pinned = false;
         if (tip.matches(':popover-open')) tip.hidePopover();
     }
     function position() {
         if (!active) return;
+        tip.style.maxHeight = '';
         const b = active.getBoundingClientRect(), t = tip.getBoundingClientRect();
-        tip.style.left = Math.max(8, Math.min(b.left, innerWidth - t.width - 8)) + 'px';
-        tip.style.top = (b.top >= t.height + 12 ? b.top - t.height - 6 :
-            Math.max(8, Math.min(b.bottom + 6, innerHeight - t.height - 8))) + 'px';
+        let left = Math.max(8, Math.min(b.left, innerWidth - t.width - 8)), top;
+        const above = b.top - 14, below = innerHeight - b.bottom - 14;
+        if (t.height <= above) top = b.top - t.height - 6;
+        else if (t.height <= below) top = b.bottom + 6;
+        else if (b.left >= t.width + 14 || innerWidth - b.right >= t.width + 14) {
+            // Tall panels must not cover the trigger between pointer-enter and click.
+            left = b.left >= t.width + 14 ? b.left - t.width - 6 : b.right + 6;
+            top = Math.max(8, Math.min(b.top, innerHeight - t.height - 8));
+        } else {
+            tip.style.maxHeight = Math.max(60, Math.max(above, below)) + 'px';
+            top = below >= above ? b.bottom + 6 : 8;
+        }
+        tip.style.left = left + 'px'; tip.style.top = top + 'px';
     }
-    function show(button, text, technical, projection) {
+    function show(button, text, technical, projection, matchup, expanded = false, pin = false) {
         clearTimeout(closeTimer);
-        if (active === button || restoringFocus) return;
+        if ((active === button && !pin) || restoringFocus) return;
         hide();
         active = button;
+        pinned = pin;
         tip.replaceChildren(make('div', text));
         tip.classList.toggle('role-popup', !!technical);
         tip.classList.toggle('projection-popup', !!projection);
-        tip.setAttribute('role', technical || projection ? 'dialog' : 'tooltip');
-        if (projection) {
+        tip.classList.toggle('matchup-popup', !!matchup);
+        tip.setAttribute('role', technical || projection || matchup ? 'dialog' : 'tooltip');
+        if (matchup) {
+            tip.setAttribute('aria-label', 'Recent similar-player performances vs ' + matchup.opponent);
+            const heading = make('div'), title = make('strong', 'Recent similar players vs ' + matchup.opponent);
+            heading.className = 'matchup-heading';
+            const close = make('button', 'Close');
+            close.type = 'button'; close.className = 'matchup-close';
+            close.onclick = () => {
+                hide(); restoringFocus = true; button.focus(); restoringFocus = false;
+            };
+            heading.append(title, close);
+            tip.replaceChildren(heading);
+            tip.append(make('div', 'Same archetype · actual game totals'));
+            const usualHint = make('small', '“Usual” compares each player at the minutes shown.');
+            tip.append(usualHint);
+            for (const panel of matchup.panels) {
+                const section = make('section');
+                section.className = 'matchup-peer-section';
+                section.append(make('strong', panel.title));
+                if (!panel.rows.length) {
+                    section.append(make('p', 'No qualifying similar-player performances available this season.'));
+                } else {
+                    const viewport = make('div'), peers = make('table');
+                    viewport.className = 'matchup-peer-scroll';
+                    peers.setAttribute('aria-label', panel.title + ' recent performances');
+                    const header = peers.createTHead().insertRow();
+                    panel.columns.forEach((col, index) => {
+                        const th = make('th', col); th.scope = 'col';
+                        if (index === 2) th.className = 'peer-primary';
+                        header.append(th);
+                    });
+                    const body = peers.createTBody();
+                    for (const peer of panel.rows.slice(0, expanded ? 10 : 3)) {
+                        const tr = body.insertRow(), name = tr.insertCell();
+                        name.append(make('span', peer.player), make('small', peer.date));
+                        peer.values.forEach((value, index) => {
+                            const cell = tr.insertCell(); cell.textContent = value;
+                            if (index === 1) cell.className = 'peer-primary';
+                        });
+                    }
+                    viewport.append(peers); section.append(viewport);
+                    const count = Math.min(panel.rows.length, expanded ? 10 : 3);
+                    const caption = make('small', `Showing ${count} of ${panel.rows.length} available appearances${panel.rows.length === 10 ? ' (latest 10)' : ''}.`);
+                    section.append(caption);
+                }
+                tip.append(section);
+            }
+            if (matchup.panels.some(panel => panel.rows.length > 3)) {
+                const more = make('button', expanded ? 'Show 3 recent performances' : 'Show up to 10 performances');
+                more.type = 'button'; more.className = 'matchup-more';
+                more.setAttribute('aria-expanded', String(expanded));
+                more.onclick = () => {
+                    show(button, text, null, null, matchup, !expanded, true);
+                    tip.querySelector('.matchup-more').focus();
+                };
+                tip.append(more);
+            }
+            const details = make('details');
+            details.append(make('summary', 'Technical details'), make('div', matchup.note + '\n\n' + text));
+            details.ontoggle = position;
+            tip.append(details);
+            button.setAttribute('aria-expanded', 'true');
+        } else if (projection) {
             tip.setAttribute('aria-label', projection.player + ' full projection');
             const title = make('strong', projection.player);
             title.className = 'projection-title';
@@ -75,12 +150,12 @@ export default function({data, parentElement}) {
     function leaveInteractive() {
         clearTimeout(closeTimer);
         closeTimer = setTimeout(() => {
-            if (!tip.contains(tip.getRootNode().activeElement)) hide();
+            if (!pinned && !tip.contains(tip.getRootNode().activeElement)) hide();
         }, 200);
     }
     tip.onpointerenter = () => clearTimeout(closeTimer);
     tip.onpointerleave = leaveInteractive;
-    tip.onfocusout = e => { if (!tip.contains(e.relatedTarget) && e.relatedTarget !== active) hide(); };
+    tip.onfocusout = e => { if (!pinned && !tip.contains(e.relatedTarget) && e.relatedTarget !== active) hide(); };
     const sort = data.columns.indexOf('Edge %');
     const note = make('div');
     note.setAttribute('role', 'status');
@@ -241,9 +316,18 @@ export default function({data, parentElement}) {
                     button.type = 'button';
                     button.setAttribute('aria-label', row.labels[data.columns.indexOf('Player')] + ' ' +
                         row.labels[data.columns.indexOf('Stat')] + ' matchup rating ' + label);
-                    button.onpointerenter = e => { if (e.pointerType !== 'touch') show(button, row.detail); };
-                    button.onfocus = button.onclick = () => show(button, row.detail);
-                    button.onpointerleave = button.onblur = hide;
+                    button.setAttribute('aria-haspopup', 'dialog');
+                    button.setAttribute('aria-controls', tip.id);
+                    button.setAttribute('aria-expanded', 'false');
+                    const preview = () => show(button, row.detail, null, null, row.matchup);
+                    button.onpointerenter = e => { if (e.pointerType !== 'touch') preview(); };
+                    button.onfocus = preview;
+                    button.onclick = () => {
+                        show(button, row.detail, null, null, row.matchup, true, true);
+                        (tip.querySelector('.matchup-more') || tip.querySelector('.matchup-close'))?.focus();
+                    };
+                    button.onpointerleave = leaveInteractive;
+                    button.onblur = e => { if (!pinned && !tip.contains(e.relatedTarget)) hide(); };
                     td.append(button);
                 } else if (data.columns[i] === 'Player') {
                     td.append(playerIdentity(label, row.playerId, row.playerRowSpan, row.projection));

@@ -1663,3 +1663,22 @@ Validation includes immutable original columns on the real five-game snapshot, f
 scenario equivalence to the existing allocation pipeline, missing/stale/wrong-game sources,
 Over/Under direction, equality at 5%, combined-stress failure, incomplete passing data, injury
 uncertainty, and Streamlit filter reruns without probability recomputation.
+
+### Recent similar-player matchup evidence (November 18, 2026)
+
+Sportsbook Edges matchup ratings preview the three most recent other-player
+appearances against that opponent with the same approved archetype. Click a rating
+or **Show up to 10 performances** to pin the panel and expand to ten; use Close,
+Escape or click outside to dismiss. Fewer available games are shown honestly.
+Rows show the player, Eastern game date, actual minutes, category totals and usual
+production at those minutes. Threes emphasize 3PA with 3PM alongside. Rebounds and
+PRA retain separate offensive/defensive archetype populations for their components.
+
+These are current-season completed box scores already loaded by the app, limited
+to appearances with at least five minutes. The selected player's own games are
+excluded. “Usual” uses only that peer's earlier current-season appearances, requiring
+three earlier valid games for the statistic; missing results remain unavailable.
+The full rating explanation stays under **Technical details**. Recent examples are
+display-only: projections, ratings, season weights, probabilities and rankings are
+unchanged. Evidence is indexed once per cached history refresh; hovering and
+expanding perform no network request or model rerun.

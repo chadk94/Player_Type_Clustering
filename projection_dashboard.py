@@ -273,8 +273,14 @@ def prior_matchup_effects(roster, role_policy_version):
 
 @st.cache_data(max_entries=4, show_spinner=False)
 def current_matchup_effects(logs, roster, role_policy_version):
-    """Reuse matchup effects and recent peer averages across all edge filters."""
-    return matchup_effects(assign_game_archetypes(logs, roster), include_recent=True)
+    """Reuse matchup effects and display-only peer games across all edge filters."""
+    from matchup_evidence import recent_peer_games
+    assigned = assign_game_archetypes(logs, roster)
+    effects = matchup_effects(assigned, include_recent=True)
+    peers = recent_peer_games(assigned)
+    for key, result in effects.items():
+        result['performances'] = peers.get(key, [])
+    return effects
 
 
 def heat_color(value):
@@ -503,7 +509,7 @@ def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day, p
         render_edge_table(rows, columns, roster, effects, group, game, book, day, projections, games)
     ui.caption('Experimental probabilities use each player’s final projection and the saved line, conditional on playing. '
                'Players are ranked by their best Edge %, with their props grouped together. Extra columns include push probability.')
-    ui.caption('Hover or tap a player’s name or photo for their full game projection. Hover or tap a matchup rating for recent results by archetype. Ratings range from 1 (poor) to 5 (excellent).')
+    ui.caption('Hover over a player’s name or photo for their full game projection. Hover over a matchup rating for 3 recent same-archetype performances; click to expand to 10. Ratings range from 1 (poor) to 5 (excellent).')
     label = 'Download full-slate robust plays' if games is not None else 'Download all edges for this game'
     filename = f'robust-plays-{day}.csv' if games is not None else f"{game['Away']}_{game['Home']}_edges.csv"
     ui.download_button(label, pd.concat(exports, ignore_index=True).to_csv(index=False),

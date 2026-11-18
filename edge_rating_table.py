@@ -8,11 +8,12 @@ import pandas as pd
 import streamlit as st
 
 from matchup_projections import RECENT_OPPONENT_GAMES
+from matchup_evidence import peer_panels
 from points_probability import PROBABILITY_COLUMNS
 from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT
 from todays_plays import edge_pick
 
-EDGE_TABLE_UI_VERSION = 'player_projection_hover_v1'
+EDGE_TABLE_UI_VERSION = 'matchup_peer_performances_v1'
 
 PLAYER_PREVIEW_STATS = {'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', '3PM': 'FG3M',
                         'STL': 'STL', 'BLK': 'BLK', 'TOV': 'TOV', 'PF': 'PF', 'PRA': 'PRA'}
@@ -37,7 +38,7 @@ HEADER_HELP = {
     'Rank':'Player rank in this list, based on their highest qualifying Edge %. All their displayed props stay together.',
     'Edge %':'Players are ordered by their highest qualifying edge; props within each player are highest first. This projection gap is not win probability or expected return.',
     'Good-to minutes':'Minutes at which this side still clears 5% edge: lower limit for an Over, upper limit for an Under. Tested in half-minute steps through 48.',
-    'Matchup rating':'1 = poor, 3 = average, 5 = excellent. Click a rating for archetype matchup evidence.',
+    'Matchup rating':'1 = poor, 3 = average, 5 = excellent. Hover for 3 recent similar-player performances; click for up to 10.',
     'Review flags':'Minutes unverified = no completed minutes check; Minutes risk = playing time could weaken the bet; ROLE = recent-role risk; Q = availability risk; ? = unchecked. Click a badge for details.',
     'Book line (Over)':'Sportsbook line followed by the Over price. Under prices appear in the next column.',
     'Exp. P(over)':'Experimental probability of going Over, conditional on playing. Whole-number lines can push.',
@@ -251,7 +252,10 @@ def table_payload(edges, columns, roster, effects, team, game, book, day, projec
                            playerId=int(row.PLAYER_ID),
                            projection=cards.get(card_key) if row.Rank != last_rank else None,
                            playerRowSpan=int(counts[row.Rank]) if row.Rank != last_rank else 0,
-                           detail=rating_detail(row.Stat, player, row.Opponent, effects),reviewBadges=badges))
+                           detail=rating_detail(row.Stat, player, row.Opponent, effects),
+                           matchup=peer_panels(row.Stat, player, row.Opponent, effects,
+                                              ROLE_STATS[row.Stat], event.get('GameTimeUTC')),
+                           reviewBadges=badges))
         last_rank = row.Rank
     return dict(columns=columns, rows=output, team=team,
                 headers=[HEADER_LABELS.get(c,c) for c in columns],
