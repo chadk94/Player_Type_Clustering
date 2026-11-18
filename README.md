@@ -1494,6 +1494,10 @@ In Today’s Plays, check **For Jae** beside each pick. Checking a box confirms 
 
 For a new private Google Sheet, open **Extensions → Apps Script** and paste [the sheet connector](integrations/jae_sheet.gs). Run `setupCard` to initialize or upgrade all dated tabs, then deploy a **Web app**, executing as yourself with access **Anyone** so Streamlit can call it. The workbook itself stays restricted. Every request to the deployment requires the private write key, and the receiver only appends card rows to that workbook. Copy the **Web app URL** from **Deploy → Manage deployments**. Reload the sheet, choose **Jae card → Set deployed web app URL**, and paste that address. Then choose **Jae card → Show dashboard connection**. Paste the connection into **Today’s Plays → Connect Jae’s Google Sheet** in your own browser. Share the spreadsheet itself with Jae using Google’s Share button.
 
+**Season ROI and overnight grading.** Add [the ROI module](integrations/jae_roi.gs) as a second file in the same bound Apps Script project. Run `setupRoiHome`, then `enableNightlyGrading` as the workbook owner. Home tracks each sent main pick at its frozen FanDuel odds. Positive odds risk one unit. Negative odds risk the absolute price divided by 100 to win one unit. Pushes count their full stake toward settled risk and earn zero net units. Explicit DNPs are void. ROI divides net units by settled risk and excludes open plays, voids and the partner split. Alt Tracker uses the same staking rule at each alternate’s own saved price. The cumulative chart follows both ledgers. Click a slate on Home for each final stat, grade and net units.
+
+The hourly Google trigger checks between 9 p.m. and 10 a.m. Eastern, waits for the full NBA slate, retries missing boxes and revisits recent final scores. If ESPN blocks Google's servers, the workbook reads a public copy of scoreboard and final player stats from the dedicated `nba-final-scores` branch. The score publisher receives no private workbook data. The local nightly job can refresh the results branch; an approved GitHub Actions installation can host the same publisher if the computer is offline. To run an immediate check, use `checkRoiNow`.
+
 
 ### Automatic NBA-model minutes connection
 
@@ -1502,3 +1506,57 @@ Under **Link NBA model**, pair this browser once using the private minutes conne
 The NBA model publishes while its minutes-review page is open. A newly saved approval supersedes the previous approval for that game; unsaved drafts do not. Keep that page open until its sync confirmation appears. The prop app can read the last published approvals while the NBA model is closed. A failed refresh shows a warning and keeps the last verified approvals in the current session. Disconnect to use the existing manual upload instead. The read connection is saved only in this browser; pair a new browser separately.
 
 The private relay uses separate read/write credentials, authenticated HTTPS and checksums. It stores approvals outside the partner workbook. Credentials, game rotations and private relay code are not published to this repository. The existing importer validates roster membership, starters, dates, exclusions and minute totals before a received snapshot can replace current projections.
+
+### Sportsbook Edges review flags — November 18
+
+`edge_review.py` appends review evidence and scenario values without replacing model means,
+probabilities, prices, EV or existing edge ordering. `edge_review.json` holds the initial,
+unvalidated sensitivity thresholds. The default **All plays** view retains every eligible
+row; **More robust plays**, **Waiting on news**, and **Needs review / unchecked** only filter
+visibility. Click the compact orange **MIN**, purple **ROLE** and blue **Q** badges for evidence.
+A gray question mark means a check is unavailable, never that it passed.
+
+- **Minutes:** TabsNBA is the default independent comparison, via the prepared Chrome connector
+  or a private CSV upload. The connector reads only the displayed unedited projection table,
+  preserves the selected If/Then scenario, and only updates flags when its contents change.
+  The CSV reads **Tabs Min**, never **My Min** or fantasy-platform player IDs. Match player,
+  team, opponent and Eastern slate date; explicit browser OUT rows can supply zero, while
+  absent CSV rows never imply zero. Tabs publication time must be verified and within two hours.
+  Paid references stay in the user's Streamlit session and are never bundled or globally cached.
+  See `integrations/tabs_browser_connector/README.md` for permissions and installation.
+  Public RotoWire remains an optional fallback,
+  matching player, team, opponent and Eastern game date. The page's retrieval time is recorded
+  separately from any claim about when the publisher last revised its estimate. References
+  expire after six hours; subscriber-only home-team placeholders are not parsed. NBA-model
+  approved minutes remain the model input, not a falsely independent comparison. Stress an
+  Over down / Under up by at least three minutes, extending to a more adverse reference when
+  available. Active teammates rebalance proportionally to 240 with a 48-minute cap; existing
+  zero-minute players stay excluded. The orange flag indicates an adverse 3+ minute disagreement
+  or a stress-test edge no longer above 5%.
+- **Role:** require at least three recent and five preceding appearances, with 45/60 minimum
+  minutes. Compare up to five recent with ten preceding games. Points use 2PA, 3PA and FTA at
+  fixed shooting conversion; threes use 3PA; assists use the current 50/50 potential-assist / pass
+  opportunity approach with daily NBA tracking verified against ESPN boxes. The scenario scales
+  the player's allocation weight by recent/current-season opportunity rate, holding minutes,
+  team targets and normalized archetype effects fixed. An adverse 10% window-to-window opportunity
+  change or loss of the 5% edge triggers purple. This is a sensitivity proxy, not a new production
+  baseline. REB/STL/BLK role checks are unchecked until verified opportunity measures are available.
+- **Injuries:** use both teams' matched official report, at most 30 minutes old. Unresolved key
+  questionable players, the selected player's own questionable status, or an Out/Doubtful player
+  still in the rotation prevent clearance. Full verified alternative rotations are not yet supplied
+  by the feed, so no numerical in/out projection is fabricated.
+- **More robust:** the existing qualifying play, minutes-only, role-only, and combined scenarios
+  must all retain an edge strictly greater than 5%, rounded consistently to two decimal places.
+  Missing/stale sources, incomplete reports or unresolved availability prevent qualification.
+  Passing this filter is not a calibrated win-confidence rating or demonstrated profitable rule.
+
+Optional minutes and passing retrieval runs in the background only when the Edges view needs it.
+**Refresh review checks** reads completed results; a source failure leaves original edges available
+with unchecked flags. It does not trigger new probabilities or change Player vs Opponent minutes.
+The downloadable review snapshot includes all scenario details for later comparison with results.
+No picks are automatically sent, modified or graded by this feature.
+
+Validation includes immutable original columns on the real five-game snapshot, full-rotation
+scenario equivalence to the existing allocation pipeline, missing/stale/wrong-game sources,
+Over/Under direction, equality at 5%, combined-stress failure, incomplete passing data, injury
+uncertainty, and Streamlit filter reruns without probability recomputation.

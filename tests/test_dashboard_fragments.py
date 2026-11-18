@@ -75,6 +75,7 @@ class DashboardFragmentTests(unittest.TestCase):
         })
         self.mock('get_odds_api_key', return_value=None)
         self.injuries = self.mock('edge_injury_report', return_value=None)
+        self.review_inputs = self.mock('edge_review_inputs', return_value=(None,None,None,None))
         self.build = self.mock('build_projections', wraps=dashboard.build_projections)
         self.effects = self.mock('matchup_effects', wraps=dashboard.matchup_effects)
         # Catch accidental network access, rather than letting a test make live calls.
@@ -255,6 +256,17 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertTrue(all(r['captured_at'] < r['start'] for r in edge_observations))
         edge_tables = self.edge_frames()
         self.assertEqual(len(edge_tables), 2)
+        self.assertTrue(all('Review flags' in table for table in edge_tables))
+        # The optional filter changes visibility only and does not recompute prices.
+        review_widget=next(w for w in self.app.get('button_group') if w.key=='edges_review_view')
+        self.fragment_id=self.fragment_for(review_widget)
+        with patch.object(dashboard,'game_quote_probabilities',side_effect=AssertionError('Review filter recalculated probabilities')):
+            review_widget.set_value('More robust plays').run()
+            self.assert_no_errors()
+            self.assertTrue(any('No plays pass this review filter' in item.value for item in self.app.info))
+            next(w for w in self.app.get('button_group') if w.key=='edges_review_view').set_value('All plays').run()
+            self.assert_no_errors()
+            for before,after in zip(edge_tables,self.edge_frames()):pd.testing.assert_frame_equal(before,after)
         player_teams = self.roster.set_index('PLAYER_NAME').TEAM_ABBREVIATION
         for team, table in zip(['ATL', 'HOU'], edge_tables):
             self.assertEqual(set(table.Player.map(player_teams)), {team})

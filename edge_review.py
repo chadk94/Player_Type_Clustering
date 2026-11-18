@@ -1,0 +1,321 @@
+"""Read-only robustness checks. Never replace the model mean, price or probability.
+
+Scenarios retain team targets and normalized archetype effects. Minute stress
+redistributes a full 240-minute rotation among existing active teammates. That
+redistribution is a sensitivity test, not a prediction of the coach's rotation.
+"""
+import json
+from pathlib import Path
+import numpy as np
+import pandas as pd
+from sportsbook_lines import PLAY_THRESHOLD_PCT
+from team_threes import exceeds_projected_points
+
+CONFIG = json.loads(Path(__file__).with_suffix('.json').read_text())
+FLAG_COLUMNS = ['Minutes flag', 'Role flag', 'Injury flag']
+REVIEW_VIEWS = ['All plays','More robust plays','Waiting on news','Needs review / unchecked']
+SCENARIO_STATS = {'3PM':'FG3M', **{s:s for s in ['PTS','AST','REB','STL','BLK','PRA']}}
+
+
+def unavailable_review(edges):
+    """Review failures may not take down the existing quote/projection table."""
+    out=edges.copy(deep=True)
+    for flag in FLAG_COLUMNS:out[flag]='Unchecked'
+    for kind in ('Minutes','Role','Injury','Review'):out[kind+' detail']='Review inputs unavailable; current model values retained.'
+    for kind in ('Minutes','Recent','Combined'):
+        out[kind+' test projection']=np.nan;out[kind+' test edge %']=np.nan
+    out['Robust play']=False;out['Review group']='Unchecked';out['Review flags']='? Unchecked'
+    out['Reference minutes']=np.nan;out['Minutes difference']=np.nan;out['Reference source']='Unavailable'
+    return out
+
+
+def side_edge(projection, implied, side):
+    if side not in ('Over','Under') or not np.isfinite([projection,implied]).all() or implied <= 0:
+        return np.nan
+    return (projection/implied-1)*100*(1 if side=='Over' else -1)
+
+
+def rebalance_minutes(team, player_id, target):
+    """Keep exclusions, preserve 240, and cap every active player at 48."""
+    values = team.set_index('PLAYER_ID')['Projected minutes'].astype(float).copy()
+    if (values.index.duplicated().any() or not np.isfinite(values).all() or values.lt(0).any()
+            or values.gt(48).any() or abs(values.sum()-240)>1e-6):
+        raise ValueError('A complete 240-minute rotation is required.')
+    if player_id not in values or values[player_id] <= 0 or not np.isfinite(target) or not 0<=target<=48:
+        raise ValueError('The changed player needs an active, valid minute allocation.')
+    active=values.index[(values>0)&(values.index!=player_id)]
+    weights=values.loc[active].copy()
+    remaining=240-float(target)
+    values.loc[active]=0.
+    while len(weights):
+        allocation=remaining*weights/weights.sum()
+        capped=allocation.ge(48)
+        if not capped.any():
+            values.loc[weights.index]=allocation
+            remaining=0.
+            break
+        values.loc[weights.index[capped]]=48.
+        remaining-=48*int(capped.sum())
+        weights=weights.loc[~capped]
+    values[player_id]=target
+    if abs(remaining)>1e-6 or abs(values.sum()-240)>1e-6:
+        raise ValueError('No feasible 240-minute rotation at these minutes.')
+    return values.to_dict()
+
+
+def scenario_projection(team, minutes=None, role=None):
+    """Reallocate the existing team's targets with changed opportunity weights.
+
+An incoming zero-minute player requires an actual reprojected baseline; do not
+invent one by dividing a zero projection. Injury branches can supply fully
+recomputed frames instead (see assess_edges).
+"""
+    out=team.copy(deep=True)
+    original=out['Projected minutes'].to_numpy(float)
+    updated=np.array([minutes[int(p)] for p in out.PLAYER_ID],float) if minutes is not None else original.copy()
+    if not np.isfinite(updated).all() or (updated<0).any() or (updated>48).any() or abs(updated.sum()-240)>1e-6:
+        raise ValueError('Scenario minutes must total 240.')
+    if ((original==0)&(updated>0)).any():
+        raise ValueError('An incoming player needs a verified per-minute baseline.')
+    scale=np.divide(updated,original,out=np.ones_like(updated),where=original>0)
+    role=role or {}
+    def weights(stat):
+        return np.array([role.get(int(p),{}).get(stat,1.) for p in out.PLAYER_ID])
+    def allocate(stat,before,target,weight=None):
+        target_values=out.get(target,pd.Series(dtype=float)).dropna()
+        multiplier=scale*weights(weight or stat)
+        if len(target_values):
+            if target_values.max()-target_values.min()>1e-6 or before not in out:
+                raise ValueError('Team target metadata is inconsistent.')
+            raw=out[before].to_numpy(float)*multiplier
+            total=float(target_values.iloc[0])
+            if not np.isfinite(raw).all() or (raw<0).any() or (raw.sum()==0 and total>0):
+                raise ValueError('Incomplete scenario production.')
+            return raw*(total/raw.sum()) if raw.sum()>0 else raw
+        return out[stat].to_numpy(float)*multiplier
+    points=allocate('PTS','Pre-market PTS','Market team total')
+    assists=allocate('AST','Pre-team AST','Team AST target')
+    if 'Team REB target' in out and out['Team REB target'].notna().any():
+        rebounds=allocate('OREB','Pre-team OREB','Team OREB target')+allocate('DREB','Pre-team DREB','Team DREB target')
+    else:rebounds=out.REB.to_numpy(float)*scale
+    threes=out.FG3M.to_numpy(float)*scale*weights('FG3A')
+    targets=out.get('Candidate team 3PA',pd.Series(dtype=float)).dropna()
+    if len(targets):
+        attempts=out['Pre-team 3PA'].to_numpy(float)*scale*weights('FG3A')
+        raw=out['Pre-team 3PM'].to_numpy(float)*scale*weights('FG3A')
+        if not np.isfinite(attempts).all() or attempts.sum()<=0:
+            raise ValueError('Incomplete three-point attempt allocation.')
+        threes=raw*float(targets.iloc[0])/attempts.sum()
+        if exceeds_projected_points(threes,points).any():threes=raw
+    out['Projected minutes']=updated
+    for stat,values in dict(PTS=points,AST=assists,REB=rebounds,FG3M=threes,
+                           PRA=points+assists+rebounds,STL=out.STL.to_numpy(float)*scale,
+                           BLK=out.BLK.to_numpy(float)*scale).items():out[stat]=values
+    return out
+
+
+def role_evidence(player, observed, logs, as_of, passing=None):
+    """Compare nonoverlapping windows; retain conversion/accuracy, change volume.
+
+Passing is optional verified player/game tracking: PLAYER_ID, GAME_ID,
+POTENTIAL_AST, PASSES_MADE. Missing tracking is not replaced by noisy assists.
+"""
+    result=dict(ratios={},trends={},detail='Insufficient recent opportunity history.')
+    if observed is None or logs.empty:return result
+    sample=logs.loc[logs.ESPN_PLAYER_ID.astype(str).eq(str(observed.ESPN_PLAYER_ID))].copy()
+    dates=pd.to_datetime(sample.GAME_DATE,utc=True,errors='coerce')
+    year=pd.Timestamp(as_of).year-(pd.Timestamp(as_of).month<7)
+    sample=sample.loc[dates.lt(pd.Timestamp(as_of)) & dates.ge(pd.Timestamp(f'{year}-07-01',tz='UTC'))]
+    if sample.GAME_ID.duplicated().any():return dict(result,detail='Duplicate player game logs; trend unchecked.')
+    if pd.notna(observed.get('GP')) and len(sample)!=int(observed.GP):
+        return dict(result,detail='Season summary and available game logs disagree; trend unchecked.')
+    sample=sample.loc[sample.Team.eq(player.Team)&sample.MIN.gt(0)].sort_values(['GAME_DATE','GAME_ID'])
+    n=min(CONFIG['recent_games'],len(sample)-CONFIG['minimum_previous_games'])
+    if n<CONFIG['minimum_recent_games']:return result
+    recent=sample.iloc[-n:]
+    previous=sample.iloc[max(0,len(sample)-n-CONFIG['previous_games']):-n]
+    if recent.MIN.sum()<CONFIG['minimum_recent_minutes'] or previous.MIN.sum()<CONFIG['minimum_previous_minutes']:
+        return result
+    fields=['FGA','FG3A','FTA','FGM','FG3M','FTM','MIN']
+    if not np.isfinite(sample[fields].to_numpy(float)).all() or sample[fields].lt(0).any().any():return result
+    season=sample[fields].sum()
+    if ((sample.FGM>sample.FGA)|(sample.FG3M>sample.FG3A)|(sample.FG3A>sample.FGA)|(sample.FTM>sample.FTA)).any():return result
+    accuracy=player.get('Expected 3P%',np.nan)
+    if not np.isfinite(accuracy):accuracy=season.FG3M/season.FG3A if season.FG3A>0 else 0.
+    two=(season.FGM-season.FG3M)/(season.FGA-season.FG3A) if season.FGA>season.FG3A else 0.
+    ft=season.FTM/season.FTA if season.FTA>0 else 0.
+    def rate(frame,stat):
+        x=frame[fields].sum()
+        volume=x.FG3A if stat=='FG3A' else 2*(x.FGA-x.FG3A)*two+3*x.FG3A*accuracy+x.FTA*ft
+        return volume/x.MIN
+    for stat in ('PTS','FG3A'):
+        old,new,all_rate=rate(previous,stat),rate(recent,stat),rate(sample,stat)
+        if all_rate>0 and old>0:
+            result['ratios'][stat]=new/all_rate
+            result['trends'][stat]=new/old-1
+    result['detail']=f'{len(recent)} recent vs {len(previous)} preceding appearances on {player.Team}; {recent.MIN.sum():.0f}/{previous.MIN.sum():.0f} minutes. Attempts per minute; shooting conversion held fixed.'
+    if passing is not None and not passing.empty:
+        track=passing.loc[passing.PLAYER_ID.eq(player.PLAYER_ID),['GAME_ID','POTENTIAL_AST','PASSES_MADE']].copy()
+        if not track.GAME_ID.duplicated().any():
+            merged=sample.assign(GAME_ID=sample.GAME_ID.astype(str)).merge(track.assign(GAME_ID=track.GAME_ID.astype(str)),on='GAME_ID',how='left')
+            if set(['POTENTIAL_AST','PASSES_MADE']).issubset(merged) and np.isfinite(merged[['POTENTIAL_AST','PASSES_MADE']]).all().all():
+                ratios=[];trends=[]
+                for stat in ('POTENTIAL_AST','PASSES_MADE'):
+                    rates=[x[stat].sum()/x.MIN.sum() for x in (merged,merged.iloc[-n:],merged.iloc[max(0,len(merged)-n-CONFIG['previous_games']):-n])]
+                    if min(rates[0],rates[2])>0:
+                        ratios.append(rates[1]/rates[0]);trends.append(rates[1]/rates[2]-1)
+                if len(ratios)==2:
+                    result['ratios']['AST']=sum(ratios)/2
+                    result['trends']['AST']=sum(trends)/2
+    if 'AST' not in result['ratios']:result['detail']+=' Passing-opportunity trend unavailable; assists not inferred from raw assist counts.'
+    return result
+
+
+def required_roles(stat):
+    return {'PTS':('PTS',),'3PM':('FG3A',),'AST':('AST',),'PRA':('PTS','AST')}.get(stat,())
+
+
+def minute_reference(references, row, game, as_of):
+    if references is None or references.empty:return None
+    day=pd.Timestamp(game['GameTimeUTC']).tz_convert('America/New_York').date().isoformat()
+    found=references.loc[references.PLAYER_ID.eq(row.PLAYER_ID)&references.Team.eq(row.Team)&
+        references.Opponent.eq(row.Opponent)&references.game_date.eq(day)]
+    if len(found)!=1:return None
+    ref=found.iloc[0]
+    try:
+        stamp=pd.Timestamp(ref.updated_at)
+        age=(pd.Timestamp(as_of)-stamp).total_seconds()/3600
+        if stamp.tzinfo is None or not 0<=age<=CONFIG['minutes_source_max_hours'] or not isinstance(ref.independent,(bool,np.bool_)) or not ref.independent:return None
+        if ref.get('requires_source_timestamp',False):
+            published=pd.Timestamp(ref.get('source_updated_at'))
+            if pd.isna(published) or published.tzinfo is None:return None
+            source_age=(pd.Timestamp(as_of)-published).total_seconds()/3600
+            if not 0<=source_age<=float(ref.get('source_max_age_hours',CONFIG['minutes_source_max_hours'])):return None
+        if not np.isfinite(ref.minutes) or not 0<=ref.minutes<=48:return None
+    except (ValueError,TypeError):return None
+    return ref
+
+
+def assess_edges(edges, final, game, logs, matches, references=None, injury_info=None,
+                 injury_stamp=None, as_of=None, passing=None):
+    """Append explanations, scenario means, directional gaps and eligibility only.
+
+No data source is interpreted as clear when missing. Injury branches need saved,
+verified alternative rotations, which the current feed does not provide.
+Affected games remain Waiting on news rather than inventing an in/out forecast.
+"""
+    out=edges.copy(deep=True)
+    now=pd.Timestamp(as_of or pd.Timestamp.now(tz='UTC'))
+    deadline=min(now,pd.Timestamp(game['GameTimeUTC']))
+    team_frames={team:rows.reset_index(drop=True) for team,rows in final.groupby('Team')}
+    evidence={}
+    for _,p in final.loc[final['Projected minutes'].gt(0)].iterrows():
+        evidence[int(p.PLAYER_ID)]=role_evidence(p,matches.get(int(p.PLAYER_ID)),logs,deadline,passing)
+    stale=True
+    if injury_stamp is not None:
+        stamp=pd.Timestamp(injury_stamp)
+        stale=stamp.tzinfo is None or not 0<=(now-stamp).total_seconds()<=60*CONFIG['injury_max_age_minutes']
+    injury_info=injury_info or {}
+    complete=not stale and all(t in injury_info and injury_info[t].complete for t in (game['Away'],game['Home']))
+    pending=[(team,q[2]) for team,info in injury_info.items() if team in (game['Away'],game['Home']) for q in info.questionables]
+    for team,info in injury_info.items():
+        if team not in team_frames:continue
+        active_names=set(team_frames[team].loc[team_frames[team]['Projected minutes'].gt(0),'Player'])
+        pending.extend((team,name) for name,status in info.statuses.items()
+                       if name in active_names and status in ('Out','Doubtful'))
+    pending=list(dict.fromkeys(pending))
+    entries=[]
+    for _,row in out.iterrows():
+        side=row.Play if row.Play in ('Over','Under') else ('Over' if row.get('Signed edge %',0)>0 else 'Under')
+        pid=int(row.PLAYER_ID); team=team_frames[row.Team]
+        stat=SCENARIO_STATS[row.Stat]
+        record={key:'Unchecked' for key in FLAG_COLUMNS}
+        record.update({'Minutes detail':'Independent current-game minutes unavailable.',
+            'Role detail':evidence.get(pid,{}).get('detail','Recent role history unavailable.'),
+            'Injury detail':'Current, complete injury report unavailable.',
+            'Minutes test projection':np.nan,'Minutes test edge %':np.nan,
+            'Recent test projection':np.nan,'Recent test edge %':np.nan,
+            'Combined test projection':np.nan,'Combined test edge %':np.nan,
+            'Reference minutes':np.nan,'Minutes difference':np.nan,'Reference source':'Unavailable',
+            'Robust play':False,'Review group':'Unchecked'})
+        reference=minute_reference(references,row,game,now)
+        target=max(0.,row['Projected minutes']-CONFIG['minutes_stress']) if side=='Over' else min(48.,row['Projected minutes']+CONFIG['minutes_stress'])
+        if reference is not None:
+            target=min(target,float(reference.minutes)) if side=='Over' else max(target,float(reference.minutes))
+            record['Reference minutes']=float(reference.minutes)
+            record['Minutes difference']=float(row['Projected minutes'])-float(reference.minutes)
+            record['Reference source']=reference.source
+            record['Minutes detail']=f"Your rotation: {row['Projected minutes']:g} min. {reference.source}: {reference.minutes:g} min (retrieved {reference.updated_at})."
+            if pd.notna(reference.get('scenario')):record['Minutes detail']+=f" Scenario: {reference.scenario}."
+            if pd.notna(reference.get('source_updated_at')):record['Minutes detail']+=f" Source last updated: {reference.source_updated_at}."
+        minute_case=None
+        try:
+            minute_case=rebalance_minutes(team,pid,target)
+            tested=scenario_projection(team,minute_case)
+            value=float(tested.loc[tested.PLAYER_ID.eq(pid),stat].iloc[0])
+            edge=side_edge(value,row['Book implied total'],side)
+            record.update({'Minutes test projection':value,'Minutes test edge %':edge})
+            adverse_diff=(row['Projected minutes']-float(reference.minutes))*(1 if side=='Over' else -1) if reference is not None else 0.
+            record['Minutes flag']='MIN' if edge<=PLAY_THRESHOLD_PCT or adverse_diff>=CONFIG['minutes_disagreement'] else ('Clear' if reference is not None else 'Unchecked')
+            record['Minutes detail']+=f'\nTest at {target:g} min: {value:.2f} {row.Stat}, {edge:+.1f}% {side} edge. Other active minutes redistribute proportionally to total 240, capped at 48; excluded players stay out.'
+            if reference is None:record['Minutes detail']+=' Independent comparison still unchecked.'
+        except (ValueError,KeyError,IndexError):record['Minutes detail']+=' Complete rotation test unavailable.'
+        needed=required_roles(row.Stat)
+        signal=evidence.get(pid,dict(ratios={},trends={}))
+        covered=bool(needed) and all(s in signal['ratios'] for s in needed)
+        if not needed:record['Role detail']='No verified recent opportunity measure for this category; not treated as a clean role check.'
+        if covered:
+            role={pid:signal['ratios']}
+            try:
+                tested=scenario_projection(team,role=role)
+                value=float(tested.loc[tested.PLAYER_ID.eq(pid),stat].iloc[0])
+                edge=side_edge(value,row['Book implied total'],side)
+                trend=any(signal['trends'][s]*(1 if side=='Over' else -1)<=-CONFIG['role_change_fraction'] for s in needed)
+                hurts=edge<side_edge(row.Projected,row['Book implied total'],side)-1e-9
+                record.update({'Recent test projection':value,'Recent test edge %':edge,
+                    'Role flag':'ROLE' if hurts and (trend or edge<=PLAY_THRESHOLD_PCT) else 'Clear'})
+                record['Role detail']+=f'\nAt unchanged minutes: {value:.2f} {row.Stat}, {edge:+.1f}% {side} edge. Stress factor = recent opportunity rate / current-season opportunity rate, applied to this player’s weight; teammate weights and team targets remain fixed before normalization.'
+                if minute_case:
+                    joint=scenario_projection(team,minute_case,role)
+                    value=float(joint.loc[joint.PLAYER_ID.eq(pid),stat].iloc[0])
+                    record.update({'Combined test projection':value,'Combined test edge %':side_edge(value,row['Book implied total'],side)})
+            except (ValueError,KeyError,IndexError):covered=False
+        row_pending=pending.copy()
+        personal=injury_info.get(row.Team)
+        if personal is not None and personal.statuses.get(row.Player) in ('Questionable','Doubtful'):
+            row_pending=list(dict.fromkeys([*row_pending,(row.Team,row.Player)]))
+        # An out player with nonzero model minutes is a conflict, never a clear check.
+        if personal is not None and personal.statuses.get(row.Player)=='Out' and row['Projected minutes']>0:
+            row_pending=list(dict.fromkeys([*row_pending,(row.Team,row.Player)]))
+        injury_ok=complete and not row_pending
+        if row_pending:
+            record['Injury flag']='Q'
+            record['Injury detail']='Unresolved availability or rotation conflict: '+', '.join(f'{name} ({team})' for team,name in row_pending)+'.'
+            if stale:record['Injury detail']+=' Report is stale; refresh required.'
+            record['Injury detail']+='\nNo verified in/out rotations saved. Needs review; no guessed conditional projection.'
+        elif injury_ok:
+            record['Injury flag']='Clear';record['Injury detail']='Both teams have complete, recent reports; no unresolved key questionable players.'
+        gaps=[side_edge(row.Projected,row['Book implied total'],side),record['Minutes test edge %'],record['Recent test edge %'],record['Combined test edge %']]
+        robust=(row.Play in ('Over','Under') and reference is not None and covered and injury_ok
+                and np.isfinite(gaps).all() and min(round(g,2) for g in gaps)>PLAY_THRESHOLD_PCT)
+        record['Robust play']=bool(robust)
+        record['Review group']='More robust' if robust else 'Waiting on news' if row_pending else 'Unchecked' if reference is None or not covered or not complete else 'Needs review'
+        record['Review detail']='All checks covered; each scenario retains more than 5% directional edge.' if robust else 'Not cleared by all review checks.'
+        if np.isfinite(record['Combined test edge %']):
+            record['Review detail']+=f" Combined minutes + role test: {record['Combined test projection']:.2f} {row.Stat}, {record['Combined test edge %']:+.1f}% {side} edge."
+        record['Review flags']=' · '.join(record[k] for k in FLAG_COLUMNS if record[k] in ('MIN','ROLE','Q')) or ('✓' if robust else 'Review')
+        if any(record[k]=='Unchecked' for k in FLAG_COLUMNS):record['Review flags']+=' · ?'
+        record['Review version']=CONFIG['version'];record['Review captured UTC']=now.isoformat()
+        entries.append(record)
+    for key in {k for r in entries for k in r}:out[key]=[r.get(key,np.nan) for r in entries]
+    if not entries:
+        for key in ['Robust play','Review group','Review flags',*FLAG_COLUMNS]:out[key]=pd.Series(index=out.index,dtype=object)
+    return out
+
+
+def filter_review(rows, view):
+    if view=='All plays':return rows.copy()
+    if view=='More robust plays':return rows.loc[rows['Robust play'].eq(True)].copy()
+    if view=='Waiting on news':return rows.loc[rows['Review group'].eq('Waiting on news')].copy()
+    if view=='Needs review / unchecked':return rows.loc[rows['Review group'].isin(['Needs review','Unchecked'])].copy()
+    raise ValueError('Unknown review filter.')

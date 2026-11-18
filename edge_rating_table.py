@@ -20,7 +20,7 @@ ROLE_STATS = {
     'REB': {'Off': ('OREB',), 'Def': ('DREB',)},
     'PRA': {'Off': ('PTS', 'AST', 'OREB'), 'Def': ('DREB',)},
 }
-FORMATS = {'Projected minutes': '.1f', 'Good-to minutes': 'g', 'Projected': '.2f', 'Recent role': '.2f',
+FORMATS = {'Projected minutes': '.1f', 'Reference minutes': '.1f', 'Good-to minutes': 'g', 'Projected': '.2f', 'Recent role': '.2f',
            'Recent change %': '+.1f', 'Book implied total': '.2f', 'Edge %': '+.2f',
            'Over odds': '+.0f', 'Under odds': '+.0f', **{key: '.1%' for key in PROBABILITY_COLUMNS}}
 
@@ -78,8 +78,16 @@ def table_payload(edges, columns, roster, effects, team, game, book, day):
             else:
                 labels.append(str(v))
         player = players.loc[row.PLAYER_ID] if row.PLAYER_ID in players.index else {}
+        badges=[]
+        for flag,title,color in [('Minutes','MIN','minutes'),('Role','ROLE','role'),('Injury','Q','injury')]:
+            status=row.get(flag+' flag')
+            if status in ('MIN','ROLE','Q','Unchecked'):
+                badges.append(dict(label=title if status!='Unchecked' else title+'?',
+                    color=color if status!='Unchecked' else 'unchecked',detail=row.get(flag+' detail','Unchecked')))
+        if not badges and 'Review group' in row:
+            badges.append(dict(label='✓' if row.get('Robust play') else 'Review',color='clear' if row.get('Robust play') else 'unchecked',detail=row.get('Review detail','')))
         output.append(dict(pick=edge_pick(row, game, book, day), values=values, labels=labels, styles=comparison_style(raw),
-                           detail=rating_detail(row.Stat, player, row.Opponent, effects)))
+                           detail=rating_detail(row.Stat, player, row.Opponent, effects),reviewBadges=badges))
     return dict(columns=columns, rows=output, team=team)
 
 

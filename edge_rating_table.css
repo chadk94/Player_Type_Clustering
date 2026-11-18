@@ -16,6 +16,12 @@ button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; bor
     border: 1px solid var(--st-border-color, #8886); border-radius: .5rem; box-shadow: 0 3px 16px #0003; }
 
 .saved-play { background: color-mix(in srgb, var(--st-primary-color, #25785c) 8%, transparent); }
+td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; padding:.15rem .35rem; border-radius:.3rem; font-size:.75rem; font-weight:700; text-decoration:none; }
+.review-minutes { color:#713a00; background:#ffdfad; }
+.review-role { color:#56249b; background:#eadcff; }
+.review-injury { color:#134f91; background:#d4eaff; }
+.review-unchecked { color:#535b67; background:#e8eaee; }
+.review-clear { color:#175538; background:#d7eee1; }
 .saved-play td:first-child { box-shadow: inset 3px 0 var(--st-primary-color, #25785c); }
 td select { font: inherit; color: inherit; background: var(--st-background-color, Canvas);
     border: 1px solid var(--st-border-color, #8887); border-radius: .3rem; padding: .15rem; cursor: pointer; }

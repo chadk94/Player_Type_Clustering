@@ -34,6 +34,9 @@ from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, filter_game_edges, add_play_ev, EDGE_STATS, EVENT_TIME_TOLERANCE
 from sportsbook_injuries import KEY_MINUTES, game_injuries, injury_alert_changes, latest_report
 from edge_rating_table import render_edge_table
+from edge_review import assess_edges, filter_review, unavailable_review, REVIEW_VIEWS
+from edge_review_sources import MinutesReferenceFeed, parse_minutes, review_passing
+from tabs_minutes import render_tabs_comparison
 from todays_plays import render_shortlist
 from projection_presentation import over_line_label, player_matchup_rating
 from recent_role import recent_role_comparison, add_recent_columns, DISPLAY_COLUMNS as RECENT_COLUMNS, CAPTION as RECENT_CAPTION
@@ -63,6 +66,27 @@ def live_state(season):
 @st.cache_resource
 def passing_feed():
     return DailyPassingFeed()
+
+
+@st.cache_resource
+def minutes_review_feed():
+    return MinutesReferenceFeed()
+
+
+def edge_review_inputs(game, roster, game_projections, bundle, logs, matches):
+    """Optional sources are read only on Edges; background fetches never block."""
+    if st.session_state.get('edges_minutes_source','TabsNBA')=='TabsNBA':
+        references=st.session_state.get('tabs_minutes_reference')
+    else:
+        page=minutes_review_feed().read()
+        references=parse_minutes(page[0],roster,[game],page[1]) if page else None
+    report=edge_injury_report()
+    info=game_injuries(game,report[2],roster,game_projections.set_index('PLAYER_ID')['Projected minutes'].to_dict(),bundle) if report else None
+    ids=set(game_projections.PLAYER_ID)
+    selected_matches={pid:p for pid,p in matches.items() if pid in ids}
+    passing=review_passing(SEASON,logs,selected_matches,
+                          lambda season,days:passing_feed().read(season,days,timeout=0)) if not logs.empty else None
+    return references,info,report[0] if report else None,passing
 
 
 @st.cache_data(ttl=300, max_entries=3, show_spinner=False)
@@ -1327,12 +1351,18 @@ def render_live_dashboard(ui, roster):
                     if ui.checkbox(stat,value=True,key=f'edges_stat_{stat}'):
                         selected_stats.append(stat)
             plays_only = ui.checkbox('Only show plays above 5% edge',value=True,key='edges_plays_only')
+            review_view = ui.pills('Play review',REVIEW_VIEWS,default='All plays',selection_mode='single',key='edges_review_view') or 'All plays'
+            ui.caption('🟠 MIN: minutes risk · 🟣 ROLE: recent role works against the bet · 🔵 Q: availability unresolved · ? Unchecked. Click a badge for details. More robust requires all checks and more than 5% edge in each stress test; it is not a calibrated win-confidence score.')
+            ui.button('Refresh review checks',key='edges_review_refresh',help='Read any completed background minutes and passing updates. Your model projections stay unchanged.')
             show_recent = ui.toggle('Show recent-role comparison', value=False, key='edges_recent_role',
                                     help='Compare recent shot volume and assists beside the current model. Rankings and the 5% rule stay unchanged.')
             edge_schedule = schedule_for_view(ui, edge_date, 'edges_schedule_reload')
             if edge_schedule is None:
                 return
             games = scheduled_book_games(edge_events,edge_schedule,now=now)
+            source = ui.selectbox('Minutes comparison source',['TabsNBA','RotoWire public'],key='edges_minutes_source')
+            if source=='TabsNBA':
+                st.session_state['tabs_minutes_reference']=render_tabs_comparison(ui,roster_on_date(roster,SEASON,edge_date),games)
             if not games:
                 ui.info('No upcoming regular-season games with a verified sportsbook event were found for this date. Choose another date. Lines are never substituted from a different game.')
             else:
@@ -1358,19 +1388,30 @@ def render_live_dashboard(ui, roster):
                         combined = team_projection_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key,team_rates)
                     ranked, probability_observations = edge_snapshot(combined, payload, game, BOOKS[edge_book_name], now)
                     ranked, total_edges = filter_game_edges(ranked, plays_only, edge_direction, selected_stats, player_search)
+                    reviewed = ranked
+                    if not ranked.empty:
+                        try:
+                            refs, injury_info, injury_stamp, passing = edge_review_inputs(game,roster,game_projections,approved_bundle,logs,matched_players)
+                            reviewed = assess_edges(ranked,combined,game,logs,matched_players,refs,injury_info,injury_stamp,
+                                                    datetime.now(timezone.utc),passing=passing)
+                        except (requests.RequestException,ValueError,KeyError,TypeError,IndexError):
+                            reviewed = unavailable_review(ranked)
+                        ranked = filter_review(reviewed,review_view)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
                     ui.caption('Snapshot of paired Over/Under prices; quotes older than 15 minutes are excluded when loaded. Use Refresh live data to update. Edge % is a projection gap, not a win probability or expected betting return.')
                     if not selected_stats:
                         ui.info('Check at least one stat category to show edges.')
                     elif ranked.empty:
-                        if player_search.strip():
+                        if not reviewed.empty:
+                            ui.info('No plays pass this review filter. Choose All plays to inspect the flags and unchecked inputs.')
+                        elif player_search.strip():
                             ui.info('No eligible edges match this player search in the selected game. Check the name, clear the search, or turn off the 5% filter.')
                         else:
                             ui.info('No eligible edges meet these filters. Props may not be posted yet, quotes may be stale, or projections may lack matchup history. Try another game/book or turn off the 5% filter.')
                     else:
-                        ui.success(f'Showing all {total_edges} eligible player-stat edges')
+                        ui.success(f'Showing {len(ranked)} of {total_edges} eligible player-stat edges · {int(reviewed["Robust play"].sum())} pass all robustness checks')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
-                        display_columns = ['Rank','Player','Stat','Play','EV %','Projected minutes','Good-to minutes','Minutes cushion','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
+                        display_columns = ['Rank','Player','Stat','Play','Review flags','EV %','Projected minutes','Reference minutes','Good-to minutes','Minutes cushion','Matchup rating','Projected','Book line (Over)','Book implied total','Edge %','Over odds','Under odds', *PROBABILITY_COLUMNS]
                         ui.caption('Good-to minutes shows how low an Over or how high an Under can go while its edge stays above 5%. Minutes cushion is the room from the projection. Tested in half-minute steps through 48 with the same prices and teammate minutes.')
                         if show_recent:
                             recent = recent_role_comparison(combined, roster, players, logs, SEASON, matched_players=matched_players)
@@ -1380,6 +1421,14 @@ def render_live_dashboard(ui, roster):
                             ui.caption(RECENT_CAPTION)
                         render_ranked_edges(ui, ranked, display_columns, roster, current_effects, game,
                                             edge_book_name, edge_date)
+                    with ui.expander('Review assumptions and scenario comparisons'):
+                        ui.write('Minutes: compare with your selected source; stress an Over down or an Under up by at least 3 minutes, or to the more adverse source estimate. Redistribute active teammates to keep 240 minutes; excluded players stay out. TabsNBA follows your connected browser scenario, or Tabs Min from a CSV snapshot. Its publication time must be within two hours. Missing, stale or unmatched sources remain unchecked. Tabs comparisons never replace your approved minutes.')
+                        ui.write('Role: compare up to 5 recent appearances with up to 10 preceding appearances, holding shooting conversion and minutes fixed. Points use shot/free-throw volume; threes use attempts; assists use verified potential assists and passes made. At least 3 recent and 5 preceding games are required. Rebound, steal and block opportunity checks are currently unchecked. Team targets and normalized archetype effects are retained in the stress tests.')
+                        ui.write('More robust: original, minutes-only, role-only and combined scenarios each retain more than 5% directional edge. Both teams need complete injury reports no older than 30 minutes and no unresolved key players. In/out projections require verified alternative rotations; missing branches are not guessed. These are sensitivity checks, not a backtested selection rule.')
+                        if not reviewed.empty:
+                            detail_cols=['Player','Team','Stat','Play','Review group','Projected','Projected minutes','Reference minutes','Minutes difference','Reference source','Minutes test projection','Minutes test edge %','Recent test projection','Recent test edge %','Combined test projection','Combined test edge %','Minutes detail','Role detail','Injury detail','Review detail']
+                            ui.dataframe(reviewed[detail_cols],hide_index=True,width='stretch')
+                            ui.download_button('Download review snapshot',reviewed.to_csv(index=False),file_name=f'edge-review-{edge_date}-{game["Away"]}-{game["Home"]}.csv',mime='text/csv',key='edge_review_download')
                     with ui.expander('Game projection coverage'):
                         if not combined.empty:
                             ui.dataframe(combined[['Player','Team','Opponent','Projected minutes','Minutes source','Off samples','Def samples','Stat baseline','Matchup data','Status','Matchup status']],hide_index=True,width='stretch')

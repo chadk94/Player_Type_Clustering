@@ -85,7 +85,17 @@ export default function({data, parentElement}) {
             for (const [i, label] of row.labels.entries()) {
                 const td = tr.insertCell();
                 if (row.styles[i]) td.style.cssText = row.styles[i];
-                if (data.columns[i] === 'Matchup rating') {
+                if (data.columns[i] === 'Review flags') {
+                    for (const badge of row.reviewBadges || []) {
+                        const button=make('button',badge.label);
+                        button.type='button';button.className='review-badge review-'+badge.color;
+                        button.setAttribute('aria-label',badge.label+': '+badge.detail);
+                        button.onpointerenter=e=>{if(e.pointerType!=='touch')show(button,badge.detail);};
+                        button.onfocus=button.onclick=()=>show(button,badge.detail);
+                        button.onpointerleave=button.onblur=hide;
+                        td.append(button);
+                    }
+                } else if (data.columns[i] === 'Matchup rating') {
                     const button = make('button', label);
                     button.type = 'button';
                     button.setAttribute('aria-label', row.labels[data.columns.indexOf('Player')] + ' ' +
