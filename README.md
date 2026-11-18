@@ -1473,7 +1473,7 @@ future data, zero-minute players, original edge/ranking values and fragment reru
 
 ### Today's Plays
 
-Use **Save** in either team's Sportsbook Edges table to keep the selected side, line, side-specific odds, projection and edge. The shortlist is grouped by slate date in the same browser and persists on refresh. Changing a game's filters or its quoted price preserves the saved selection. A different line or sportsbook can be saved separately. Confirm, return to review, or remove a prop on **Today's Plays**.
+Use the **Lo / Med / Hi checkboxes** in either team's Sportsbook Edges table to save a play at Low (5¢), Medium (10¢), or High (15¢) confidence. Only one can be selected per play. Checking another level updates confidence; unchecking the selected level removes the play. Existing saved selections appear checked, including legacy picks at Low. Confidence changes preserve the original saved line, price, projection and review/confirmation status. The shortlist is grouped by slate date in the same browser and persists on refresh. Changing a game's filters or its quoted price preserves the saved selection. A different line or sportsbook can be saved separately. Confirm, return to review, or remove a prop on **Today's Plays**.
 
 Use **Copy table for Google Docs** and paste into a document with normal paste, or choose **Download Excel** for a dated, filterable workbook. Both exports include one row per saved pick on the selected slate, its review status, saved price, projection, edge, and a blank **Partner feedback** cell. Grant Editor access so partners can type in the column, or Commenter access for margin comments in Docs. Each export is a snapshot. Keep the copy containing your partners’ notes when you export again.
 

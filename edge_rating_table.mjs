@@ -71,12 +71,13 @@ export default function({data, parentElement}) {
     const selectors = new Map();
     function updateChecks() {
         try {
-            for (const [select, pick] of selectors) {
+            for (const [group, {pick, inputs}] of selectors) {
                 const saved = savedPlay(localStorage, pick.id);
-                select.options[0].text = saved ? 'Remove' : 'Save…';
-                select.value = saved ? String(saved.confidence_cents ?? 5) : '';
-                colorConfidence(select);
-                select.closest('tr').classList.toggle('saved-play', !!saved);
+                for (const [cents, input] of inputs) {
+                    input.checked = !!saved && Number(saved.confidence_cents ?? 5) === cents;
+                    input.parentElement.classList.toggle('selected', input.checked);
+                }
+                group.closest('tr').classList.toggle('saved-play', !!saved);
             }
         } catch { note.textContent = 'Allow site storage to save plays in this browser.'; }
     }
@@ -97,16 +98,35 @@ export default function({data, parentElement}) {
             const saveCell = tr.insertCell();
             const pick = row.pick;
             if (pick) {
-                const select = confidenceSelect('Confidence for '+pick.player+' '+pick.side+' '+pick.line+' '+pick.stat, true);
-                select.onchange = () => {
-                    try {
-                        if (select.value) saveConfidence(localStorage, pick, Number(select.value));
-                        else setPick(localStorage, pick, false);
-                        note.textContent = pick.player + (select.value ? " saved to Today's Plays" : " removed from Today's Plays") + ' · '+pick.day;
-                        notifyPicks(pick.day);
-                    } catch { updateChecks(); note.textContent='Could not save this change. Check your browser storage.'; }
-                };
-                selectors.set(select,pick);saveCell.append(select);
+                const group = make('div'), inputs = new Map();
+                const description = pick.player+' '+pick.side+' '+pick.line+' '+pick.stat;
+                group.className = 'confidence-checks';
+                group.setAttribute('role', 'group');
+                group.setAttribute('aria-label', 'Save '+description);
+                for (const [cents, tier] of CONFIDENCE_TIERS) {
+                    const label = make('label'), input = make('input');
+                    label.className = 'confidence-choice confidence-'+cents;
+                    label.title = tier.label+' confidence · '+cents+'¢ play-to allowance. Choose one; uncheck to remove.';
+                    input.type = 'checkbox';
+                    input.setAttribute('aria-label', tier.label+' confidence ('+cents+'¢) for '+description);
+                    input.onchange = () => {
+                        try {
+                            if (input.checked) saveConfidence(localStorage, pick, cents);
+                            else {
+                                const saved = savedPlay(localStorage, pick.id);
+                                if (saved && Number(saved.confidence_cents ?? 5) === cents) setPick(localStorage, pick, false);
+                            }
+                            updateChecks();
+                            const saved = savedPlay(localStorage, pick.id);
+                            note.textContent = pick.player + (saved ? " saved to Today's Plays · "+CONFIDENCE_TIERS.get(Number(saved.confidence_cents ?? 5))?.label : " removed from Today's Plays") + ' · '+pick.day;
+                            notifyPicks(pick.day);
+                        } catch { updateChecks(); note.textContent='Could not save this change. Check your browser storage.'; }
+                    };
+                    inputs.set(cents,input);
+                    label.append(input, make('span', cents === 5 ? 'Lo' : cents === 10 ? 'Med' : 'Hi'));
+                    group.append(label);
+                }
+                selectors.set(group,{pick,inputs});saveCell.append(group);
             }
             for (const [i, label] of row.labels.entries()) {
                 const td = tr.insertCell();
@@ -154,7 +174,7 @@ export default function({data, parentElement}) {
             }
         }
     }
-    const saveHeader=make('th','Save');saveHeader.scope='col';saveHeader.title='Save to Today’s Plays and choose confidence';headers.append(saveHeader);
+    const saveHeader=make('th','Save');saveHeader.scope='col';saveHeader.title='Lo = 5¢, Med = 10¢, Hi = 15¢. Choose one confidence level; uncheck it to remove the play.';headers.append(saveHeader);
     data.columns.forEach((label, i) => {
         const th = make('th', data.headers?.[i] || label);
         th.scope = 'col';

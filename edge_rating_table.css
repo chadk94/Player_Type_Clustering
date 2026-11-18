@@ -34,5 +34,14 @@ td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; paddin
 .review-unchecked { color:#535b67; background:#e8eaee; }
 .review-clear { color:#175538; background:#d7eee1; }
 .saved-play td:first-child { box-shadow: inset 3px 0 var(--st-primary-color, #25785c); }
-td select { font: inherit; color: inherit; background: var(--st-background-color, Canvas);
-    border: 1px solid var(--st-border-color, #8887); border-radius: .3rem; padding: .15rem; cursor: pointer; }
+.confidence-checks { display: inline-flex; gap: .25rem; }
+.confidence-choice { display: inline-flex; align-items: center; gap: .25rem; padding: .2rem .3rem;
+    border: 1px solid transparent; border-radius: .3rem; cursor: pointer; font-size: .75rem; font-weight: 600; }
+.confidence-choice input { margin: 0; width: .9rem; height: .9rem; cursor: pointer; accent-color: #175c43; }
+.confidence-choice:focus-within { outline: 2px solid var(--st-text-color, CanvasText); outline-offset: 2px; }
+.confidence-5 { background: #edf0f3; color: #45515d; }
+.confidence-10 { background: #fff0c8; color: #633d00; }
+.confidence-15 { background: #e0f0e8; color: #175538; }
+.confidence-choice.selected { border-color: currentColor; }
+.confidence-10.selected { background: #ffe4a3; }
+.confidence-15.selected { background: #166449; color: #fff; }
