@@ -509,7 +509,7 @@ def render_ranked_edges(ui, ranked, columns, roster, effects, game, book, day, p
         render_edge_table(rows, columns, roster, effects, group, game, book, day, projections, games)
     ui.caption('Experimental probabilities use each player’s final projection and the saved line, conditional on playing. '
                'Players are ranked by their best Edge %, with their props grouped together. Extra columns include push probability.')
-    ui.caption('Hover over a player’s name or photo for their full game projection. Hover over a matchup rating for 3 recent same-archetype performances; click to expand to 10. Ratings range from 1 (poor) to 5 (excellent).')
+    ui.caption('Hover over minutes to compare your projection with TabsNBA. Hover over a player’s name or photo for their full game projection. Hover over a matchup rating for 3 recent same-archetype performances; click to expand to 10. Ratings range from 1 (poor) to 5 (excellent).')
     label = 'Download full-slate robust plays' if games is not None else 'Download all edges for this game'
     filename = f'robust-plays-{day}.csv' if games is not None else f"{game['Away']}_{game['Home']}_edges.csv"
     ui.download_button(label, pd.concat(exports, ignore_index=True).to_csv(index=False),
