@@ -1715,6 +1715,13 @@ is shared across pages; changed input invalidates the game caches. Freshness is 
 normal page renders. **Refresh review checks** reads completed results; missing Tabs inputs
 retain the user's minutes with unchecked flags. Explicit player-slider overrides still apply
 only to that individual preview. PRA and probabilities follow the new final projection.
+**Tabs minutes last updated** appears above the plays in both game and full-slate views.
+It reports the source publication time in Denver time for the exact dated matchup, identifies
+saved/stale/partial/missing rotations, and offers per-team details for the full slate.
+**Refresh Tabs minutes** immediately asks the existing Chrome connector to read its connected
+Tabs page; it does not relabel an old publication as new or discard the saved backup on failure.
+**Open TabsNBA** opens the source site. CSV mode requires a new upload. Timestamp display updates
+stay in the browser; changed allocations still use the existing shared projection refresh.
 The downloadable review snapshot includes all scenario details for later comparison with results.
 No picks are automatically sent, modified or graded by this feature.
 

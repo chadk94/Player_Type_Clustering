@@ -38,6 +38,7 @@ from edge_rating_table import group_player_edges, render_edge_table
 from edge_review import assess_edges, filter_review, unavailable_review, REVIEW_VIEWS
 from edge_review_sources import MinutesReferenceFeed, parse_minutes, review_passing
 from tabs_minutes import render_tabs_comparison, export_day
+from tabs_minutes_status import render_tabs_minutes_status
 from minutes_blend import minutes_plan
 from todays_plays import render_shortlist
 from projection_presentation import over_line_label, player_matchup_rating
@@ -1477,6 +1478,7 @@ def render_live_dashboard(ui, roster):
             coverage.append(row)
         progress.empty()
         ui.subheader(f'More robust plays — all games · {book_name}')
+        render_tabs_minutes_status(games, 'edges_slate_tabs_status')
         review = pd.concat(reviews, ignore_index=True) if reviews else pd.DataFrame()
         total = sum(row['More robust'] for row in coverage)
         eligible = sum(row['Eligible plays'] for row in coverage)
@@ -1612,6 +1614,7 @@ def render_live_dashboard(ui, roster):
                             reviewed = unavailable_review(ranked)
                         ranked = filter_review(reviewed,review_view)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
+                    render_tabs_minutes_status([game], 'edges_game_tabs_status')
                     ui.caption('Snapshot of paired Over/Under prices; quotes older than 15 minutes are excluded when loaded. Use Refresh live data to update. Edge % is a projection gap, not a win probability or expected betting return.')
                     if not selected_stats:
                         ui.info('Check at least one stat category to show edges.')

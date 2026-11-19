@@ -29,6 +29,8 @@ export default function({data,parentElement,setStateValue}) {
     const saved=data.saved_snapshot || readSavedTabs(storage);
     saveValidatedTabs(storage,data.saved_snapshot);
     let last=fingerprint(data.previous),waiting=null,timeout,disposed=false;
+    const announce=(state,message,extra={})=>window.dispatchEvent?.(new CustomEvent('nba-tabs-minutes-status',{detail:{state,message,...extra}}));
+    announce('ready','',{rows:data.metadata||[]});
     function publish(value) {
         const hash=fingerprint(value);
         if (hash!==last) {last=hash;setStateValue('result',value);}
@@ -36,10 +38,12 @@ export default function({data,parentElement,setStateValue}) {
     function unavailable(message) {
         status.textContent=saved ? `Using saved Tabs minutes · ${message}` : message;
         publish({ok:false,error:message,...(saved?{saved_snapshot:saved}:{})});
+        announce('unavailable',saved?'Could not pull newer minutes. Your saved minutes are preserved.':message);
     }
     function request() {
         if (disposed || waiting) return;
         waiting=crypto.randomUUID();
+        announce('checking','Checking the latest minutes displayed on your connected Tabs page…');
         window.postMessage({channel:'nba-tabs-minutes-v1',type:'request',id:waiting},location.origin);
         timeout=setTimeout(()=>{waiting=null;unavailable('Browser connector unavailable. Open both sites in Chrome with the connector enabled.');},8000);
     }
@@ -53,12 +57,14 @@ export default function({data,parentElement,setStateValue}) {
         if (JSON.stringify(s).length>150000) {unavailable('Tabs comparison too large.');return;}
         status.textContent=`Connected · ${s.scope} · ${s.scenario} · Tabs updated ${new Date(s.source_updated_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`;
         publish({...value,...(saved?{saved_snapshot:saved}:{})});
+        announce('checked','Tabs checked. The update time above is Tabs’ publication time, not the time of this check.');
     }
     window.addEventListener('message',receive);
     button.onclick=request;
+    window.nbaTabsMinutesRefresh=request;
     const timer=setInterval(request,30000);
     const focus=()=>request();window.addEventListener('focus',focus);
-    window.nbaTabsBridgeCleanup=()=>{disposed=true;clearInterval(timer);clearTimeout(timeout);window.removeEventListener('message',receive);window.removeEventListener('focus',focus);};
+    window.nbaTabsBridgeCleanup=()=>{disposed=true;clearInterval(timer);clearTimeout(timeout);window.removeEventListener('message',receive);window.removeEventListener('focus',focus);if(window.nbaTabsMinutesRefresh===request)delete window.nbaTabsMinutesRefresh;};
     if (!data.previous && saved) unavailable('Reconnecting to Tabs…');
     request();
     return window.nbaTabsBridgeCleanup;

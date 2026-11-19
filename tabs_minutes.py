@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from live_projections import name_key
+from tabs_minutes_status import minutes_metadata
 
 # Tabs uses the short name; resolve only this known alias on the same team.
 ALIASES = {('POR','robert williams'):'robert williams iii',
@@ -180,6 +181,7 @@ def render_tabs_comparison(ui,roster,games):
         if mode=='CSV upload':return render_tabs_upload(ui,roster,games)
         previous=st.session_state.get('tabs_browser_last_result')
         result=_browser_component(st.runtime.get_instance())(data={'previous':previous,
+            'metadata':minutes_metadata(st.session_state.get('tabs_minutes_reference')),
             'saved_snapshot':st.session_state.get('tabs_browser_saved_snapshot')},
             key='tabs_minutes_browser',on_result_change=lambda:_remember_browser_result(roster,games))
         value=result.result
