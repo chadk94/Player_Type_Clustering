@@ -1,5 +1,5 @@
 {
-  "version": "edge-review-directional-injury-v3",
+  "version": "edge-review-passing-coverage-v4",
   "minutes_disagreement": 3.0,
   "minutes_stress": 3.0,
   "minutes_source_max_hours": 6,
@@ -9,6 +9,7 @@
   "minimum_previous_games": 5,
   "minimum_recent_minutes": 45,
   "minimum_previous_minutes": 60,
+  "maximum_missing_passing_games": 3,
   "role_change_fraction": 0.10,
   "rebound_change_fraction": 0.20,
   "injury_max_age_minutes": 30

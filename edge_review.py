@@ -118,7 +118,7 @@ recomputed frames instead (see assess_edges).
 
 
 def passing_role_evidence(sample, player_id, n, passing):
-    """Keep the existing 50/50 opportunity check and report its exact coverage."""
+    """Allow small tracking gaps, using matched counts and minutes in each window."""
     prior_start=max(0,len(sample)-n-CONFIG['previous_games'])
     previous=sample.iloc[prior_start:-n]
     result=dict(ratios={},trends={})
@@ -133,12 +133,25 @@ def passing_role_evidence(sample, player_id, n, passing):
     coverage=(f'Potential assists and passes made are verified for {int(verified.iloc[-n:].sum())} of {n} recent games '
               f'and {int(verified.iloc[prior_start:-n].sum())} of {len(previous)} preceding games '
               f'({int(verified.sum())} of {len(sample)} season games).')
-    if not verified.all():
-        return dict(result,passing_detail=coverage+' The passing-role check is pending until the missing records are available.')
+    missing=int((~verified).sum())
+    limit=CONFIG['maximum_missing_passing_games']
+    if missing>limit:
+        return dict(result,passing_detail=coverage+f' The passing-role check is pending because {missing} games are missing passing data (limit: {limit}).')
+    # Keep the original appearance windows. Do not pull older games into the
+    # recent window or count untracked minutes as zero passing opportunities.
+    merged[['POTENTIAL_AST','PASSES_MADE']]=counts
+    recent=merged.iloc[-n:].loc[verified.iloc[-n:]]
+    previous=merged.iloc[prior_start:-n].loc[verified.iloc[prior_start:-n]]
+    if (len(recent)<CONFIG['minimum_recent_games'] or len(previous)<CONFIG['minimum_previous_games']
+            or recent.MIN.sum()<CONFIG['minimum_recent_minutes'] or previous.MIN.sum()<CONFIG['minimum_previous_minutes']):
+        return dict(result,passing_detail=coverage+' The passing-role check needs at least three verified recent and five verified preceding games, with 45/60 minutes in those periods.')
     detail=[coverage]
+    if missing:
+        detail.append(f'Using available passing data; {missing} missing game'+(' is' if missing==1 else 's are')+
+                      ' excluded from both opportunity counts and minutes. The original recent and preceding windows stay fixed.')
     ratios=[];trends=[]
     for stat, label in [('POTENTIAL_AST','potential assists'),('PASSES_MADE','passes made')]:
-        rates=[x[stat].sum()/x.MIN.sum() for x in (merged,merged.iloc[-n:],merged.iloc[prior_start:-n])]
+        rates=[x[stat].sum()/x.MIN.sum() for x in (merged.loc[verified],recent,previous)]
         if min(rates[0],rates[2])<=0:
             return dict(result,passing_detail=coverage+' The comparison period has zero passing opportunities; a percentage trend cannot be calculated.')
         ratios.append(rates[1]/rates[0]);trends.append(rates[1]/rates[2]-1)

@@ -126,7 +126,7 @@ class ReviewTests(unittest.TestCase):
         self.assertAlmostEqual(role_evidence(f,observed,sample,NOW)['ratios']['FG3A'],2/3)
         passing=pd.DataFrame(dict(PLAYER_ID=1,GAME_ID=sample.GAME_ID,POTENTIAL_AST=[8]*5+[4]*5,PASSES_MADE=[40]*10))
         self.assertAlmostEqual(role_evidence(f,observed,sample,NOW,passing)['ratios']['AST'],(2/3+1)/2)
-        self.assertNotIn('AST',role_evidence(f,observed,sample,NOW,passing.iloc[:-1])['ratios'])
+        self.assertAlmostEqual(role_evidence(f,observed,sample,NOW,passing.iloc[:-1])['ratios']['AST'],(9/14+1)/2)
         self.assertEqual(role_evidence(f,observed,sample.iloc[:7],NOW)['ratios'],{})
         self.assertEqual(role_evidence(f,observed,pd.concat([sample,sample.iloc[:1]]),NOW)['ratios'],{})
         self.assertIn('PTS',role_evidence(f,observed,sample,pd.Timestamp('2027-01-01T00:00:00Z'))['ratios'])

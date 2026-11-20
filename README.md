@@ -1685,7 +1685,12 @@ does not blur their different effects on an Over or Under.
   `data/review_passing_2026-27.csv.gz` (verified through November 16) after app restarts.
   Each archived game is rechecked against the current player ID, game ID, Eastern date,
   assists and minutes; new or mismatched games request fresh NBA daily tracking in the
-  background. Missing games remain unchecked, never zero or fabricated passing counts.
+  background. Up to three missing passing-data games are allowed across the player's
+  current-team season sample. The check uses only verified counts and their matching
+  minutes, keeping the original recent/preceding appearance windows fixed. At least
+  three verified recent and five verified preceding games, with 45/60 minutes, must
+  remain; otherwise the check stays pending. Four or more missing games also stay
+  pending. Missing games are never treated as zero or fabricated passing counts.
   Passing coverage and recent/preceding potential-assist and pass rates appear in Technical
   details. Complete shooting fields are not required for an assist-only check. This checkpoint
   is used only for review flags and what-if scenarios, not production assists or team totals.
