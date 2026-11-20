@@ -97,19 +97,11 @@ def history_check(row, index, observed, deadline):
     warn = contrary.mean() >= SIGNAL_FRACTION and against
     supports = supportive.mean() >= SIGNAL_FRACTION and in_favor
     units = UNITS[stat]
-    minutes = float(sample.MIN.mean())
     outcome_side = ('Under' if side == 'Over' else 'Over') if warn else side
     count = int(contrary.sum() if warn else supportive.sum())
     signal = 'Opposes' if warn else 'Supports' if supports else 'Mixed history for'
     summary = (f'{row.get("Player", "Player")} vs {row.get("Opponent")} · {side[0]}{line:g} {units}\n'
-               f'{signal} {side} · {count}/{len(sample)} {outcome_side.lower()} {line:g}\n'
-               f'Avg {average:.1f} {units} · {minutes:.1f} min')
-    try:
-        current_minutes = float(row.get('Projected minutes'))
-        if math.isfinite(current_minutes):
-            summary += f' (today {current_minutes:g})'
-    except (TypeError, ValueError):
-        pass
+               f'{signal} {side} · {count}/{len(sample)} {outcome_side.lower()} {line:g}')
     games = []
     for (_, game), total in zip(sample.iterrows(), totals):
         day = game._date if game._day_only else game._date.tz_convert('America/New_York')
