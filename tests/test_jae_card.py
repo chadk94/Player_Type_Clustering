@@ -65,6 +65,26 @@ class JaeCardTests(TestCase):
                          (102,-103,14.5,self.start.isoformat(),self.now.isoformat()))
         self.assertAlmostEqual(row['breakeven'],103/203)
 
+    def test_verified_aliases_reach_primary_and_alternate_quotes_with_saved_identity(self):
+        for book_name,model_name in [('Herb Jones','Herbert Jones'),('Paul Reed Jr','Paul Reed'),
+                                     ('Derrick Jones','Derrick Jones Jr.')]:
+            with self.subTest(player=model_name):
+                pick=dict(self.pick,player=model_name,side='Over',stat='3PM',line=1.5)
+                self.market.update(key='player_threes',outcomes=[
+                    dict(name=side,description=book_name,point=1.5,price=price)
+                    for side,price in [('Over',144),('Under',-192)]])
+                alternate=dict(key='player_threes_alternate',last_update=self.now.isoformat(),outcomes=[
+                    dict(name='Over',description=book_name,point=2.5,price=350)])
+                self.event['bookmakers'][0]['markets']=[self.market,alternate]
+                rows,skipped=card_quotes([pick],self.fetch,lambda:self.now)
+                self.assertEqual(skipped,[])
+                row,=rows
+                self.assertEqual(row['player'],model_name)
+                self.assertEqual(row['id'],pick['id'])
+                self.assertEqual((row['odds'],row['worst']),(144,139))
+                self.assertEqual(row['alt'],dict(line=2.5,odds=350))
+                self.assertEqual(row['shopping']['offers'],[dict(line=2.5,odds=350)])
+
     def test_new_only_and_retry(self):
         calls=[]
         written={}

@@ -1,0 +1,1029 @@
+{
+  "slate": "2026-11-20",
+  "teams": [
+    "ATL",
+    "BKN",
+    "BOS",
+    "CHA",
+    "CHI",
+    "CLE",
+    "DAL",
+    "DEN",
+    "DET",
+    "GSW",
+    "HOU",
+    "IND",
+    "LAC",
+    "LAL",
+    "MEM",
+    "MIA",
+    "MIL",
+    "MIN",
+    "NOP",
+    "NYK",
+    "OKC",
+    "ORL",
+    "PHI",
+    "PHX",
+    "POR",
+    "SAC",
+    "SAS",
+    "TOR",
+    "UTA",
+    "WAS"
+  ],
+  "games": 17,
+  "scope": "All eight supported main markets for the November 20 slate; points, rebounds and assists for selected November 18\u201319 games covering every other team. No identity conclusions for players without a quote in these snapshots.",
+  "players": [
+    {
+      "fanduel_name": "AJ Dybantsa",
+      "model_name": "AJ Dybantsa",
+      "player_id": 1643407
+    },
+    {
+      "fanduel_name": "Aaron Gordon",
+      "model_name": "Aaron Gordon",
+      "player_id": 203932
+    },
+    {
+      "fanduel_name": "Aaron Nesmith",
+      "model_name": "Aaron Nesmith",
+      "player_id": 1630174
+    },
+    {
+      "fanduel_name": "Aaron Wiggins",
+      "model_name": "Aaron Wiggins",
+      "player_id": 1630598
+    },
+    {
+      "fanduel_name": "Ace Bailey",
+      "model_name": "Ace Bailey",
+      "player_id": 1642846
+    },
+    {
+      "fanduel_name": "Aday Mara",
+      "model_name": "Aday Mara",
+      "player_id": 1643530
+    },
+    {
+      "fanduel_name": "Ajay Mitchell",
+      "model_name": "Ajay Mitchell",
+      "player_id": 1642349
+    },
+    {
+      "fanduel_name": "Al Horford",
+      "model_name": "Al Horford",
+      "player_id": 201143
+    },
+    {
+      "fanduel_name": "Alex Sarr",
+      "model_name": "Alex Sarr",
+      "player_id": 1642259
+    },
+    {
+      "fanduel_name": "Alperen Sengun",
+      "model_name": "Alperen Sengun",
+      "player_id": 1630578
+    },
+    {
+      "fanduel_name": "Amen Thompson",
+      "model_name": "Amen Thompson",
+      "player_id": 1641708
+    },
+    {
+      "fanduel_name": "Andrew Nembhard",
+      "model_name": "Andrew Nembhard",
+      "player_id": 1629614
+    },
+    {
+      "fanduel_name": "Andrew Wiggins",
+      "model_name": "Andrew Wiggins",
+      "player_id": 203952
+    },
+    {
+      "fanduel_name": "Anfernee Simons",
+      "model_name": "Anfernee Simons",
+      "player_id": 1629014
+    },
+    {
+      "fanduel_name": "Anthony Black",
+      "model_name": "Anthony Black",
+      "player_id": 1641710
+    },
+    {
+      "fanduel_name": "Anthony Davis",
+      "model_name": "Anthony Davis",
+      "player_id": 203076
+    },
+    {
+      "fanduel_name": "Ausar Thompson",
+      "model_name": "Ausar Thompson",
+      "player_id": 1641709
+    },
+    {
+      "fanduel_name": "Ayo Dosunmu",
+      "model_name": "Ayo Dosunmu",
+      "player_id": 1630245
+    },
+    {
+      "fanduel_name": "Bam Adebayo",
+      "model_name": "Bam Adebayo",
+      "player_id": 1628389
+    },
+    {
+      "fanduel_name": "Bilal Coulibaly",
+      "model_name": "Bilal Coulibaly",
+      "player_id": 1641731
+    },
+    {
+      "fanduel_name": "Bobby Portis",
+      "model_name": "Bobby Portis",
+      "player_id": 1626171
+    },
+    {
+      "fanduel_name": "Brandin Podziemski",
+      "model_name": "Brandin Podziemski",
+      "player_id": 1641764
+    },
+    {
+      "fanduel_name": "Brandon Miller",
+      "model_name": "Brandon Miller",
+      "player_id": 1641706
+    },
+    {
+      "fanduel_name": "Brayden Burries",
+      "model_name": "Brayden Burries",
+      "player_id": 1643415
+    },
+    {
+      "fanduel_name": "Brice Sensabaugh",
+      "model_name": "Brice Sensabaugh",
+      "player_id": 1641729
+    },
+    {
+      "fanduel_name": "Brook Lopez",
+      "model_name": "Brook Lopez",
+      "player_id": 201572
+    },
+    {
+      "fanduel_name": "Cade Cunningham",
+      "model_name": "Cade Cunningham",
+      "player_id": 1630595
+    },
+    {
+      "fanduel_name": "Caleb Martin",
+      "model_name": "Caleb Martin",
+      "player_id": 1628997
+    },
+    {
+      "fanduel_name": "Cam Spencer",
+      "model_name": "Cam Spencer",
+      "player_id": 1642285
+    },
+    {
+      "fanduel_name": "Cameron Boozer",
+      "model_name": "Cameron Boozer",
+      "player_id": 1643409
+    },
+    {
+      "fanduel_name": "Cameron Johnson",
+      "model_name": "Cameron Johnson",
+      "player_id": 1629661
+    },
+    {
+      "fanduel_name": "Cedric Coward",
+      "model_name": "Cedric Coward",
+      "player_id": 1642907
+    },
+    {
+      "fanduel_name": "Charles Bassey",
+      "model_name": "Charles Bassey",
+      "player_id": 1629646
+    },
+    {
+      "fanduel_name": "Christian Braun",
+      "model_name": "Christian Braun",
+      "player_id": 1631128
+    },
+    {
+      "fanduel_name": "Coby White",
+      "model_name": "Coby White",
+      "player_id": 1629632
+    },
+    {
+      "fanduel_name": "Collin Gillespie",
+      "model_name": "Collin Gillespie",
+      "player_id": 1631221
+    },
+    {
+      "fanduel_name": "Collin Sexton",
+      "model_name": "Collin Sexton",
+      "player_id": 1629012
+    },
+    {
+      "fanduel_name": "Cooper Flagg",
+      "model_name": "Cooper Flagg",
+      "player_id": 1642843
+    },
+    {
+      "fanduel_name": "Damian Lillard",
+      "model_name": "Damian Lillard",
+      "player_id": 203081
+    },
+    {
+      "fanduel_name": "Daniel Gafford",
+      "model_name": "Daniel Gafford",
+      "player_id": 1629655
+    },
+    {
+      "fanduel_name": "Daniss Jenkins",
+      "model_name": "Daniss Jenkins",
+      "player_id": 1642450
+    },
+    {
+      "fanduel_name": "Darius Acuff Jr.",
+      "model_name": "Darius Acuff Jr.",
+      "player_id": 1643411
+    },
+    {
+      "fanduel_name": "Darius Garland",
+      "model_name": "Darius Garland",
+      "player_id": 1629636
+    },
+    {
+      "fanduel_name": "Darryn Peterson",
+      "model_name": "Darryn Peterson",
+      "player_id": 1643408
+    },
+    {
+      "fanduel_name": "Davion Mitchell",
+      "model_name": "Davion Mitchell",
+      "player_id": 1630558
+    },
+    {
+      "fanduel_name": "Day'Ron Sharpe",
+      "model_name": "Day'Ron Sharpe",
+      "player_id": 1630549
+    },
+    {
+      "fanduel_name": "De'Aaron Fox",
+      "model_name": "De'Aaron Fox",
+      "player_id": 1628368
+    },
+    {
+      "fanduel_name": "De'Andre Hunter",
+      "model_name": "De'Andre Hunter",
+      "player_id": 1629631
+    },
+    {
+      "fanduel_name": "De'Anthony Melton",
+      "model_name": "De'Anthony Melton",
+      "player_id": 1629001
+    },
+    {
+      "fanduel_name": "DeMar DeRozan",
+      "model_name": "DeMar DeRozan",
+      "player_id": 201942
+    },
+    {
+      "fanduel_name": "Dean Wade",
+      "model_name": "Dean Wade",
+      "player_id": 1629731
+    },
+    {
+      "fanduel_name": "Deni Avdija",
+      "model_name": "Deni Avdija",
+      "player_id": 1630166
+    },
+    {
+      "fanduel_name": "Derrick Jones",
+      "model_name": "Derrick Jones Jr.",
+      "player_id": 1627884
+    },
+    {
+      "fanduel_name": "Derrick White",
+      "model_name": "Derrick White",
+      "player_id": 1628401
+    },
+    {
+      "fanduel_name": "Desmond Bane",
+      "model_name": "Desmond Bane",
+      "player_id": 1630217
+    },
+    {
+      "fanduel_name": "Devin Booker",
+      "model_name": "Devin Booker",
+      "player_id": 1626164
+    },
+    {
+      "fanduel_name": "Devin Vassell",
+      "model_name": "Devin Vassell",
+      "player_id": 1630170
+    },
+    {
+      "fanduel_name": "Dillon Brooks",
+      "model_name": "Dillon Brooks",
+      "player_id": 1628415
+    },
+    {
+      "fanduel_name": "Domantas Sabonis",
+      "model_name": "Domantas Sabonis",
+      "player_id": 1627734
+    },
+    {
+      "fanduel_name": "Donovan Clingan",
+      "model_name": "Donovan Clingan",
+      "player_id": 1642270
+    },
+    {
+      "fanduel_name": "Donovan Mitchell",
+      "model_name": "Donovan Mitchell",
+      "player_id": 1628378
+    },
+    {
+      "fanduel_name": "Draymond Green",
+      "model_name": "Draymond Green",
+      "player_id": 203110
+    },
+    {
+      "fanduel_name": "Dyson Daniels",
+      "model_name": "Dyson Daniels",
+      "player_id": 1630700
+    },
+    {
+      "fanduel_name": "Egor Demin",
+      "model_name": "Egor D\u00ebmin",
+      "player_id": 1642856
+    },
+    {
+      "fanduel_name": "Franz Wagner",
+      "model_name": "Franz Wagner",
+      "player_id": 1630532
+    },
+    {
+      "fanduel_name": "Fred VanVleet",
+      "model_name": "Fred VanVleet",
+      "player_id": 1627832
+    },
+    {
+      "fanduel_name": "Giannis Antetokounmpo",
+      "model_name": "Giannis Antetokounmpo",
+      "player_id": 203507
+    },
+    {
+      "fanduel_name": "Gui Santos",
+      "model_name": "Gui Santos",
+      "player_id": 1630611
+    },
+    {
+      "fanduel_name": "Herb Jones",
+      "model_name": "Herbert Jones",
+      "player_id": 1630529
+    },
+    {
+      "fanduel_name": "Immanuel Quickley",
+      "model_name": "Immanuel Quickley",
+      "player_id": 1630193
+    },
+    {
+      "fanduel_name": "Isaac Okoro",
+      "model_name": "Isaac Okoro",
+      "player_id": 1630171
+    },
+    {
+      "fanduel_name": "Isaiah Hartenstein",
+      "model_name": "Isaiah Hartenstein",
+      "player_id": 1628392
+    },
+    {
+      "fanduel_name": "Isaiah Stewart",
+      "model_name": "Isaiah Stewart",
+      "player_id": 1630191
+    },
+    {
+      "fanduel_name": "Ivica Zubac",
+      "model_name": "Ivica Zubac",
+      "player_id": 1627826
+    },
+    {
+      "fanduel_name": "Ja'Kobe Walter",
+      "model_name": "Ja'Kobe Walter",
+      "player_id": 1642266
+    },
+    {
+      "fanduel_name": "Jabari Smith Jr",
+      "model_name": "Jabari Smith Jr.",
+      "player_id": 1631095
+    },
+    {
+      "fanduel_name": "Jaden McDaniels",
+      "model_name": "Jaden McDaniels",
+      "player_id": 1630183
+    },
+    {
+      "fanduel_name": "Jaime Jaquez Jr",
+      "model_name": "Jaime Jaquez Jr.",
+      "player_id": 1631170
+    },
+    {
+      "fanduel_name": "Jake LaRavia",
+      "model_name": "Jake LaRavia",
+      "player_id": 1631222
+    },
+    {
+      "fanduel_name": "Jakob Poeltl",
+      "model_name": "Jakob Poeltl",
+      "player_id": 1627751
+    },
+    {
+      "fanduel_name": "Jalen Brunson",
+      "model_name": "Jalen Brunson",
+      "player_id": 1628973
+    },
+    {
+      "fanduel_name": "Jalen Green",
+      "model_name": "Jalen Green",
+      "player_id": 1630224
+    },
+    {
+      "fanduel_name": "Jalen Johnson",
+      "model_name": "Jalen Johnson",
+      "player_id": 1630552
+    },
+    {
+      "fanduel_name": "Jalen Smith",
+      "model_name": "Jalen Smith",
+      "player_id": 1630188
+    },
+    {
+      "fanduel_name": "Jalen Suggs",
+      "model_name": "Jalen Suggs",
+      "player_id": 1630591
+    },
+    {
+      "fanduel_name": "Jamal Murray",
+      "model_name": "Jamal Murray",
+      "player_id": 1627750
+    },
+    {
+      "fanduel_name": "Jamal Shead",
+      "model_name": "Jamal Shead",
+      "player_id": 1642347
+    },
+    {
+      "fanduel_name": "James Harden",
+      "model_name": "James Harden",
+      "player_id": 201935
+    },
+    {
+      "fanduel_name": "Jamison Battle",
+      "model_name": "Jamison Battle",
+      "player_id": 1642419
+    },
+    {
+      "fanduel_name": "Jared McCain",
+      "model_name": "Jared McCain",
+      "player_id": 1642272
+    },
+    {
+      "fanduel_name": "Jarrett Allen",
+      "model_name": "Jarrett Allen",
+      "player_id": 1628386
+    },
+    {
+      "fanduel_name": "Javonte Green",
+      "model_name": "Javonte Green",
+      "player_id": 1629750
+    },
+    {
+      "fanduel_name": "Jaxson Hayes",
+      "model_name": "Jaxson Hayes",
+      "player_id": 1629637
+    },
+    {
+      "fanduel_name": "Jaylen Wells",
+      "model_name": "Jaylen Wells",
+      "player_id": 1642377
+    },
+    {
+      "fanduel_name": "Jaylin Williams",
+      "model_name": "Jaylin Williams",
+      "player_id": 1631119
+    },
+    {
+      "fanduel_name": "Jayson Tatum",
+      "model_name": "Jayson Tatum",
+      "player_id": 1628369
+    },
+    {
+      "fanduel_name": "Jerami Grant",
+      "model_name": "Jerami Grant",
+      "player_id": 203924
+    },
+    {
+      "fanduel_name": "Jeremiah Fears",
+      "model_name": "Jeremiah Fears",
+      "player_id": 1642847
+    },
+    {
+      "fanduel_name": "Joel Embiid",
+      "model_name": "Joel Embiid",
+      "player_id": 203954
+    },
+    {
+      "fanduel_name": "John Collins",
+      "model_name": "John Collins",
+      "player_id": 1628381
+    },
+    {
+      "fanduel_name": "Jonathan Kuminga",
+      "model_name": "Jonathan Kuminga",
+      "player_id": 1630228
+    },
+    {
+      "fanduel_name": "Jordan Goodwin",
+      "model_name": "Jordan Goodwin",
+      "player_id": 1630692
+    },
+    {
+      "fanduel_name": "Jordan Walsh",
+      "model_name": "Jordan Walsh",
+      "player_id": 1641775
+    },
+    {
+      "fanduel_name": "Josh Giddey",
+      "model_name": "Josh Giddey",
+      "player_id": 1630581
+    },
+    {
+      "fanduel_name": "Josh Green",
+      "model_name": "Josh Green",
+      "player_id": 1630182
+    },
+    {
+      "fanduel_name": "Josh Hart",
+      "model_name": "Josh Hart",
+      "player_id": 1628404
+    },
+    {
+      "fanduel_name": "Jrue Holiday",
+      "model_name": "Jrue Holiday",
+      "player_id": 201950
+    },
+    {
+      "fanduel_name": "Julian Champagnie",
+      "model_name": "Julian Champagnie",
+      "player_id": 1630577
+    },
+    {
+      "fanduel_name": "Julius Randle",
+      "model_name": "Julius Randle",
+      "player_id": 203944
+    },
+    {
+      "fanduel_name": "Karl-Anthony Towns",
+      "model_name": "Karl-Anthony Towns",
+      "player_id": 1626157
+    },
+    {
+      "fanduel_name": "Keaton Wagler",
+      "model_name": "Keaton Wagler",
+      "player_id": 1643413
+    },
+    {
+      "fanduel_name": "Keegan Murray",
+      "model_name": "Keegan Murray",
+      "player_id": 1631099
+    },
+    {
+      "fanduel_name": "Kel'el Ware",
+      "model_name": "Kel'el Ware",
+      "player_id": 1642276
+    },
+    {
+      "fanduel_name": "Keldon Johnson",
+      "model_name": "Keldon Johnson",
+      "player_id": 1629640
+    },
+    {
+      "fanduel_name": "Kelly Oubre Jr.",
+      "model_name": "Kelly Oubre Jr.",
+      "player_id": 1626162
+    },
+    {
+      "fanduel_name": "Kenrich Williams",
+      "model_name": "Kenrich Williams",
+      "player_id": 1629026
+    },
+    {
+      "fanduel_name": "Kentavious Caldwell-Pope",
+      "model_name": "Kentavious Caldwell-Pope",
+      "player_id": 203484
+    },
+    {
+      "fanduel_name": "Kevin Durant",
+      "model_name": "Kevin Durant",
+      "player_id": 201142
+    },
+    {
+      "fanduel_name": "Kevin Huerter",
+      "model_name": "Kevin Huerter",
+      "player_id": 1628989
+    },
+    {
+      "fanduel_name": "Keyonte George",
+      "model_name": "Keyonte George",
+      "player_id": 1641718
+    },
+    {
+      "fanduel_name": "Kingston Flemings",
+      "model_name": "Kingston Flemings",
+      "player_id": 1643412
+    },
+    {
+      "fanduel_name": "Klay Thompson",
+      "model_name": "Klay Thompson",
+      "player_id": 202691
+    },
+    {
+      "fanduel_name": "Kris Dunn",
+      "model_name": "Kris Dunn",
+      "player_id": 1627739
+    },
+    {
+      "fanduel_name": "Kyle Kuzma",
+      "model_name": "Kyle Kuzma",
+      "player_id": 1628398
+    },
+    {
+      "fanduel_name": "Kyrie Irving",
+      "model_name": "Kyrie Irving",
+      "player_id": 202681
+    },
+    {
+      "fanduel_name": "Kyshawn George",
+      "model_name": "Kyshawn George",
+      "player_id": 1642273
+    },
+    {
+      "fanduel_name": "LaMelo Ball",
+      "model_name": "LaMelo Ball",
+      "player_id": 1630163
+    },
+    {
+      "fanduel_name": "Landry Shamet",
+      "model_name": "Landry Shamet",
+      "player_id": 1629013
+    },
+    {
+      "fanduel_name": "LeBron James",
+      "model_name": "LeBron James",
+      "player_id": 2544
+    },
+    {
+      "fanduel_name": "Luguentz Dort",
+      "model_name": "Luguentz Dort",
+      "player_id": 1629652
+    },
+    {
+      "fanduel_name": "Luka Doncic",
+      "model_name": "Luka Don\u010di\u0107",
+      "player_id": 1629029
+    },
+    {
+      "fanduel_name": "Malik Monk",
+      "model_name": "Malik Monk",
+      "player_id": 1628370
+    },
+    {
+      "fanduel_name": "Marcus Smart",
+      "model_name": "Marcus Smart",
+      "player_id": 203935
+    },
+    {
+      "fanduel_name": "Matas Buzelis",
+      "model_name": "Matas Buzelis",
+      "player_id": 1641824
+    },
+    {
+      "fanduel_name": "Matisse Thybulle",
+      "model_name": "Matisse Thybulle",
+      "player_id": 1629680
+    },
+    {
+      "fanduel_name": "Michael Porter Jr",
+      "model_name": "Michael Porter Jr.",
+      "player_id": 1629008
+    },
+    {
+      "fanduel_name": "Mikal Bridges",
+      "model_name": "Mikal Bridges",
+      "player_id": 1628969
+    },
+    {
+      "fanduel_name": "Mikel Brown Jr.",
+      "model_name": "Mikel Brown Jr.",
+      "player_id": 1643414
+    },
+    {
+      "fanduel_name": "Miles Bridges",
+      "model_name": "Miles Bridges",
+      "player_id": 1628970
+    },
+    {
+      "fanduel_name": "Moussa Diabate",
+      "model_name": "Moussa Diabat\u00e9",
+      "player_id": 1631217
+    },
+    {
+      "fanduel_name": "Myles Turner",
+      "model_name": "Myles Turner",
+      "player_id": 1626167
+    },
+    {
+      "fanduel_name": "Nate Ament",
+      "model_name": "Nate Ament",
+      "player_id": 1643417
+    },
+    {
+      "fanduel_name": "Naz Reid",
+      "model_name": "Naz Reid",
+      "player_id": 1629675
+    },
+    {
+      "fanduel_name": "Neemias Queta",
+      "model_name": "Neemias Queta",
+      "player_id": 1629674
+    },
+    {
+      "fanduel_name": "Nic Claxton",
+      "model_name": "Nic Claxton",
+      "player_id": 1629651
+    },
+    {
+      "fanduel_name": "Nickeil Alexander-Walker",
+      "model_name": "Nickeil Alexander-Walker",
+      "player_id": 1629638
+    },
+    {
+      "fanduel_name": "Nikola Jokic",
+      "model_name": "Nikola Joki\u0107",
+      "player_id": 203999
+    },
+    {
+      "fanduel_name": "Nolan Traore",
+      "model_name": "Nolan Traore",
+      "player_id": 1642849
+    },
+    {
+      "fanduel_name": "Norman Powell",
+      "model_name": "Norman Powell",
+      "player_id": 1626181
+    },
+    {
+      "fanduel_name": "OG Anunoby",
+      "model_name": "OG Anunoby",
+      "player_id": 1628384
+    },
+    {
+      "fanduel_name": "Onyeka Okongwu",
+      "model_name": "Onyeka Okongwu",
+      "player_id": 1630168
+    },
+    {
+      "fanduel_name": "Oso Ighodaro",
+      "model_name": "Oso Ighodaro",
+      "player_id": 1642345
+    },
+    {
+      "fanduel_name": "P.J. Washington",
+      "model_name": "P.J. Washington",
+      "player_id": 1629023
+    },
+    {
+      "fanduel_name": "Pascal Siakam",
+      "model_name": "Pascal Siakam",
+      "player_id": 1627783
+    },
+    {
+      "fanduel_name": "Paul George",
+      "model_name": "Paul George",
+      "player_id": 202331
+    },
+    {
+      "fanduel_name": "Paul Reed Jr",
+      "model_name": "Paul Reed",
+      "player_id": 1630194
+    },
+    {
+      "fanduel_name": "Payton Pritchard",
+      "model_name": "Payton Pritchard",
+      "player_id": 1630202
+    },
+    {
+      "fanduel_name": "Pelle Larsson",
+      "model_name": "Pelle Larsson",
+      "player_id": 1641796
+    },
+    {
+      "fanduel_name": "Peyton Watson",
+      "model_name": "Peyton Watson",
+      "player_id": 1631212
+    },
+    {
+      "fanduel_name": "Quentin Grimes",
+      "model_name": "Quentin Grimes",
+      "player_id": 1629656
+    },
+    {
+      "fanduel_name": "Royce O'Neale",
+      "model_name": "Royce O'Neale",
+      "player_id": 1626220
+    },
+    {
+      "fanduel_name": "Rudy Gobert",
+      "model_name": "Rudy Gobert",
+      "player_id": 203497
+    },
+    {
+      "fanduel_name": "Rui Hachimura",
+      "model_name": "Rui Hachimura",
+      "player_id": 1629060
+    },
+    {
+      "fanduel_name": "Ryan Rollins",
+      "model_name": "Ryan Rollins",
+      "player_id": 1631157
+    },
+    {
+      "fanduel_name": "Saddiq Bey",
+      "model_name": "Saddiq Bey",
+      "player_id": 1630180
+    },
+    {
+      "fanduel_name": "Sam Hauser",
+      "model_name": "Sam Hauser",
+      "player_id": 1630573
+    },
+    {
+      "fanduel_name": "Sandro Mamukelashvili",
+      "model_name": "Sandro Mamukelashvili",
+      "player_id": 1630572
+    },
+    {
+      "fanduel_name": "Santi Aldama",
+      "model_name": "Santi Aldama",
+      "player_id": 1630583
+    },
+    {
+      "fanduel_name": "Scoot Henderson",
+      "model_name": "Scoot Henderson",
+      "player_id": 1630703
+    },
+    {
+      "fanduel_name": "Scottie Barnes",
+      "model_name": "Scottie Barnes",
+      "player_id": 1630567
+    },
+    {
+      "fanduel_name": "Shai Gilgeous-Alexander",
+      "model_name": "Shai Gilgeous-Alexander",
+      "player_id": 1628983
+    },
+    {
+      "fanduel_name": "Sidy Cissoko",
+      "model_name": "Sidy Cissoko",
+      "player_id": 1631321
+    },
+    {
+      "fanduel_name": "Sion James",
+      "model_name": "Sion James",
+      "player_id": 1642883
+    },
+    {
+      "fanduel_name": "Stephon Castle",
+      "model_name": "Stephon Castle",
+      "player_id": 1642264
+    },
+    {
+      "fanduel_name": "Tari Eason",
+      "model_name": "Tari Eason",
+      "player_id": 1631106
+    },
+    {
+      "fanduel_name": "Taylor Hendricks",
+      "model_name": "Taylor Hendricks",
+      "player_id": 1641707
+    },
+    {
+      "fanduel_name": "Terrence Shannon Jr.",
+      "model_name": "Terrence Shannon Jr.",
+      "player_id": 1630545
+    },
+    {
+      "fanduel_name": "Toumani Camara",
+      "model_name": "Toumani Camara",
+      "player_id": 1641739
+    },
+    {
+      "fanduel_name": "Trae Young",
+      "model_name": "Trae Young",
+      "player_id": 1629027
+    },
+    {
+      "fanduel_name": "Tre Jones",
+      "model_name": "Tre Jones",
+      "player_id": 1630200
+    },
+    {
+      "fanduel_name": "Trevon Brazile",
+      "model_name": "Trevon Brazile",
+      "player_id": 1642350
+    },
+    {
+      "fanduel_name": "Trey Lyles",
+      "model_name": "Trey Lyles",
+      "player_id": 1626168
+    },
+    {
+      "fanduel_name": "Trey Murphy III",
+      "model_name": "Trey Murphy III",
+      "player_id": 1630530
+    },
+    {
+      "fanduel_name": "Tristan da Silva",
+      "model_name": "Tristan da Silva",
+      "player_id": 1641783
+    },
+    {
+      "fanduel_name": "Tyler Herro",
+      "model_name": "Tyler Herro",
+      "player_id": 1629639
+    },
+    {
+      "fanduel_name": "Tyrese Maxey",
+      "model_name": "Tyrese Maxey",
+      "player_id": 1630178
+    },
+    {
+      "fanduel_name": "Tyrese Proctor",
+      "model_name": "Tyrese Proctor",
+      "player_id": 1642878
+    },
+    {
+      "fanduel_name": "VJ Edgecombe",
+      "model_name": "VJ Edgecombe",
+      "player_id": 1642845
+    },
+    {
+      "fanduel_name": "Victor Wembanyama",
+      "model_name": "Victor Wembanyama",
+      "player_id": 1641705
+    },
+    {
+      "fanduel_name": "Walker Kessler",
+      "model_name": "Walker Kessler",
+      "player_id": 1631117
+    },
+    {
+      "fanduel_name": "Wendell Carter Jr",
+      "model_name": "Wendell Carter Jr.",
+      "player_id": 1628976
+    },
+    {
+      "fanduel_name": "Will Richard",
+      "model_name": "Will Richard",
+      "player_id": 1642954
+    },
+    {
+      "fanduel_name": "Yaxel Lendeborg",
+      "model_name": "Yaxel Lendeborg",
+      "player_id": 1642865
+    },
+    {
+      "fanduel_name": "Yves Missi",
+      "model_name": "Yves Missi",
+      "player_id": 1642274
+    },
+    {
+      "fanduel_name": "Zaccharie Risacher",
+      "model_name": "Zaccharie Risacher",
+      "player_id": 1642258
+    },
+    {
+      "fanduel_name": "Zach LaVine",
+      "model_name": "Zach LaVine",
+      "player_id": 203897
+    },
+    {
+      "fanduel_name": "Ziaire Williams",
+      "model_name": "Ziaire Williams",
+      "player_id": 1630533
+    },
+    {
+      "fanduel_name": "Zion Williamson",
+      "model_name": "Zion Williamson",
+      "player_id": 1629627
+    }
+  ]
+}

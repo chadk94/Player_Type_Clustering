@@ -162,6 +162,17 @@ duplicate snapshots, manual variants and exact result matching.
 
 ### Sportsbook comparison and juice-adjusted totals
 
+Sportsbook player matching preserves exact normalized names and adds only reviewed
+aliases: Herb Jones → Herbert Jones, Paul Reed Jr → Paul Reed, and Derrick Jones →
+Derrick Jones Jr. These aliases apply to main comparisons and FanDuel alternate-price
+lookups without renaming roster profiles or saved picks. Ambiguous roster matches
+remain excluded; suffixes are not stripped globally and fuzzy matching is not used.
+The November 20 audit checked 198 quoted names against 545 profiles across all 30
+teams: all supported main markets for today's nine games, plus points/rebounds/assists
+from eight November 18–19 games covering the other teams. Every quoted identity now
+matches; players without quotes in these snapshots remain unverified against FanDuel.
+The public-name regression fixture is `tests/fixtures/fanduel_player_names_2026-11-20.json`.
+
 Player vs Opponent also includes **PF (personal fouls committed)** with a baseline,
 matchup rating and projection. Foul rates use the same projected minutes (including
 the manual slider) and game-5 season blend as the other stats. The defensive

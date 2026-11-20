@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from live_projections import name_key
 from play_identity import prop_id
-from sportsbook_lines import BOOKS, MARKETS, TEAM_NAMES, OddsFeedError, american_probability, game_quotes, read_feed
+from sportsbook_lines import BOOKS, MARKETS, TEAM_NAMES, OddsFeedError, american_probability, game_quotes, read_feed, sportsbook_player_key
 
 DENVER = ZoneInfo('America/Denver')
 CONFIDENCE_TIERS = {5: 'Low', 10: 'Medium', 15: 'High'}
@@ -109,7 +109,7 @@ def alternate_prices(event, now):
                         continue
                 except (TypeError, ValueError, KeyError):
                     continue
-                player = name_key(outcome['description'])
+                player = sportsbook_player_key(outcome['description'])
                 prices[player, stat, side][line].add(int(odds))
                 if stat == 'PTS':
                     market_id, runner = _fanduel_ids(outcome)
@@ -123,7 +123,7 @@ def alternate_prices(event, now):
 def next_over(pick, prices):
     if pick['side'] != 'Over':
         return None
-    ladder = prices.get((name_key(pick['player']), pick['stat'], 'Over'), {})
+    ladder = prices.get((sportsbook_player_key(pick['player']), pick['stat'], 'Over'), {})
     if pick['stat'] == '3PM':
         target = pick['line'] + 1
     else:
@@ -136,7 +136,7 @@ def next_over(pick, prices):
 
 
 def shopping_prices(pick, ladders):
-    name, stat, side = name_key(pick['player']), pick['stat'], pick['side']
+    name, stat, side = sportsbook_player_key(pick['player']), pick['stat'], pick['side']
     ladder = ladders.get((name, stat, side), {})
     offers = [{'line':line, 'odds':next(iter(prices))} for line, prices in sorted(ladder.items())
               if len(prices) == 1 and (line > pick['line'] if side == 'Over' else line < pick['line'])]

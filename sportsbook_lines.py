@@ -23,8 +23,19 @@ MIN_STEALS_BLOCKS_UNDER_ODDS = -160
 EVENT_TIME_TOLERANCE = pd.Timedelta(minutes=30)
 TEAM_NAMES = {team['full_name']:team['abbreviation'] for team in get_teams()}
 TEAM_NAMES.update({'Los Angeles Clippers':'LAC','LA Clippers':'LAC'})
-# Verified sportsbook nickname; keep roster names and saved player identities intact.
-SPORTSBOOK_PLAYER_ALIASES = {'herb jones': 'herbert jones'}
+# Verified FanDuel aliases from the November 20 league-wide quote audit.
+# Only book lookups use these; roster names, NBA IDs and saved picks stay intact.
+SPORTSBOOK_PLAYER_ALIASES = {
+    'herb jones': 'herbert jones',          # NBA 1630529
+    'paul reed jr': 'paul reed',           # NBA 1630194
+    'derrick jones': 'derrick jones jr',    # NBA 1627884
+}
+
+
+def sportsbook_player_key(name):
+    """Resolve reviewed aliases without fuzzy matching or stripping all suffixes."""
+    normalized = name_key(name)
+    return SPORTSBOOK_PLAYER_ALIASES.get(normalized, normalized)
 
 
 class OddsFeedError(Exception):
@@ -112,7 +123,7 @@ def game_quotes(payload, player_names, book_key, now=None, max_age_seconds=900):
     rows = {name_key(name): _empty_quotes() for name in player_names}
     targets = {}
     for player in rows:
-        canonical = SPORTSBOOK_PLAYER_ALIASES.get(player, player)
+        canonical = sportsbook_player_key(player)
         targets.setdefault(canonical, []).append(player)
     for book in payload.get('bookmakers',[]):
         if book.get('key')!=book_key:
@@ -124,7 +135,7 @@ def game_quotes(payload, player_names, book_key, now=None, max_age_seconds=900):
             by_player={}
             for outcome in market.get('outcomes',[]):
                 player = name_key(outcome.get('description',''))
-                candidates = targets.get(SPORTSBOOK_PLAYER_ALIASES.get(player, player), [])
+                candidates = targets.get(sportsbook_player_key(player), [])
                 # Never choose between two roster profiles sharing an alias.
                 if len(candidates) != 1:
                     continue
