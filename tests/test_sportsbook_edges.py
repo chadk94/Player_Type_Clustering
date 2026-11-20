@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 from sportsbook_edges import add_play_ev, game_edges, scheduled_book_games
-from sportsbook_lines import OddsFeedError, implied_total
+from sportsbook_lines import OddsFeedError, implied_total, game_quotes
 from import_minutes import TEAM_IDS
 
 
@@ -56,6 +56,23 @@ class GameEdgeTests(unittest.TestCase):
         self.assertEqual(set(ranked.Team),{'NYK','PHI'})
         self.assertEqual(set(ranked.Play),{'Over','Under'})
         self.assertEqual(set(ranked.Stat),{'3PM'})
+
+    def test_herb_quote_reaches_herbert_edges_with_original_player_identity(self):
+        players=self.players.iloc[:1].assign(PLAYER_ID=1630529,Player='Herbert Jones',FG3M=1.8)
+        self.payload['bookmakers'][0]['markets'][0]['outcomes']=[
+            dict(description='Herb Jones',name=side,point=1.5,price=price)
+            for side,price in [('Over',144),('Under',-192)]]
+        cached=game_quotes(self.payload,players.Player,'fanduel',now=self.now)
+        for quotes in (None,cached):
+            ranked,total=game_edges(players,self.payload,self.event,'fanduel',now=self.now,quotes_by_player=quotes)
+            self.assertEqual(total,1)
+            row=ranked.iloc[0]
+            self.assertEqual(row.Player,'Herbert Jones')
+            self.assertEqual(row.PLAYER_ID,1630529)
+            self.assertEqual(row.Play,'Over')
+            self.assertEqual(row.Projected,1.8)
+            self.assertEqual(row['Over odds'],144)
+            self.assertGreater(row['Edge %'],30)
 
     def test_matchup_ratings_use_opponent_lift_not_sportsbook_edge(self):
         self.players['FG3A']=8.

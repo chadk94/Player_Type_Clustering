@@ -23,6 +23,8 @@ MIN_STEALS_BLOCKS_UNDER_ODDS = -160
 EVENT_TIME_TOLERANCE = pd.Timedelta(minutes=30)
 TEAM_NAMES = {team['full_name']:team['abbreviation'] for team in get_teams()}
 TEAM_NAMES.update({'Los Angeles Clippers':'LAC','LA Clippers':'LAC'})
+# Verified sportsbook nickname; keep roster names and saved player identities intact.
+SPORTSBOOK_PLAYER_ALIASES = {'herb jones': 'herbert jones'}
 
 
 class OddsFeedError(Exception):
@@ -108,6 +110,10 @@ def game_quotes(payload, player_names, book_key, now=None, max_age_seconds=900):
     """Parse each outcome once and apply the freshness check at this render's clock."""
     now = now or datetime.now(timezone.utc)
     rows = {name_key(name): _empty_quotes() for name in player_names}
+    targets = {}
+    for player in rows:
+        canonical = SPORTSBOOK_PLAYER_ALIASES.get(player, player)
+        targets.setdefault(canonical, []).append(player)
     for book in payload.get('bookmakers',[]):
         if book.get('key')!=book_key:
             continue
@@ -118,8 +124,11 @@ def game_quotes(payload, player_names, book_key, now=None, max_age_seconds=900):
             by_player={}
             for outcome in market.get('outcomes',[]):
                 player = name_key(outcome.get('description',''))
-                if player not in rows:
+                candidates = targets.get(SPORTSBOOK_PLAYER_ALIASES.get(player, player), [])
+                # Never choose between two roster profiles sharing an alias.
+                if len(candidates) != 1:
                     continue
+                player = candidates[0]
                 if outcome.get('name') not in ['Over','Under']:
                     continue
                 try:

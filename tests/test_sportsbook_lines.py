@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import poisson
 from sportsbook_lines import (american_probability,fair_over_probability,implied_total,
-    next_matchup,player_quotes,compare_with_book,comparison_style,read_feed,OddsFeedError)
+    next_matchup,player_quotes,game_quotes,compare_with_book,comparison_style,read_feed,OddsFeedError)
 
 
 class SportsbookTests(unittest.TestCase):
@@ -44,6 +44,29 @@ class SportsbookTests(unittest.TestCase):
         self.assertTrue(pd.isna(q.loc['TOV','Book implied total']))
         self.assertTrue(player_quotes(self.payload,'Other Player','fanduel',now=self.now)['Book implied total'].isna().all())
         self.assertTrue(player_quotes(self.payload,'Jalen Brunson','draftkings',now=self.now)['Book implied total'].isna().all())
+
+    def test_herb_jones_quote_matches_herbert_profile_without_changing_identity(self):
+        for book_name,model_name in [('Herb Jones','Herbert Jones'),('Herbert Jones','Herb Jones')]:
+            with self.subTest(book_name=book_name):
+                self.market['outcomes']=[dict(description=book_name,name=side,point=1.5,price=price)
+                    for side,price in [('Over',144),('Under',-192)]]
+                quotes=game_quotes(self.payload,[model_name,'Other Jones'],'fanduel',now=self.now)
+                self.assertEqual(set(quotes),{model_name.lower(),'other jones'})
+                q=quotes[model_name.lower()]
+                row=q.set_index('Stat').loc['3PM']
+                self.assertEqual(row['Market status'],'Current')
+                self.assertEqual(row['Over odds'],144)
+                result=compare_with_book(pd.DataFrame(dict(Stat=['3PM'],Projected=[1.8])),q).iloc[0]
+                self.assertEqual(result.Play,'Over')
+                self.assertGreater(result['Edge %'],30)
+                self.assertTrue(quotes['other jones']['Book implied total'].isna().all())
+
+    def test_alias_does_not_merge_ambiguous_profiles_or_suffixes(self):
+        for outcome in self.market['outcomes']:outcome['description']='Herb Jones'
+        ambiguous=game_quotes(self.payload,['Herb Jones','Herbert Jones'],'fanduel',now=self.now)
+        self.assertTrue(all(q['Book implied total'].isna().all() for q in ambiguous.values()))
+        suffixed=player_quotes(self.payload,'Herbert Jones Jr.','fanduel',now=self.now)
+        self.assertTrue(suffixed['Book implied total'].isna().all())
 
     def test_stale_one_sided_mismatched_and_duplicate_prices_not_compared(self):
         self.market['last_update']=(self.now-timedelta(minutes=16)).isoformat()
