@@ -1602,6 +1602,19 @@ unvalidated sensitivity thresholds. The default **All plays** view retains every
 row; **More robust plays**, **Waiting on news**, and **Needs review / unchecked** only filter
 visibility. Click the orange **Minutes risk**, purple **ROLE** and blue **Q** badges for evidence.
 A gray question mark means a check is unavailable, never that it passed.
+The red **History** badge is an informational head-to-head warning using up to five
+recent meetings from this season and last season, while playing for the current
+team with at least ten minutes. At least three meetings are required. It appears only when at least 75%
+of those games and the sample average oppose the recommended side of today's actual
+sportsbook line. Pushes count in the sample but never as contrary results. The popup
+shows dates, actual totals and minutes, with the rules under Technical details.
+These are comparisons to today's line, not historical bet results or a probability.
+Missing stats, unverified player IDs and samples below three games do not produce a
+warning or count as evidence supporting a bet. Prior-team games, future games and
+conflicting duplicate box scores are excluded. Threes use actual makes for this
+line comparison; the attempt-based matchup rating is unchanged. Public logs are
+indexed once per dashboard data snapshot with no extra network requests. Projections,
+probabilities, edge ordering, the More robust filter and saved plays are unchanged.
 Selecting **More robust plays** reviews all verified upcoming games for the selected
 date and sportsbook and shows one table, grouped by each player's strongest Edge %.
 The full-slate count stays visible before player/stat/direction filters; game labels,

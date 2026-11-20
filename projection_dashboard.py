@@ -36,6 +36,7 @@ from sportsbook_edges import scheduled_book_games, game_edges, filter_game_edges
 from sportsbook_injuries import KEY_MINUTES, game_injuries, injury_alert_changes, latest_report, pending_key_players
 from edge_rating_table import group_player_edges, render_edge_table
 from edge_review import assess_edges, filter_review, unavailable_review, REVIEW_VIEWS
+from opponent_history import history_index, add_opponent_history
 from edge_review_sources import MinutesReferenceFeed, parse_minutes, review_passing
 from tabs_minutes import render_tabs_comparison, export_day
 from tabs_minutes_status import render_tabs_minutes_status
@@ -271,6 +272,13 @@ def current_matchup_logs(year, team_records):
 def prior_matchup_effects(roster, role_policy_version):
     logs = pd.read_csv(ROOT / 'data' / 'game_logs_2026.csv.gz', dtype={'GAME_ID':str,'ESPN_PLAYER_ID':str})
     return matchup_effects(assign_game_archetypes(logs, roster))
+
+
+@st.cache_data(max_entries=2, show_spinner=False)
+def opponent_history_index(logs, prior_version):
+    """Public history only; no extra API calls or per-player box-score downloads."""
+    prior = pd.read_csv(ROOT / 'data' / 'game_logs_2026.csv.gz', dtype={'GAME_ID':str,'ESPN_PLAYER_ID':str})
+    return history_index(logs, prior)
 
 
 @st.cache_data(max_entries=4, show_spinner=False)
@@ -1383,14 +1391,21 @@ def render_live_dashboard(ui, roster):
     # Logs/matches belong to this immutable dashboard snapshot. Reuse role checks
     # across game switches; new minutes, quotes, passing or injury inputs miss.
     log_deadlines = tuple(pd.to_datetime(logs.GAME_DATE, utc=True, errors='coerce').dropna().astype('int64').unique()) if not logs.empty else ()
+    head_to_head = None
     def reviewed_game(edges, combined, game, base, book, api_key):
         refs, info, stamp, passing = edge_review_inputs(game, roster, base, approved_bundle, logs, matched_players)
         cases = source_minutes_cases(game, book, api_key)
         now = pd.Timestamp.now(tz='UTC')
         key = (edges, combined, game, refs, info, stamp, passing, cases, now.year, now.month < 7)
+        def calculate_review():
+            nonlocal head_to_head
+            result = assess_edges(edges, combined, game, logs, matched_players, refs, info, stamp,
+                                  now, passing=passing, minutes_cases=cases)
+            if head_to_head is None:
+                head_to_head = opponent_history_index(logs, (ROOT / 'data' / 'game_logs_2026.csv.gz').stat().st_mtime_ns)
+            return add_opponent_history(result, head_to_head, matched_players, min(now, pd.Timestamp(game['GameTimeUTC'])))
         result = review_cache.get(key, now,
-            lambda: assess_edges(edges, combined, game, logs, matched_players, refs, info, stamp,
-                                 now, passing=passing, minutes_cases=cases),
+            calculate_review,
             lambda: (*source_deadlines(refs, stamp), *log_deadlines, pd.Timestamp(game['GameTimeUTC']).value))
         result['Review captured UTC'] = now.isoformat()
         return result
@@ -1511,6 +1526,7 @@ def render_live_dashboard(ui, roster):
         with ui.expander('Slate coverage and review details'):
             ui.dataframe(pd.DataFrame(coverage), hide_index=True, width='stretch')
             ui.caption('Unchecked counts can overlap. More robust uses the same minutes, role, injury and >5% stress-test requirements as the individual-game view. Projections and probabilities are unchanged.')
+            ui.caption('History badges are a separate informational check of recent results against today’s line. They do not change the More robust filter.')
             if not review.empty:
                 ui.download_button('Download full-slate review', review.to_csv(index=False),
                                    f'slate-review-{day}.csv', 'text/csv', key='edge_review_slate_download')
@@ -1560,6 +1576,7 @@ def render_live_dashboard(ui, roster):
             plays_only = ui.checkbox('Only show plays above 5% edge',value=True,key='edges_plays_only')
             review_view = ui.pills('Play review',REVIEW_VIEWS,default='All plays',selection_mode='single',key='edges_review_view') or 'All plays'
             ui.caption('🟠 Minutes risk: the play fails with your minutes or TabsNBA’s · Gray Minutes unverified: a full source rotation is missing · 🟣 ROLE: recent role works against the bet · 🔵 Q: availability could hurt this bet. Click a badge for details. More robust requires more than 5% edge under both sources and the role checks.')
+            ui.caption('🔴 History: recent results against this opponent run against today’s pick. Informational only; projections and filters are unchanged.')
             if ui.button('Refresh review checks',key='edges_review_refresh',help='Read any completed background minutes and passing updates. Your model projections stay unchanged.'):
                 review_cache.clear()
                 rotation_plan_cache.clear()
@@ -1643,8 +1660,10 @@ def render_live_dashboard(ui, roster):
                         ui.write('Role: compare up to 5 recent appearances with up to 10 preceding appearances, holding shooting conversion and minutes fixed. Points use shot/free-throw volume; threes use attempts; assists use verified potential assists and passes made. At least 3 recent and 5 preceding games are required. Rebounds compare the last 5 appearances with the preceding 5–10, using rebounds per minute; a 20% decline flags Overs and a 20% increase flags Unders. The rebound comparison uses the recent rate at your projected minutes, without changing the main model. Steal and block role checks remain unchecked. Other role scenarios retain team targets and normalized archetype effects.')
                         ui.write('Q flags: a key questionable or doubtful teammate flags Unders. For Overs, it flags when that teammate is excluded (0 minutes) or their rotation minutes are unknown; positive projected minutes count as already included. The player’s own questionable/doubtful status, opponent uncertainty and Out players still assigned minutes flag both directions. The game banner keeps all key unresolved players visible, including those that do not flag a particular bet. This is a screening rule, not an estimated injury boost.')
                         ui.write('More robust: the blended projection, each source rotation, recent-role projection and both source-plus-role scenarios must each retain more than 5% directional edge. Both teams need complete injury reports no older than 30 minutes and no adverse availability warning. Missing branches are not guessed. These are sensitivity checks, not a backtested selection rule.')
+                        ui.write('History: up to 5 recent meetings from this season and last season, playing for the player’s current team with at least 10 minutes. Flags require at least 3 meetings, 75% or more against the recommended side of today’s actual sportsbook line, and an average also against it. Pushes do not count against the pick. Sparse or missing history creates no warning and is not treated as supporting the bet. The popup shows dates, totals and minutes. This informational check does not change projections, ratings, rankings or the More robust filter.')
                         if not reviewed.empty:
                             detail_cols=['Player','Team','Stat','Play','Review group','Projected','Projected minutes','Reference minutes','Minutes difference','Reference source','Minutes test projection','Minutes test edge %','Recent test projection','Recent test edge %','Rebound trend %','Combined test projection','Combined test edge %','Minutes detail','Role detail','Injury detail','Review detail']
+                            detail_cols += [c for c in ['History flag','History games','History detail','History technical'] if c in reviewed]
                             ui.dataframe(reviewed[detail_cols],hide_index=True,width='stretch')
                             ui.download_button('Download review snapshot',reviewed.to_csv(index=False),file_name=f'edge-review-{edge_date}-{game["Away"]}-{game["Home"]}.csv',mime='text/csv',key='edge_review_download')
                     with ui.expander('Game projection coverage'):

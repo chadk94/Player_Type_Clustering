@@ -73,6 +73,7 @@ td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; paddin
 .review-minutes { color:#713a00; background:#ffdfad; }
 .review-role { color:#56249b; background:#eadcff; }
 .review-injury { color:#134f91; background:#d4eaff; }
+.review-history { color:#8c2037; background:#ffe0e7; }
 .review-unchecked { color:#535b67; background:#e8eaee; }
 .review-clear { color:#175538; background:#d7eee1; }
 .saved-play td:first-child { box-shadow: inset 3px 0 var(--st-primary-color, #25785c); }
