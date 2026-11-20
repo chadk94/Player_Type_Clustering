@@ -1602,12 +1602,14 @@ unvalidated sensitivity thresholds. The default **All plays** view retains every
 row; **More robust plays**, **Waiting on news**, and **Needs review / unchecked** only filter
 visibility. Click the orange **Minutes risk**, purple **ROLE** and blue **Q** badges for evidence.
 A gray question mark means a check is unavailable, never that it passed.
-The red **History** badge is an informational head-to-head warning using up to five
+The **History** badges are informational head-to-head signals using up to five
 recent meetings from this season and last season, while playing for the current
-team with at least ten minutes. At least three meetings are required. It appears only when at least 75%
-of those games and the sample average oppose the recommended side of today's actual
-sportsbook line. Pushes count in the sample but never as contrary results. The popup
-shows dates, actual totals and minutes, with the rules under Technical details.
+team with at least ten minutes. At least three meetings are required. Red **History −**
+requires at least 75% of results and the average to oppose today's recommended side;
+green **History +** requires the same threshold in support of it. Pushes count in the
+sample but support neither side. Compact 14px popups show MM/DD/YY dates, abbreviated
+stats (Pts, Reb, Ast, 3PM, Stl, Blk, PRA), minutes and O/U/P against today's line.
+The longer rules remain under Technical details. Other popup font sizes are unchanged.
 These are comparisons to today's line, not historical bet results or a probability.
 Missing stats, unverified player IDs and samples below three games do not produce a
 warning or count as evidence supporting a bet. Prior-team games, future games and

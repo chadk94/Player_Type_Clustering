@@ -7,7 +7,9 @@ class Element {
     constructor(tag) {
         this.tag = tag; this.children = []; this.attributes = {}; this.style = {}; this.dataset = {};
         this.open = false; this.shows = 0; this.hides = 0;
-        this.classList = {add: () => {}, toggle: () => {}};
+        this.classes = new Set();
+        this.classList = {add: name => this.classes.add(name),
+            toggle: (name, enabled) => enabled ? this.classes.add(name) : this.classes.delete(name)};
     }
     append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } }
     replaceChildren(...children) { this.children = []; this.text = ''; this.append(...children); }
@@ -37,7 +39,7 @@ class Element {
     hidePopover() { this.open = false; this.hides++; }
 }
 
-function fixture(shared = false) {
+function fixture(shared = false, reviews = false) {
     if (!shared) {
         globalThis.document = new EventTarget();
         document.createElement = tag => new Element(tag);
@@ -53,6 +55,15 @@ function fixture(shared = false) {
         data.rows.push({values, labels:values, styles:[], playerRowSpan:1, detail:role,
             matchup:{opponent:'MIA', note:'Test only', panels:[{title:role,columns:['Player','MIN','3PA'],
                 rows:Array.from({length:10},(_,i) => ({player:role+' peer '+i,date:'Nov 18',values:['30','5']}))}]}});
+    }
+    if (reviews) {
+        data.columns.push('Review flags');
+        data.rows.forEach((row, i) => {
+            row.values.push('History'); row.labels = [...row.values];
+            row.reviewBadges = [{label:i ? 'History −' : 'History +',
+                color:i ? 'history' : 'history-support', popupStyle:'history',
+                detail:i ? 'Opposes Under · 4/5 over 4.5' : 'Supports Over · 4/5 over 4.5', technical:'Sample rules'}];
+        });
     }
     const cleanup = render({data, parentElement:root});
     const button = name => root.find(el => el.getAttribute('aria-label') === name+' 3PM matchup rating 4');
@@ -118,4 +129,23 @@ test('a second team table cannot replace a pinned matchup on passive hover', () 
         assert.equal(second.tip.open, true);
         assert.match(second.tip.textContent, /Stretch Big peer 9/);
     } finally { first.cleanup(); second.cleanup(); }
+});
+
+test('both history colors use compact popups and reset style for other details', () => {
+    const f = fixture(false, true);
+    try {
+        for (const sign of ['+', '−']) {
+            const button = f.root.find(el => el.tag === 'button' && el.textContent === 'History '+sign);
+            f.hover(button);
+            assert.equal(f.tip.classes.has('history-popup'), true);
+            assert.match(f.tip.textContent, sign === '+' ? /Supports Over/ : /Opposes Under/);
+            button.onclick();
+            assert.equal(document.activeElement.tag, 'summary');
+            assert.equal(document.activeElement.textContent, 'Technical details');
+            f.dispatch('keydown', {key:'Escape'});
+        }
+        f.hover(f.guard);
+        assert.equal(f.tip.classes.has('history-popup'), false);
+        assert.match(f.tip.textContent, /Playmaker peer/);
+    } finally { f.cleanup(); }
 });

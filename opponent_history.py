@@ -1,4 +1,4 @@
-"""Informational head-to-head warnings; never change a forecast or selection rule."""
+"""Informational head-to-head signals; never change a forecast or selection rule."""
 import math
 
 import numpy as np
@@ -7,16 +7,18 @@ import pandas as pd
 MAX_GAMES = 5
 MIN_GAMES = 3
 MIN_MINUTES = 10
-CONTRARY_FRACTION = .75
+SIGNAL_FRACTION = .75
 STATS = {'PTS': ('PTS',), 'REB': ('REB',), 'AST': ('AST',),
          '3PM': ('FG3M',), 'STL': ('STL',), 'BLK': ('BLK',),
          'PRA': ('PTS', 'REB', 'AST')}
-UNITS = {'PTS': 'points', 'REB': 'rebounds', 'AST': 'assists', '3PM': 'threes',
-         'STL': 'steals', 'BLK': 'blocks', 'PRA': 'points + rebounds + assists'}
+UNITS = {'PTS': 'Pts', 'REB': 'Reb', 'AST': 'Ast', '3PM': '3PM',
+         'STL': 'Stl', 'BLK': 'Blk', 'PRA': 'PRA'}
 POLICY = ('Last 5 available meetings from this season and last season, playing for his current team; '
-          'at least 10 minutes played. A warning needs at least 3 games, 75% or more strictly '
-          'against today’s recommended side, and an average also against it. Ties are pushes, '
-          'not contrary results. These are actual totals compared with today’s line, not the '
+          'at least 10 minutes played. Either signal needs at least 3 games: green means 75% or more '
+          'support today’s recommended side, with the average also supporting it; red means 75% or more '
+          'oppose it, with the average also against it. Ties are pushes and count in the sample, '
+          'but support neither side. Dates are MM/DD/YY; O = over, U = under, P = push. '
+          'These are actual totals compared with today’s line, not the '
           'historical betting lines or a win-probability estimate. Minutes and lineups may differ. '
           'This is informational: projections, rankings and the More robust filter are unchanged.')
 
@@ -88,31 +90,34 @@ def history_check(row, index, observed, deadline):
         return dict(result, **{'History detail': 'Some recent head-to-head box-score stats are missing; no warning was inferred.'})
     totals = components.sum(axis=1)
     contrary = totals.lt(line) if side == 'Over' else totals.gt(line)
+    supportive = totals.gt(line) if side == 'Over' else totals.lt(line)
     average = float(totals.mean())
     against = average < line if side == 'Over' else average > line
-    warn = contrary.mean() >= CONTRARY_FRACTION and against
-    direction = 'below' if side == 'Over' else 'above'
+    in_favor = average > line if side == 'Over' else average < line
+    warn = contrary.mean() >= SIGNAL_FRACTION and against
+    supports = supportive.mean() >= SIGNAL_FRACTION and in_favor
     units = UNITS[stat]
     minutes = float(sample.MIN.mean())
-    summary = (f'{row.get("Player", "He")} finished {direction} today’s {line:g} {units} line '
-               f'in {int(contrary.sum())} of his last {len(sample)} meetings with {row.get("Opponent")}. '
-               f'Average: {average:.1f} {units} in {minutes:.1f} minutes.')
-    if warn:
-        summary = f'His recent results against {row.get("Opponent")} run against this {side}.\n' + summary
+    outcome_side = ('Under' if side == 'Over' else 'Over') if warn else side
+    count = int(contrary.sum() if warn else supportive.sum())
+    signal = 'Opposes' if warn else 'Supports' if supports else 'Mixed history for'
+    summary = (f'{row.get("Player", "Player")} vs {row.get("Opponent")} · {side[0]}{line:g} {units}\n'
+               f'{signal} {side} · {count}/{len(sample)} {outcome_side.lower()} {line:g}\n'
+               f'Avg {average:.1f} {units} · {minutes:.1f} min')
     try:
         current_minutes = float(row.get('Projected minutes'))
         if math.isfinite(current_minutes):
-            summary += f' Today’s projection uses {current_minutes:.1f} minutes.'
+            summary += f' (today {current_minutes:g})'
     except (TypeError, ValueError):
         pass
     games = []
     for (_, game), total in zip(sample.iterrows(), totals):
         day = game._date if game._day_only else game._date.tz_convert('America/New_York')
-        outcome = 'push' if total == line else 'under' if total < line else 'over'
-        games.append(f'{day:%b %d, %Y}: {total:g} {units} · {game.MIN:g} min · {outcome} {line:g}')
-    summary += '\n\nRecent meetings (newest first):\n' + '\n'.join(games)
-    summary += '\nDifferent minutes and lineups may explain the results; this is a review flag, not a new projection.'
-    return dict(result, **{'History flag': 'HISTORY' if warn else 'No warning', 'History detail': summary})
+        outcome = 'P' if total == line else 'U' if total < line else 'O'
+        games.append(f'{day:%m/%d/%y} · {total:g} {units} · {game.MIN:g} min · {outcome}')
+    summary += '\n\nRecent vs today’s line (newest first):\n' + '\n'.join(games)
+    return dict(result, **{'History flag': 'HISTORY' if warn else 'SUPPORTS' if supports else 'No warning',
+                          'History detail': summary})
 
 
 def add_opponent_history(edges, index, matches, deadline):
@@ -123,6 +128,7 @@ def add_opponent_history(edges, index, matches, deadline):
     for column in ['History flag', 'History games', 'History detail', 'History technical']:
         out[column] = [check[column] for check in checks]
     if 'Review flags' in out:
-        mask = out['History flag'].eq('HISTORY')
-        out.loc[mask, 'Review flags'] = out.loc[mask, 'Review flags'].astype(str) + ' · History'
+        for status, label in [('HISTORY', 'History −'), ('SUPPORTS', 'History +')]:
+            mask = out['History flag'].eq(status)
+            out.loc[mask, 'Review flags'] = out.loc[mask, 'Review flags'].astype(str) + ' · ' + label
     return out

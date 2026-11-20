@@ -65,6 +65,7 @@ export default function({data, parentElement}) {
         pinned = pin || (updatingOpenPanel && pinned);
         tip.replaceChildren(make('div', text));
         tip.classList.toggle('role-popup', !!technical);
+        tip.classList.toggle('history-popup', button.dataset.popupStyle === 'history');
         tip.classList.toggle('projection-popup', !!projection);
         tip.classList.toggle('matchup-popup', !!matchup);
         tip.setAttribute('role', technical || projection || matchup ? 'dialog' : 'tooltip');
@@ -303,6 +304,7 @@ export default function({data, parentElement}) {
                     for (const badge of row.reviewBadges || []) {
                         const button=make('button',badge.label);
                         button.type='button';button.className='review-badge review-'+badge.color;
+                        button.dataset.popupStyle=badge.popupStyle || '';
                         button.setAttribute('aria-label',badge.label+': '+badge.detail);
                         button.onpointerenter=e=>{if(e.pointerType!=='touch')show(button,badge.detail,badge.technical);};
                         button.onfocus=()=>show(button,badge.detail,badge.technical);

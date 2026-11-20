@@ -41,6 +41,10 @@ button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; bor
 .role-popup summary { cursor: pointer; font-weight: 600; }
 .role-popup summary:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .role-popup details > div { margin-top: .5rem; font-size: .9375rem; }
+.history-popup { max-width: min(25rem, calc(100vw - 16px)); padding: .6rem .75rem;
+    font-size: .875rem; line-height: 1.4; font-variant-numeric: tabular-nums; }
+.history-popup details { margin-top: .5rem; padding-top: .4rem; }
+.history-popup details > div { font-size: .8125rem; }
 .projection-popup { pointer-events: auto; width: 24rem; max-height: calc(100vh - 16px); overflow-y: auto; white-space: normal; }
 .projection-title { display: block; font-size: 1.125rem; }
 .projection-context { margin-top: .15rem; font-size: .9375rem; }
@@ -74,6 +78,7 @@ td .review-badge { display:inline-block; width:auto; margin:.1rem .12rem; paddin
 .review-role { color:#56249b; background:#eadcff; }
 .review-injury { color:#134f91; background:#d4eaff; }
 .review-history { color:#8c2037; background:#ffe0e7; }
+.review-history-support { color:#175538; background:#d7eee1; }
 .review-unchecked { color:#535b67; background:#e8eaee; }
 .review-clear { color:#175538; background:#d7eee1; }
 .saved-play td:first-child { box-shadow: inset 3px 0 var(--st-primary-color, #25785c); }

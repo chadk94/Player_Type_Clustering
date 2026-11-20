@@ -35,19 +35,19 @@ class OpponentHistoryTests(unittest.TestCase):
     def test_direction_line_average_and_pushes(self):
         result = check()
         self.assertEqual(result['History flag'], 'HISTORY')
-        self.assertIn('4 of his last 5', result['History detail'])
-        self.assertIn('15.2 points in 30.0 minutes', result['History detail'])
-        self.assertIn('Nov 19, 2026: 10 points', result['History detail'])
-        self.assertIn('32.0 minutes', result['History detail'])
-        self.assertEqual(check(prop(Play='Under'))['History flag'], 'No warning')
+        self.assertIn('Opposes Over · 4/5 under 20.5', result['History detail'])
+        self.assertIn('15.2 Pts · 30.0 min', result['History detail'])
+        self.assertIn('11/19/26 · 10 Pts', result['History detail'])
+        self.assertIn('(today 32)', result['History detail'])
+        self.assertEqual(check(prop(Play='Under'))['History flag'], 'SUPPORTS')
         self.assertEqual(check(prop(Play='Under'), boxes([30, 29, 28]))['History flag'], 'HISTORY')
         self.assertEqual(check(logs=boxes([10, 12, 25, 26, 27]))['History flag'], 'No warning')
         # A single enormous opposite result stops a flag if the average agrees.
         self.assertEqual(check(logs=boxes([19, 19, 19, 19, 50]))['History flag'], 'No warning')
         pushed = check(prop(**{'Book line': 20.}), boxes([10, 11, 12, 20]))
         self.assertEqual(pushed['History flag'], 'HISTORY')
-        self.assertIn('3 of his last 4', pushed['History detail'])
-        self.assertIn('push 20', pushed['History detail'])
+        self.assertIn('3/4 under 20', pushed['History detail'])
+        self.assertIn('20 Pts · 30 min · P', pushed['History detail'])
         self.assertEqual(check(prop(**{'Book line': 20.}), boxes([10, 10, 20, 20]))['History flag'], 'No warning')
 
     def test_only_current_team_opponent_and_last_five_before_tip(self):
@@ -57,9 +57,9 @@ class OpponentHistoryTests(unittest.TestCase):
         future = boxes([0], GAME_DATE='2026-11-21T00:00:00Z', GAME_ID='future')
         same_day = boxes([0], GAME_DATE='2026-11-20', GAME_ID='today')
         result = check(logs=pd.concat([good, other, opponent, future, same_day]))
-        self.assertEqual(result['History flag'], 'No warning')
+        self.assertEqual(result['History flag'], 'SUPPORTS')
         self.assertEqual(result['History games'], 5)
-        self.assertNotIn(': 0 points ·', result['History detail'])
+        self.assertNotIn(' · 0 Pts ·', result['History detail'])
         self.assertEqual(check(logs=boxes([1, 1, 1], MIN=9))['History flag'], 'Insufficient')
 
     def test_prior_season_allowed_older_season_excluded(self):
@@ -69,7 +69,7 @@ class OpponentHistoryTests(unittest.TestCase):
         result = check(logs=pd.concat([prior, old]))
         self.assertEqual(result['History flag'], 'HISTORY')
         self.assertEqual(result['History games'], 3)
-        self.assertIn('Apr 01, 2026', result['History detail'])
+        self.assertIn('04/01/26', result['History detail'])
 
     def test_insufficient_missing_ambiguous_and_invalid_data_never_warn(self):
         self.assertEqual(check(logs=boxes([0, 0]))['History flag'], 'Insufficient')
@@ -110,15 +110,41 @@ class OpponentHistoryTests(unittest.TestCase):
                                 pd.DataFrame([{'PLAYER_ID':1}]), {}, 'BOS',
                                 dict(id='demo', Away='BOS', Home='DET'), 'FanDuel', date(2026,11,20))
         badge = payload['rows'][0]['reviewBadges'][0]
-        self.assertEqual(badge['label'], 'History')
+        self.assertEqual(badge['label'], 'History −')
         self.assertEqual(badge['color'], 'history')
-        self.assertIn('Recent meetings', badge['detail'])
+        self.assertEqual(badge['popupStyle'], 'history')
+        self.assertIn('Recent vs today’s line', badge['detail'])
         self.assertIn('not the historical betting lines', badge['technical'])
         sparse = add_opponent_history(edges, {}, {1:MATCH}, NOW)
         sparse_payload = table_payload(sparse, ['Player','Stat','Play','Edge %','Review flags'],
             pd.DataFrame([{'PLAYER_ID':1}]), {}, 'BOS', dict(id='demo',Away='BOS',Home='DET'), 'FanDuel',date(2026,11,20))
-        self.assertFalse(any(b['label']=='History' for r in sparse_payload['rows'] for b in r['reviewBadges']))
+        self.assertFalse(any(b['label'].startswith('History') for r in sparse_payload['rows'] for b in r['reviewBadges']))
         self.assertTrue(add_opponent_history(edges.iloc[:0], {}, {}, NOW).empty)
+
+        under = edges.assign(Play='Under', **{'Signed edge %':-17.})
+        supported = add_opponent_history(under, history_index(boxes()), {1:MATCH}, NOW)
+        pd.testing.assert_frame_equal(supported[columns], under[columns])
+        green = table_payload(supported, ['Player','Stat','Play','Edge %','Review flags'],
+            pd.DataFrame([{'PLAYER_ID':1}]), {}, 'BOS', dict(id='demo',Away='BOS',Home='DET'), 'FanDuel',date(2026,11,20))
+        self.assertTrue(supported['History flag'].eq('SUPPORTS').all())
+        for entry in green['rows']:
+            badge = entry['reviewBadges'][0]
+            self.assertEqual(badge['label'], 'History +')
+            self.assertEqual(badge['color'], 'history-support')
+            self.assertEqual(badge['popupStyle'], 'history')
+            self.assertIn('Supports Under', badge['detail'])
+
+    def test_support_requires_same_minimum_count_fraction_and_average(self):
+        self.assertEqual(check(logs=boxes([30,29,28]))['History flag'], 'SUPPORTS')
+        self.assertEqual(check(logs=boxes([30,29]))['History flag'], 'Insufficient')
+        self.assertEqual(check(logs=boxes([30,29,28,10,10]))['History flag'], 'No warning')
+        self.assertEqual(check(logs=boxes([21,21,21,21,0]))['History flag'], 'No warning')
+        tied = prop(**{'Book line':20.})
+        self.assertEqual(check(tied, boxes([30,30,30,20]))['History flag'], 'SUPPORTS')
+        self.assertEqual(check(tied, boxes([30,30,30,20,20]))['History flag'], 'No warning')
+        self.assertEqual(check(tied, boxes([20,20,20]))['History flag'], 'No warning')
+        bad = boxes([30,30,30]);bad.loc[0,'PTS'] = np.nan
+        self.assertEqual(check(logs=bad)['History flag'], 'Unavailable')
 
 
 if __name__ == '__main__':
