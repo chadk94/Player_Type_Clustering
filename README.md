@@ -77,12 +77,29 @@ Rebuild the historical snapshot with `python matchup_data.py --year 2026 --cache
 ### Last saved sportsbook lines
 
 Player vs Opponent, Team Projections and Top Sportsbook Edges keep the last
-successful response for each exact request, sportsbook, event and account. If The
-Odds API fails (including exhausted allowance), the app uses that verified saved
-response for the same upcoming game. A visible **Saved lines — not live** warning
+successful response for each exact request, sportsbook, event and account. The first
+request retrieves missing prices. Paid responses then stay cached for one hour
+across tabs, sessions, browser reloads and **Refresh live data**. The projection
+views check automatically every hour while the browser session is open; opening
+or interacting with a view also retrieves any due prices. There is no background
+price polling after the app is closed. Minute sliders and display-only controls
+reuse their loaded snapshot.
+
+**Refresh sportsbook lines** overrides the hourly wait for the selected game/book.
+Player and Edges pages retrieve that game's standard props plus spread/total (up
+to 10 credits); Team Projections can refresh just its spread/total (up to 2).
+Concurrent sessions share the request lock and disk cache. The free event lookup
+retains its five-minute cache. A manually refreshed game total takes precedence
+over an older whole-slate response for its first hour; after expiry normal refresh
+resumes. Successful empty responses also stay cached for an hour. A failed
+refresh keeps the original saved prices and timestamp and waits an hour before
+another automatic attempt; an explicit refresh can retry sooner.
+
+If The Odds API fails (including exhausted allowance), the app retains that same
+verified saved response for the upcoming game. A visible **Saved lines — not live** warning
 shows the original save date/time in Mountain time, its age, and the oldest price
 update. Age is recalculated on each render; retries never refresh the original
-timestamps. Prices aging past 15 minutes are also labeled saved. Refresh live data
+timestamps. Reused prices and prices aging past 15 minutes are labeled saved. Refresh sportsbook lines
 retries the provider; a successful response takes precedence, including an empty
 response when a book has withdrawn its markets. Games without a backup remain
 unavailable, and started games, other books and later rematches never substitute.
@@ -225,9 +242,9 @@ stay blank. No sportsbook foul market is connected, so PF book/edge cells stay b
 
 The player projection table now includes **Book line**, **Book implied total**, and **Edge %** and **Play** for PTS/REB/AST/3PM/STL/BLK/TOV/PRA. Select FanDuel (default), DraftKings, or BetMGM. Percentage edge equals the absolute value of `(Projected / Book implied total - 1) × 100`, rounded to two decimals: both Over and Under edges display as positive. A gap strictly greater than 5% receives an Over label and green shading when the projection is higher, or an Under label and red shading when lower. Exactly 5%, smaller edges, zero/missing implied totals and missing projections remain unmarked. Color intensity increases continuously from pale at 5% to saturated at 25% (clipped thereafter). Only the Edge % and Play cells are highlighted; projected totals are plain. The 5% rule is an extra projection buffer on top of the already no-vig model estimate, not a calculated wagering ROI. This is a numerical projection comparison, not an EV calculation or bet recommendation. Both projection and top-edge comparison downloads retain **Signed edge %** alongside the positive **Edge %** for direction, including rows below the play threshold.
 
-The existing The Odds API access is reused. Prefer `ODDS_API_KEY` in environment variables or Streamlit secrets; the existing legacy feed configuration remains compatible. Credentials are not displayed or included in request-error messages. Upcoming NBA events are cached for five minutes; only the next future event matching the selected team/opponent is queried for the chosen bookmaker's eight standard prop markets. A real scheduled opponent is required; arbitrary matchup previews may have no book lines. Per-event props are also cached for five minutes, limiting requests to the selected event/book, rather than loading every NBA game on every rerun. “Refresh live data” clears both caches.
+The existing The Odds API access is reused. Prefer `ODDS_API_KEY` in environment variables or Streamlit secrets; the existing legacy feed configuration remains compatible. Credentials are not displayed or included in request-error messages. Upcoming NBA events are cached for five minutes; only the next future event matching the selected team/opponent is queried for the chosen bookmaker's eight standard prop markets. A real scheduled opponent is required; arbitrary matchup previews may have no book lines. Paid props and game lines now use the persistent hourly-refresh policy above. “Refresh live data” refreshes statistics, injuries and the free event list; it does not clear or bypass saved sportsbook prices.
 
-Only exact normalized player matches and paired over/under prices on the **same book, game and posted line** are used. Different alternate lines, ambiguous/duplicated prices and unmatched player names are not combined. Timestamped quotes more than 15 minutes old (or without usable timestamps) cannot drive a colored comparison. Missing categories show blank comparisons rather than estimated or copied betting lines. The detail expander shows posted line, over/under odds, fair over probability, update time and availability status, with a CSV download.
+Only exact normalized player matches and paired over/under prices on the **same book, game and posted line** are used. Different alternate lines, ambiguous/duplicated prices and unmatched player names are not combined. Verified saved quotes can drive an explicitly labeled saved-price comparison; unverified or untimestamped quotes cannot. Missing categories show blank comparisons rather than estimated or copied betting lines. The detail expander shows posted line, over/under odds, fair over probability, update time and availability status, with a CSV download.
 
 American prices give raw implied probabilities: negative `a` gives `abs(a)/(abs(a)+100)`; positive `a` gives `100/(a+100)`. Remove margin proportionally: `p_over_fair = p_over_raw / (p_over_raw + p_under_raw)`. Solve for a **Poisson-model mean** such that `P(X > floor(line)) = p_over_fair`. Integer lines instead use `P(X > line | X != line)` so pushes are handled correctly. This model-implied mean is not a sportsbook-published total; a single line and two prices do not uniquely determine the true statistical distribution. Poisson's variance assumption is a simplifying approximation, particularly for points and combined stats.
 

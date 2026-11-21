@@ -21,7 +21,7 @@ from matchup_projections import (assign_game_archetypes, matchup_effects, apply_
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
 from market_points import market_targets, apply_market_points
-from saved_sportsbook_lines import (read_saved_feed, render_source, uses_saved_lines,
+from saved_sportsbook_lines import (read_saved_feed, cached_feed, render_source, uses_saved_lines,
                                     source_notice, SOURCE, SAVED)
 from edge_minutes import add_minutes_cushion
 from team_assists import apply_team_assists
@@ -311,27 +311,61 @@ def sportsbook_events(_api_key):
     return events
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def sportsbook_props(event_id, bookmaker, _api_key):
+# Paid responses are shared across sessions and reused for a full hour.
+SPORTSBOOK_REFRESH_SECONDS = 3600
+
+
+def sportsbook_props(event_id, bookmaker, _api_key, *, force=False):
     payload = read_saved_feed(f'/events/{event_id}/odds', _api_key, read_feed,
+                        refresh_after=SPORTSBOOK_REFRESH_SECONDS, force=force,
                         bookmakers=bookmaker,markets=','.join(MARKETS),oddsFormat='american')
     if not isinstance(payload,dict):
         raise OddsFeedError('Sportsbook prices are unavailable.')
     return payload
 
 
-@st.cache_data(ttl=300, max_entries=12, show_spinner=False)
 def sportsbook_slate_lines(bookmaker, _api_key):
     try:
-        return read_saved_feed('/odds', _api_key, read_feed, bookmakers=bookmaker, markets='spreads,totals', oddsFormat='american')
+        return read_saved_feed('/odds', _api_key, read_feed, refresh_after=SPORTSBOOK_REFRESH_SECONDS,
+                               bookmakers=bookmaker, markets='spreads,totals', oddsFormat='american')
     except OddsFeedError:
         return []
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def sportsbook_game_lines(event_id, bookmaker, _api_key):
+def sportsbook_game_lines(event_id, bookmaker, _api_key, *, force=False):
     return read_saved_feed(f'/events/{event_id}/odds', _api_key, read_feed,
+                     refresh_after=SPORTSBOOK_REFRESH_SECONDS, force=force,
                      bookmakers=bookmaker,markets='spreads,totals',oddsFormat='american')
+
+
+def render_sportsbook_refresh(ui, event, book, api_key, key, *, props=True):
+    """An explicit paid refresh is scoped to this game/book, never the whole slate."""
+    start = pd.Timestamp(event.get('commence_time', event.get('GameTimeUTC')))
+    if pd.isna(start) or start.tzinfo is None or start <= pd.Timestamp.now(tz='UTC'):
+        return False
+    if not ui.button('Refresh sportsbook lines', key=key,
+                     help=('Fetch this game and sportsbook only. Up to 10 credits for props plus spread/total.'
+                           if props else 'Fetch this game’s spread/total only. Up to 2 credits.')):
+        return False
+    failures = []
+    if props:
+        try:
+            result = sportsbook_props(event['id'], book, api_key, force=True)
+            if result.get(SOURCE, {}).get('fallback'):
+                failures.append('props')
+        except OddsFeedError:
+            failures.append('props')
+    try:
+        result = sportsbook_game_lines(event['id'], book, api_key, force=True)
+        if result.get(SOURCE, {}).get('fallback'):
+            failures.append('spread/total')
+    except OddsFeedError:
+        failures.append('spread/total')
+    if failures:
+        ui.warning('Could not refresh ' + ' and '.join(failures) + '. Keeping any verified saved lines.')
+    else:
+        ui.caption('Sportsbook refresh completed for this game and book.')
+    return True
 
 
 def history_version():
@@ -361,6 +395,12 @@ def prior_team_rates():
 
 def load_team_game_lines(event, book, api_key):
     try:
+        # Prefer an explicitly refreshed game over an older saved whole-slate response.
+        direct = cached_feed(f"/events/{event['id']}/odds", api_key,
+                             max_age_seconds=SPORTSBOOK_REFRESH_SECONDS, bookmakers=book,
+                             markets='spreads,totals', oddsFormat='american')
+        if direct is not None:
+            return direct
         slate = sportsbook_slate_lines(book, api_key)
         matches = [row for row in slate if isinstance(row, dict) and row.get('id') == event['id']] if isinstance(slate, list) else []
         if len(matches) == 1:
@@ -374,7 +414,7 @@ def load_team_game_lines(event, book, api_key):
         return {}
 
 
-def player_market_snapshot(team, opponent, scheduled_start, book):
+def player_market_snapshot(team, opponent, scheduled_start, book, *, ui=None):
     """Load this selection once. Slider reruns only read these timestamped markets."""
     event, game_lines, props = None, {}, {}
     try:
@@ -384,6 +424,8 @@ def player_market_snapshot(team, opponent, scheduled_start, book):
         event = next_matchup(sportsbook_events(api_key), team, opponent,
                              scheduled_start=scheduled_start, time_tolerance=EVENT_TIME_TOLERANCE)
         if event:
+            if ui is not None:
+                render_sportsbook_refresh(ui, event, book, api_key, 'player_sportsbook_refresh')
             game_lines = load_team_game_lines(event, book, api_key)
             payload = sportsbook_props(event['id'], book, api_key)
             if (payload.get('id') != event['id'] or
@@ -538,7 +580,7 @@ def set_edge_stats(selected):
         st.session_state[f'edges_stat_{stat}'] = selected
 
 
-def team_game_projection(ui, game, book_name, schedule, now, snapshots, team_rates, game_frames, approved_bundle=None):
+def team_game_projection(ui, game, book_name, schedule, now, snapshots, team_rates, game_frames, approved_bundle=None, *, allow_refresh=False):
     blocked = blocked_matchup_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
     if blocked:
         ui.warning(blocked)
@@ -564,6 +606,9 @@ def team_game_projection(ui, game, book_name, schedule, now, snapshots, team_rat
         if len(matches) != 1:
             raise OddsFeedError('No unique sportsbook event matches this scheduled game.')
         event = {**matches[0], 'commence_time': matches[0]['GameTimeUTC'].isoformat()}
+        if allow_refresh:
+            render_sportsbook_refresh(ui, event, BOOKS[book_name], api_key,
+                                      f'team_sportsbook_refresh_{game["key"]}_{book_name}', props=False)
         final = team_projection_preview(ui, before, event, BOOKS[book_name], api_key, team_rates)
         if 'Market team total' not in final or not final['Market team total'].notna().any():
             raise OddsFeedError('Pregame team targets are unavailable.')
@@ -641,7 +686,7 @@ def render_slate_player_table(ui, frame, by_key, book_name, date, notes):
     send_player_navigation()
     ui.caption('Uses each game’s saved minutes and the same team adjustments as the single-game view. '
                'Unknown stats stay blank; zero-minute players are hidden unless included above. '
-               'Rank uses unrounded values and keeps each player’s place across the slate when searching. Refresh live data updates projections and sportsbook targets.')
+               'Rank uses unrounded values and keeps each player’s place across the slate when searching. Refresh live data updates projections; Refresh sportsbook lines updates the selected game’s prices.')
     ui.download_button('Download filtered player projections' if player_search.strip() else 'Download all player projections', display.to_csv(index=False),
                        f'all_player_projections_{date.isoformat()}.csv', 'text/csv', key='all_player_projections_download')
     with ui.expander('Projection coverage and sources'):
@@ -731,7 +776,7 @@ def render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
     ui.subheader(f"{game['Away']} @ {game['Home']} — {book_name}")
     with ui.expander('Adjustment details'):
         result = team_game_projection(ui, game, book_name, schedule, now, snapshots,
-            team_rates, game_frames, approved_bundle)
+            team_rates, game_frames, approved_bundle, allow_refresh=True)
     if result is None:
         return
     base, before, final = result
@@ -895,6 +940,7 @@ def render_live_dashboard(ui, roster):
             pass
         st.session_state['tabs_minutes_reference'] = render_tabs_comparison(
             ui, roster_for_approved_games(source_roster, SEASON, tabs_day, approved_bundle), tabs_games)
+        ui.caption('Sportsbook lines refresh hourly while this app is open. Saved prices are reused between checks, including page reloads and minute edits. New games/books need an initial pull. Refresh sportsbook lines updates the selected game early; Refresh live data does not reset the hourly limit.')
         if ui.button('Refresh live data'):
             public_team_cache.clear()
             live_state.clear()
@@ -903,9 +949,6 @@ def render_live_dashboard(ui, roster):
             current_matchup_logs.clear()
             dashboard_assist_samples.clear()
             sportsbook_events.clear()
-            sportsbook_props.clear()
-            sportsbook_slate_lines.clear()
-            sportsbook_game_lines.clear()
             edge_injury_report.clear()
         with ui.spinner('Loading team records and player averages…'):
             try:
@@ -1079,7 +1122,7 @@ def render_live_dashboard(ui, roster):
     # and cannot trigger league-wide ESPN refreshes or hidden-tab calculations.
     # Imports and Refresh live data rerun the parent and rebuild every tab.
     ui.caption('Player baselines reach 100% this season after 20 player appearances. Historical priors stay unchanged through eight appearances, then phase out; career three-point accuracy keeps at least 50% career weight. Rookies use actual rates from their first appearance.')
-    @st.fragment
+    @st.fragment(run_every='1h')
     def render_player_page():
         render_player_navigation()
         apply_pending_navigation(st.session_state, roster)
@@ -1123,7 +1166,7 @@ def render_live_dashboard(ui, roster):
                 st.session_state[slider_key] = selected_minutes
             custom_minutes = ui.slider('Projected minutes',min_value=0.,max_value=48.,step=0.5,
                                        key=slider_key,format='%.1f min',on_change=mark_manual_minutes,args=(flag_key,slider_key),
-                                       help='Recalculates this player using the loaded game and prices. Use Refresh live data for new prices.')
+                                       help='Recalculates this player using the loaded game and prices. Use Refresh sportsbook lines for new prices.')
             ui.button('Use automatic minutes',key=f'reset_minutes_{player_id}',on_click=reset_manual_minutes,
                       args=(flag_key,slider_key))
             if flag_key in st.session_state:
@@ -1231,7 +1274,7 @@ def render_live_dashboard(ui, roster):
                     baseline = destination
                 if props:
                     game_time = pd.Timestamp(event['commence_time']).tz_convert('America/Denver')
-                    ui.caption(f'{book_name} via The Odds API · {team} vs {opponent} · {game_time:%b %d, %Y at %I:%M %p %Z}. Use Refresh live data to retry live prices. Saved quotes are labeled with their original timestamps.')
+                    ui.caption(f'{book_name} via The Odds API · {team} vs {opponent} · {game_time:%b %d, %Y at %I:%M %p %Z}. Use Refresh sportsbook lines to retry live prices. Saved quotes are labeled with their original timestamps.')
             preview['Change'] = preview.Projected - preview.Baseline
             comparison = compare_with_book(preview,quotes)
             final_player = (adjusted if adjusted_on else baseline).iloc[0].copy()
@@ -1326,13 +1369,14 @@ def render_live_dashboard(ui, roster):
             book_key = BOOKS[book_name]
             scheduled_start = upcoming['GameTimeUTC'] if upcoming and upcoming['Opponent'] == opponent else None
             team_matchups = player_team_matchups(team, opponent, scheduled_start)
-            market_event, game_lines, props, market_error = player_market_snapshot(team, opponent, scheduled_start, book_key)
+            market_event, game_lines, props, market_error = player_market_snapshot(
+                team, opponent, scheduled_start, book_key, ui=ui)
             render_minutes_preview()
 
     with projection_tab:
         render_player_page()
 
-    @st.fragment
+    @st.fragment(run_every='1h')
     def render_best_matchups_page():
         ui.subheader("🔥 Today's Best Matchup Opportunities")
         date = ui.date_input('Slate date',value=datetime.now(ZoneInfo('America/Denver')).date(),key='matchup_date')
@@ -1545,11 +1589,11 @@ def render_live_dashboard(ui, roster):
                                    f'slate-review-{day}.csv', 'text/csv', key='edge_review_slate_download')
         return observations
 
-    @st.fragment
+    @st.fragment(run_every='1h')
     def render_edges_page():
         probability_observations = []
         ui.subheader('💰 Sportsbook Edges')
-        ui.caption('Saved-line fallback is on. If live prices fail, the last saved lines appear with their timestamp and age.')
+        ui.caption('Hourly sportsbook updates while the app is open. Saved lines show their timestamp and age between updates. Refresh sportsbook lines checks this game early.')
         ui.caption('Players are ranked by their strongest edge from the juice-adjusted book total. More robust plays combines all games. Steals and blocks Unders require an Under price of −160 or better.')
         # All plays stays game-scoped; only the opt-in robust view loads the slate.
         try:
@@ -1627,6 +1671,7 @@ def render_live_dashboard(ui, roster):
                     notice = unmatched_minutes_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
                     if notice:
                         ui.warning(notice)
+                    render_sportsbook_refresh(ui, game, BOOKS[edge_book_name], edge_key, 'edges_sportsbook_refresh')
                     payload = sportsbook_props(game_id,BOOKS[edge_book_name],edge_key)
                     render_source(ui, payload, edge_book_name)
                     with ui.expander('Game projection details', expanded=False):
@@ -1649,7 +1694,7 @@ def render_live_dashboard(ui, roster):
                         ranked = filter_review(reviewed,review_view)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
                     render_tabs_minutes_status([game], 'edges_game_tabs_status')
-                    ui.caption('Paired Over/Under prices. Saved-price comparisons show their original saved time above and are excluded from live probability tracking. Use Refresh live data to retry. Edge % is a projection gap, not a win probability or expected betting return.')
+                    ui.caption('Paired Over/Under prices. Saved-price comparisons show their original saved time above and are excluded from live probability tracking. Use Refresh sportsbook lines to retry. Edge % is a projection gap, not a win probability or expected betting return.')
                     if not selected_stats:
                         ui.info('Check at least one stat category to show edges.')
                     elif ranked.empty:
@@ -1695,7 +1740,7 @@ def render_live_dashboard(ui, roster):
     with edges_tab:
         render_edges_page()
 
-    @st.fragment
+    @st.fragment(run_every='1h')
     def render_team_page():
         render_team_projections(ui, team_rates, game_frames, approved_bundle)
     with team_tab:

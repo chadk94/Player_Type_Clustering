@@ -6,11 +6,14 @@ from pathlib import Path
 import json
 import os
 import tempfile
+from threading import RLock
 from zoneinfo import ZoneInfo
 
 
 SOURCE = '_sportsbook_source'
 SAVED = 'Saved quote — not live'
+# Share request locks across browser sessions; only one caller pays for a cache miss.
+_REQUEST_LOCKS = [RLock() for _ in range(64)]
 
 
 def utc(value):
@@ -61,10 +64,10 @@ def _valid(payload, path, params):
         return False
 
 
-def _annotate(payload, saved_at, fallback, persisted=True):
+def _annotate(payload, saved_at, fallback, persisted=True, reused=False):
     result = deepcopy(payload)
     for event in _events(result):
-        event[SOURCE] = dict(saved_at=saved_at, fallback=fallback, persisted=persisted)
+        event[SOURCE] = dict(saved_at=saved_at, fallback=fallback, persisted=persisted, reused=reused)
     return result
 
 
@@ -81,52 +84,91 @@ def _write(path, record):
             os.unlink(temporary)
 
 
-def read_saved_feed(path, api_key, fetch, *, cache_dir=None, now=None, **params):
-    """Try the provider first; only its exact request's verified backup can substitute.
+def _destination(path, api_key, params, cache_dir):
+    root = Path(cache_dir or os.environ.get('SPORTSBOOK_LINES_CACHE_DIR') or
+                Path(tempfile.gettempdir()) / 'nba-prop-sportsbook-lines-v1')
+    identity = sha256(_encoded(['nba-v4', path, params, sha256(api_key.encode()).hexdigest()])).hexdigest()
+    return root / (identity + '.json'), identity
 
-    No keys, request URLs or exception text are persisted. Cloud temporary storage
-    survives ordinary reruns/restarts, but a persistent mount is needed for redeploys.
-    Empty successful responses are authoritative; they do not revive withdrawn lines.
+
+def _read_record(destination, identity, path, params, now):
+    try:
+        record = json.loads(destination.read_text())
+        digest = record.pop('sha256')
+        if (digest != sha256(_encoded(record)).hexdigest() or record['request'] != identity or
+                utc(record['saved_at']) > now or
+                utc(record.get('last_attempt_at', record['saved_at'])) > now or
+                not _valid(record['payload'], path, params)):
+            return None
+        return record
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def _restore(record, now, *, fallback=False):
+    payload = record['payload']
+    future = [e for e in _events(payload) if now < utc(e['commence_time'])]
+    if not isinstance(payload, list) and not future:
+        return None
+    return _annotate(future if isinstance(payload, list) else future[0],
+                     record['saved_at'], fallback or record.get('refresh_failed', False), reused=True)
+
+
+def cached_feed(path, api_key, *, cache_dir=None, now=None, max_age_seconds=None, **params):
+    """Read an exact request's verified saved response without any network access."""
+    now = now or datetime.now(timezone.utc)
+    destination, identity = _destination(path, api_key, params, cache_dir)
+    record = _read_record(destination, identity, path, params, now)
+    if record is None or (max_age_seconds is not None and
+            (now - utc(record['saved_at'])).total_seconds() >= max_age_seconds):
+        return None
+    return _restore(record, now)
+
+
+def read_saved_feed(path, api_key, fetch, *, cache_dir=None, now=None,
+                    refresh_after=0, force=False, **params):
+    """Reuse verified saved prices until due; None means explicit refresh only.
+
+    First access still retrieves missing data. Browser reloads and Streamlit cache
+    clears cannot bypass this disk-backed policy. Failed refreshes retain the same
+    timestamped backup. Credentials and request URLs are never persisted.
     """
     from sportsbook_lines import OddsFeedError
     fixed_now = now
-    now = now or datetime.now(timezone.utc)
-    root = Path(cache_dir or os.environ.get('SPORTSBOOK_LINES_CACHE_DIR') or
-                Path(tempfile.gettempdir()) / 'nba-prop-sportsbook-lines-v1')
-    # Partition accounts without storing the credential in either file names or bodies.
-    identity = sha256(_encoded(['nba-v4', path, params, sha256(api_key.encode()).hexdigest()])).hexdigest()
-    destination = root / (identity + '.json')
-    try:
-        payload = fetch(path, api_key, **params)
-        if not _valid(payload, path, params):
-            raise OddsFeedError('Sportsbook response could not be verified.')
-    except OddsFeedError as exc:
+    destination, identity = _destination(path, api_key, params, cache_dir)
+    with _REQUEST_LOCKS[int(identity[:2], 16) % len(_REQUEST_LOCKS)]:
+        now = fixed_now or datetime.now(timezone.utc)
+        record = _read_record(destination, identity, path, params, now)
+        saved = _restore(record, now) if record is not None else None
+        if saved is not None and not force and (refresh_after is None or
+                (now - utc(record.get('last_attempt_at', record['saved_at']))).total_seconds() < refresh_after):
+            return saved
         try:
-            record = json.loads(destination.read_text())
-            digest = record.pop('sha256')
-            if digest != sha256(_encoded(record)).hexdigest() or record['request'] != identity:
-                raise ValueError('Saved lines failed verification')
-            saved_at = utc(record['saved_at'])
-            payload = record['payload']
-            if saved_at > now or not _valid(payload, path, params):
-                raise ValueError('Saved lines failed verification')
-            # Never turn an old or in-game quote into a new pregame price.
-            future = [e for e in _events(payload) if now < utc(e['commence_time'])]
-            if not future:
-                raise ValueError('No saved upcoming lines')
-            payload = future if isinstance(payload, list) else future[0]
-            return _annotate(payload, record['saved_at'], True)
-        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            payload = fetch(path, api_key, **params)
+            if not _valid(payload, path, params):
+                raise OddsFeedError('Sportsbook response could not be verified.')
+        except OddsFeedError as exc:
+            if record is not None:
+                backup = _restore(record, now, fallback=True)
+                if backup is not None:
+                    # Back off failed hourly refreshes without changing the quote's age.
+                    record.update(last_attempt_at=now.isoformat(), refresh_failed=True)
+                    try:
+                        record['sha256'] = sha256(_encoded(record)).hexdigest()
+                        _write(destination, record)
+                    except (OSError, ValueError, TypeError):
+                        pass
+                    return backup
             raise OddsFeedError(f'{exc} No saved lines are available for this request.') from None
-    now = fixed_now or datetime.now(timezone.utc)
-    record = dict(request=identity, saved_at=now.isoformat(), payload=payload)
-    persisted = True
-    try:
-        record['sha256'] = sha256(_encoded(record)).hexdigest()
-        _write(destination, record)
-    except (OSError, ValueError, TypeError):
-        persisted = False  # A cache failure must not hide good live prices.
-    return _annotate(payload, now.isoformat(), False, persisted)
+        now = fixed_now or datetime.now(timezone.utc)
+        record = dict(request=identity, saved_at=now.isoformat(), payload=payload)
+        persisted = True
+        try:
+            record['sha256'] = sha256(_encoded(record)).hexdigest()
+            _write(destination, record)
+        except (OSError, ValueError, TypeError):
+            persisted = False
+        return _annotate(payload, now.isoformat(), False, persisted)
 
 
 def saved_eligible(payload, now=None):
@@ -145,7 +187,8 @@ def quote_is_saved(payload, updated, now=None, max_age_seconds=900):
     try:
         stamp = utc(updated)
         return (stamp <= utc(payload[SOURCE]['saved_at']) and
-                (payload[SOURCE]['fallback'] or (now - stamp).total_seconds() > max_age_seconds))
+                (payload[SOURCE]['fallback'] or payload[SOURCE].get('reused', False) or
+                 (now - stamp).total_seconds() > max_age_seconds))
     except (ValueError, TypeError, KeyError, AttributeError):
         return False
 
@@ -154,7 +197,7 @@ def uses_saved_lines(payload, now=None):
     now = now or datetime.now(timezone.utc)
     if not saved_eligible(payload, now):
         return False
-    return bool(payload[SOURCE]['fallback'] or any(
+    return bool(payload[SOURCE]['fallback'] or payload[SOURCE].get('reused', False) or any(
         quote_is_saved(payload, m.get('last_update', b.get('last_update', '')), now)
         for b in payload.get('bookmakers', []) for m in b.get('markets', [])))
 

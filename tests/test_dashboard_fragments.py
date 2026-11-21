@@ -232,6 +232,59 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertIn("Today's Plays", [tab.label for tab in self.app.tabs])
         self.assertEqual(len(self.app.tabs), 6)
 
+    def test_hourly_saved_prices_survive_stats_refresh_and_explicit_button_is_scoped(self):
+        import os
+        import tempfile
+        now = datetime.now(timezone.utc)
+        start = (now + timedelta(hours=4)).isoformat()
+        event = dict(id='hourly-game', home_team='Houston Rockets',
+                     away_team='Atlanta Hawks', commence_time=start)
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        environment = patch.dict(os.environ, {'SPORTSBOOK_LINES_CACHE_DIR': temp.name})
+        environment.start()
+        self.addCleanup(environment.stop)
+        self.mock('get_odds_api_key', return_value='hourly-test-key')
+        self.mock('next_team_game', return_value={'Opponent':'HOU', 'GameTimeUTC':start})
+        self.mock('sportsbook_events', return_value=[event])
+        self.mock('team_projection_preview', side_effect=lambda ui, rows, *args: rows)
+        names = self.roster.loc[self.roster.TEAM_ABBREVIATION.isin(['ATL','HOU']), 'PLAYER_NAME']
+        market = dict(key='player_points', last_update=now.isoformat(), outcomes=[
+            dict(description=name, name=side, point=20.5, price=-110)
+            for name in names for side in ('Over', 'Under')])
+        def feed(path, key, **params):
+            self.assertEqual(path, '/events/hourly-game/odds')
+            self.assertEqual(params['bookmakers'], 'fanduel')
+            self.assertNotIn('force', params)
+            self.assertNotIn('refresh_after', params)
+            return dict(event, bookmakers=[dict(key='fanduel', markets=[market])]
+                        if 'player_points' in params['markets'] else [])
+        paid = self.mock('read_feed', side_effect=feed)
+        self.schedule.return_value = pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS[side], Opponent=opp, Venue=venue,
+                 GameTimeUTC=start, GameStatus='Scheduled')
+            for side,opp,venue in [('HOU','ATL','home'),('ATL','HOU','away')]])
+        self.app.run()
+        self.assert_no_errors()
+        self.assertEqual(paid.call_count, 2)
+        refresh = next(b for b in self.app.button if b.label == 'Refresh live data')
+        self.fragment_id = self.fragment_for(refresh)
+        refresh.click().run()
+        self.assert_no_errors()
+        self.assertEqual(paid.call_count, 2, 'Stats refresh must not bypass the hourly disk cache')
+        self.assertTrue(any('Hourly sportsbook updates' in c.value for c in self.app.caption))
+        choose = self.app.selectbox(key='projection_player')
+        self.fragment_id = self.fragment_for(choose)
+        choose.select(next(n for n in choose.options if n != choose.value)).run()
+        self.assert_no_errors()
+        self.assertEqual(paid.call_count, 2)
+        refresh = self.app.button(key='player_sportsbook_refresh')
+        self.fragment_id = self.fragment_for(refresh)
+        refresh.click().run()
+        self.assert_no_errors()
+        self.assertEqual(paid.call_count, 4, 'Explicit refresh retrieves only selected props and game lines once')
+        self.assertTrue(any('completed for this game and book' in c.value for c in self.app.caption))
+
     def test_saved_lines_banner_and_edges_survive_outage_without_live_tracking(self):
         from saved_sportsbook_lines import SOURCE, SAVED
         now = datetime.now(timezone.utc)

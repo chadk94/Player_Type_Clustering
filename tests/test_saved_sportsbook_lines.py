@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from saved_sportsbook_lines import (read_saved_feed, source_notice, uses_saved_lines,
+from saved_sportsbook_lines import (read_saved_feed, cached_feed, source_notice, uses_saved_lines,
                                     render_source, SOURCE, SAVED)
 from sportsbook_lines import OddsFeedError, player_quotes
 from sportsbook_edges import game_edges
@@ -37,6 +37,110 @@ class SavedLinesTests(unittest.TestCase):
 
     def fail(self):
         self.fetch.side_effect = OddsFeedError('Sportsbook feed unavailable (HTTP 401).')
+
+    def test_hourly_reuse_survives_repeated_reads_until_exact_deadline(self):
+        first = self.read(refresh_after=3600)
+        for seconds in (0, 1, 300, 900, 1800, 3599):
+            later = self.now + timedelta(seconds=seconds)
+            saved = self.read(now=later, refresh_after=3600)
+            self.assertEqual(saved[SOURCE]['saved_at'], first[SOURCE]['saved_at'])
+            self.assertTrue(uses_saved_lines(saved, later))
+        self.fetch.assert_called_once()
+        refreshed = self.read(now=self.now + timedelta(hours=1), refresh_after=3600)
+        self.assertEqual(self.fetch.call_count, 2)
+        self.assertEqual(refreshed[SOURCE]['saved_at'], (self.now + timedelta(hours=1)).isoformat())
+        self.assertFalse(refreshed[SOURCE]['reused'])
+        self.read(now=self.now + timedelta(minutes=119), refresh_after=3600)
+        self.assertEqual(self.fetch.call_count, 2)
+
+    def test_explicit_refresh_resets_only_this_request_hour(self):
+        self.read(refresh_after=3600)
+        self.read(markets='player_points,player_assists', refresh_after=3600)
+        later = self.now + timedelta(minutes=20)
+        forced = self.read(now=later, refresh_after=3600, force=True)
+        self.assertEqual(self.fetch.call_count, 3)
+        self.assertEqual(forced[SOURCE]['saved_at'], later.isoformat())
+        other = self.read(now=later, markets='player_points,player_assists', refresh_after=3600)
+        self.assertEqual(other[SOURCE]['saved_at'], self.now.isoformat())
+        self.read(now=self.now + timedelta(minutes=79), refresh_after=3600)
+        self.assertEqual(self.fetch.call_count, 3)
+        self.read(now=self.now + timedelta(minutes=80), refresh_after=3600)
+        self.assertEqual(self.fetch.call_count, 4)
+
+    def test_failed_hourly_attempt_backs_off_without_rejuvenating_quote(self):
+        self.read(refresh_after=3600)
+        self.fail()
+        for minute in (60, 61, 90, 119):
+            saved = self.read(now=self.now + timedelta(minutes=minute), refresh_after=3600)
+            self.assertTrue(saved[SOURCE]['fallback'])
+            self.assertEqual(saved[SOURCE]['saved_at'], self.now.isoformat())
+        self.assertEqual(self.fetch.call_count, 2)
+        self.read(now=self.now + timedelta(hours=2), refresh_after=3600)
+        self.assertEqual(self.fetch.call_count, 3)
+        self.read(now=self.now + timedelta(minutes=121), refresh_after=3600, force=True)
+        self.assertEqual(self.fetch.call_count, 4)
+
+    def test_successful_empty_markets_are_reused_for_an_hour(self):
+        self.fetch.return_value = dict(self.event, bookmakers=[])
+        for minute in (0, 1, 10, 59):
+            self.assertEqual(self.read(now=self.now + timedelta(minutes=minute),
+                                      refresh_after=3600)['bookmakers'], [])
+        self.fetch.assert_called_once()
+        self.read(now=self.now + timedelta(hours=1), refresh_after=3600)
+        self.assertEqual(self.fetch.call_count, 2)
+
+    def test_parallel_sessions_share_one_provider_request(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+        barrier = Barrier(8)
+        def visit(_):
+            barrier.wait(timeout=5)
+            return self.read(refresh_after=3600)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(visit, range(8)))
+        self.fetch.assert_called_once()
+        self.assertEqual(sum(not r[SOURCE]['reused'] for r in results), 1)
+        self.assertTrue(all(r[SOURCE]['saved_at'] == self.now.isoformat() for r in results))
+
+    def test_read_only_lookup_expires_without_fetching(self):
+        self.read(refresh_after=3600)
+        def cached(minute):
+            return cached_feed(self.path, 'secret-test-key', cache_dir=self.temp.name,
+                               now=self.now + timedelta(minutes=minute),
+                               max_age_seconds=3600, **self.params)
+        self.assertEqual(cached(59)['id'], self.event['id'])
+        self.assertIsNone(cached(60))
+        self.fetch.assert_called_once()
+
+    def test_manual_game_total_wins_until_hourly_refresh_resumes(self):
+        import os
+        import projection_dashboard as dashboard
+        def game(spread):
+            return dict(self.event, bookmakers=[dict(key='draftkings', markets=[
+                dict(key='spreads', last_update=self.now.isoformat(), outcomes=[
+                    dict(name=self.event['home_team'], point=-spread, price=-110),
+                    dict(name=self.event['away_team'], point=spread, price=-110)]),
+                dict(key='totals', last_update=self.now.isoformat(), outcomes=[
+                    dict(name=side, point=220, price=-110) for side in ('Over', 'Under')])])])
+        with patch.dict(os.environ, {'SPORTSBOOK_LINES_CACHE_DIR': self.temp.name}), \
+             patch('saved_sportsbook_lines.datetime', wraps=datetime) as clock, \
+             patch.object(dashboard, 'read_feed') as paid:
+            clock.now.return_value = self.now
+            paid.return_value = [game(2)]
+            dashboard.sportsbook_slate_lines('draftkings', 'secret-test-key')
+            clock.now.return_value = self.now + timedelta(minutes=10)
+            paid.return_value = game(8)
+            dashboard.sportsbook_game_lines('nyk-phi', 'draftkings', 'secret-test-key', force=True)
+            self.assertEqual(paid.call_count, 2)
+            clock.now.return_value = self.now + timedelta(minutes=65)
+            result = dashboard.load_team_game_lines(self.event, 'draftkings', 'secret-test-key')
+            self.assertEqual(result['bookmakers'][0]['markets'][0]['outcomes'][0]['point'], -8)
+            self.assertEqual(paid.call_count, 2)
+            clock.now.return_value = self.now + timedelta(minutes=70)
+            paid.return_value = [game(4)]
+            result = dashboard.load_team_game_lines(self.event, 'draftkings', 'secret-test-key')
+            self.assertEqual(result['bookmakers'][0]['markets'][0]['outcomes'][0]['point'], -4)
+            self.assertEqual(paid.call_count, 3)
 
     def test_round_trip_across_new_reader_preserves_original_times_and_prices(self):
         first = self.read()
@@ -109,7 +213,7 @@ class SavedLinesTests(unittest.TestCase):
         result = self.read(now=self.now + timedelta(minutes=1))
         self.assertTrue(result[SOURCE]['fallback'])
         self.fail()
-        self.assertEqual(self.read()['id'], 'nyk-phi')
+        self.assertEqual(self.read(now=self.now + timedelta(minutes=2))['id'], 'nyk-phi')
 
     def test_empty_success_is_authoritative_and_never_revives_withdrawn_quotes(self):
         self.read()
