@@ -65,7 +65,7 @@ def prop_quote(player, quote, observed=None):
     result = dict.fromkeys(PROBABILITY_COLUMNS, np.nan)
     result['Probability status'] = 'Needs a current paired line'
     manual = stat == 'PF' and quote.get('Market status') == 'Manual line'
-    if stat not in COUNT_STATS or (quote.get('Market status') != 'Current' and not manual):
+    if stat not in COUNT_STATS or (quote.get('Market status') not in ('Current', 'Saved quote — not live') and not manual):
         return result
     try:
         line = float(quote['Book line'])

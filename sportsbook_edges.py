@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from import_minutes import TEAM_IDS
+from saved_sportsbook_lines import SAVED
 from live_projections import name_key
 from points_probability import PROBABILITY_COLUMNS
 from projection_presentation import player_matchup_rating
@@ -37,7 +38,7 @@ def add_play_ev(edges):
 
 EDGE_COLUMNS = ['Rank','Player','PLAYER_ID','Team','Opponent','Stat','Play','Projected minutes',
                 'Baseline','Matchup rating','Projected','Book line','Book implied total','Edge %','Signed edge %','Over odds',
-                'Under odds','Updated UTC','Off samples','Def samples','Stat baseline','Matchup data',*MATCHUP_METADATA,'Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]
+                'Under odds','Updated UTC','Market status','Saved UTC','Off samples','Def samples','Stat baseline','Matchup data',*MATCHUP_METADATA,'Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Saved game lines','Game lines saved UTC','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]
 
 
 def scheduled_book_games(events, schedule, now=None):
@@ -97,8 +98,8 @@ def game_edges(matchups, payload, event, bookmaker, now=None, plays_only=True, d
         quotes = (quotes_by_player[name_key(player.Player)] if quotes_by_player is not None else
                   player_quotes(payload,player.Player,bookmaker,now=now))
         comparison = compare_with_book(preview, quotes)
-        comparison = comparison[comparison.Stat.isin(EDGE_STATS) & comparison['Market status'].eq('Current') & comparison['Edge %'].notna()]
-        for field in ['Player','PLAYER_ID','Team','Opponent','Projected minutes','Off samples','Def samples','Stat baseline','Matchup data',*MATCHUP_METADATA,'Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]:
+        comparison = comparison[comparison.Stat.isin(EDGE_STATS) & comparison['Market status'].isin(['Current', SAVED]) & comparison['Edge %'].notna()]
+        for field in ['Player','PLAYER_ID','Team','Opponent','Projected minutes','Off samples','Def samples','Stat baseline','Matchup data',*MATCHUP_METADATA,'Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Saved game lines','Game lines saved UTC','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]:
             comparison[field] = player.get(field,np.nan)
         # Older saved rows have only the default and possibly the PTS/3PA override.
         default_prior = player.get('Matchup prior games', np.nan)

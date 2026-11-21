@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import math
 from sportsbook_lines import TEAM_NAMES, american_probability
 import pandas as pd
+from saved_sportsbook_lines import quote_is_saved
 
 
 def team_targets(total, home_spread, home, away):
@@ -32,8 +33,8 @@ def match_points(projections, targets):
     return adjusted,pd.DataFrame(summaries)
 
 
-def market_targets(payload, event, bookmaker, now=None):
-    """Require fresh matching spread/total markets for this exact event and book."""
+def market_targets(payload, event, bookmaker, now=None, *, allow_saved=False):
+    """Require matching markets; saved-price comparisons need explicit opt-in."""
     now=now or datetime.now(timezone.utc)
     if payload.get('id') != event['id'] or any(payload.get(k)!=event[k] for k in ['home_team','away_team']):
         raise ValueError('Game market event mismatch')
@@ -50,7 +51,9 @@ def market_targets(payload, event, bookmaker, now=None):
             raise ValueError('A matching spread and total are required')
         market=found[0]
         updated=datetime.fromisoformat(market.get('last_update',books[0].get('last_update','')).replace('Z','+00:00'))
-        if not -60 <= (now-updated).total_seconds() <= 900:
+        age = (now-updated).total_seconds()
+        saved = allow_saved and quote_is_saved(payload, updated.isoformat(), now)
+        if age < -60 or (age > 900 and not saved):
             raise ValueError('Game lines are stale')
         if len(market.get('outcomes',[]))!=2:
             raise ValueError('Ambiguous game lines')

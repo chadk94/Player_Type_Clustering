@@ -9,6 +9,7 @@ from scipy.optimize import brentq
 from scipy.stats import poisson
 from nba_api.stats.static.teams import get_teams
 from live_projections import name_key
+from saved_sportsbook_lines import SOURCE, SAVED, quote_is_saved
 
 BASE = 'https://api.the-odds-api.com/v4/sports/basketball_nba'
 BOOKS = {'FanDuel':'fanduel','DraftKings':'draftkings','BetMGM':'betmgm'}
@@ -114,7 +115,7 @@ def implied_total(line, over, under):
 def _empty_quotes():
     return {stat:{'Stat':stat,'Book line':np.nan,'Over odds':np.nan,'Under odds':np.nan,
                 'Book implied total':np.nan,'Fair over probability':np.nan,'Updated UTC':'',
-                'Market status':'No posted line'} for stat in STAT_ORDER}
+                'Market status':'No posted line','Saved UTC':''} for stat in STAT_ORDER}
 
 
 def game_quotes(payload, player_names, book_key, now=None, max_age_seconds=900):
@@ -165,12 +166,15 @@ def game_quotes(payload, player_names, book_key, now=None, max_age_seconds=900):
                 try:
                     updated=datetime.fromisoformat(row['Updated UTC'].replace('Z','+00:00'))
                     age=(now-updated).total_seconds()
-                    if not -60<=age<=max_age_seconds:
+                    saved = quote_is_saved(payload, row['Updated UTC'], now, max_age_seconds)
+                    if (age < -60 or (age > max_age_seconds and not saved) or
+                            (payload.get(SOURCE, {}).get('fallback') and not saved)):
                         row['Market status']='Stale quote — comparison unavailable'
                         continue
                     row['Book implied total']=implied_total(line,over,under)
                     row['Fair over probability']=fair_over_probability(over,under)
-                    row['Market status']='Current'
+                    row['Market status']=SAVED if saved else 'Current'
+                    row['Saved UTC']=payload.get(SOURCE, {}).get('saved_at', '')
                 except (ValueError,TypeError,OverflowError):
                     row['Market status']='Unusable quote — comparison unavailable'
     return {player: pd.DataFrame(markets.values()) for player, markets in rows.items()}

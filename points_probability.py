@@ -113,7 +113,7 @@ def line_probabilities(lambdas, phi, line):
 def points_quote(row, quote, observed=None):
     result = {column: np.nan for column in PROBABILITY_COLUMNS}
     result['Probability status'] = 'Needs a current paired points line'
-    if quote.get('Market status') != 'Current':
+    if quote.get('Market status') not in ('Current', 'Saved quote — not live'):
         return result
     try:
         if row.get('Estimated stat profile', False):
@@ -139,7 +139,7 @@ def game_quote_probabilities(players, payload, bookmaker, context, evaluate, sta
                   player_quotes(payload, row.Player, bookmaker, now=now))
         for quote in quotes.to_dict('records'):
             stat = quote['Stat']
-            if stat not in stats or (stat != 'PTS' and quote['Market status'] != 'Current'):
+            if stat not in stats or (stat != 'PTS' and quote['Market status'] not in ('Current', 'Saved quote — not live')):
                 continue
             quote['Projected'] = player.get('FG3M' if stat == '3PM' else stat, np.nan)
             result.append({**player, **quote, **evaluate(player, quote, observed)})

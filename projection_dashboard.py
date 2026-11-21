@@ -21,6 +21,8 @@ from matchup_projections import (assign_game_archetypes, matchup_effects, apply_
 from rotowire_fallback import normalize_rotowire, read_rotowire_csv
 from FanduelScrape import get_odds_api_key
 from market_points import market_targets, apply_market_points
+from saved_sportsbook_lines import (read_saved_feed, render_source, uses_saved_lines,
+                                    source_notice, SOURCE, SAVED)
 from edge_minutes import add_minutes_cushion
 from team_assists import apply_team_assists
 from assist_opportunities import adjusted_assist_samples, DailyPassingFeed, POLICY_VERSION as ASSIST_POLICY_VERSION
@@ -303,7 +305,7 @@ def heat_color(value):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def sportsbook_events(_api_key):
-    events = read_feed('/events',_api_key)
+    events = read_saved_feed('/events', _api_key, read_feed)
     if not isinstance(events,list):
         raise OddsFeedError('Sportsbook event list is unavailable.')
     return events
@@ -311,7 +313,7 @@ def sportsbook_events(_api_key):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def sportsbook_props(event_id, bookmaker, _api_key):
-    payload = read_feed(f'/events/{event_id}/odds',_api_key,
+    payload = read_saved_feed(f'/events/{event_id}/odds', _api_key, read_feed,
                         bookmakers=bookmaker,markets=','.join(MARKETS),oddsFormat='american')
     if not isinstance(payload,dict):
         raise OddsFeedError('Sportsbook prices are unavailable.')
@@ -321,14 +323,14 @@ def sportsbook_props(event_id, bookmaker, _api_key):
 @st.cache_data(ttl=300, max_entries=12, show_spinner=False)
 def sportsbook_slate_lines(bookmaker, _api_key):
     try:
-        return read_feed('/odds', _api_key, bookmakers=bookmaker, markets='spreads,totals', oddsFormat='american')
+        return read_saved_feed('/odds', _api_key, read_feed, bookmakers=bookmaker, markets='spreads,totals', oddsFormat='american')
     except OddsFeedError:
         return []
 
 
 @st.cache_data(ttl=300, show_spinner=False)
 def sportsbook_game_lines(event_id, bookmaker, _api_key):
-    return read_feed(f'/events/{event_id}/odds',_api_key,
+    return read_saved_feed(f'/events/{event_id}/odds', _api_key, read_feed,
                      bookmakers=bookmaker,markets='spreads,totals',oddsFormat='american')
 
 
@@ -363,7 +365,7 @@ def load_team_game_lines(event, book, api_key):
         matches = [row for row in slate if isinstance(row, dict) and row.get('id') == event['id']] if isinstance(slate, list) else []
         if len(matches) == 1:
             try:
-                market_targets(matches[0], event, book)
+                market_targets(matches[0], event, book, allow_saved=True)
                 return matches[0]
             except (ValueError, KeyError, TypeError, AttributeError):
                 pass
@@ -399,11 +401,12 @@ def team_projection_preview(ui, frame, event, book, api_key, team_rates):
 
 def team_projection_from_lines(ui, frame, event, book, team_rates, game_lines):
     try:
-        targets = market_targets(game_lines, event, book)
+        targets = market_targets(game_lines, event, book, allow_saved=True)
     except (OddsFeedError,ValueError,KeyError,TypeError,AttributeError):
-        ui.caption('Team points, assist, three-point and rebound adjustments unavailable: no usable current spread/total for this sportsbook and game. Existing model estimates are retained.')
+        ui.caption('Team points, assist, three-point and rebound adjustments unavailable: no usable current or saved spread/total for this sportsbook and game. Existing model estimates are retained.')
         return frame
-    # Validate live prices before reusing any result. A refresh/import creates
+    render_source(ui, game_lines, 'Game spread/total')
+    # Validate prices and their provenance before reusing any result. A refresh/import creates
     # new team rates and discards the entire session's previous calculations.
     memo = st.session_state.get('team_adjustments_cache')
     if memo is None or memo[0] is not team_rates:
@@ -422,7 +425,11 @@ def team_projection_from_lines(ui, frame, event, book, team_rates, game_lines):
     adjusted, messages = cache[cache_key]
     for message in messages:
         ui.caption(message)
-    return adjusted.copy()
+    result = adjusted.copy()
+    result['Saved game lines'] = uses_saved_lines(game_lines)
+    result['Game lines saved UTC'] = game_lines.get(SOURCE, {}).get('saved_at', '')
+    result['Game lines source'] = source_notice(game_lines)
+    return result
 
 
 def calculate_team_adjustments(ui, frame, targets, event, team_rates):
@@ -1192,6 +1199,8 @@ def render_live_dashboard(ui, roster):
             # Recheck tip-off and both quote timestamps against the current clock.
             event = market_event if market_event and pd.Timestamp(market_event['commence_time']) > pd.Timestamp.now(tz='UTC') else None
             quotes = player_quotes(props if event else {}, player_name, book_key)
+            if event:
+                render_source(ui, props, book_name)
             if market_error:
                 ui.caption(market_error)
             if event is None:
@@ -1222,7 +1231,7 @@ def render_live_dashboard(ui, roster):
                     baseline = destination
                 if props:
                     game_time = pd.Timestamp(event['commence_time']).tz_convert('America/Denver')
-                    ui.caption(f'{book_name} via The Odds API · {team} vs {opponent} · {game_time:%b %d, %Y at %I:%M %p %Z}. Use Refresh live data for updated quotes; quotes older than 15 minutes are excluded when comparisons are loaded.')
+                    ui.caption(f'{book_name} via The Odds API · {team} vs {opponent} · {game_time:%b %d, %Y at %I:%M %p %Z}. Use Refresh live data to retry live prices. Saved quotes are labeled with their original timestamps.')
             preview['Change'] = preview.Projected - preview.Baseline
             comparison = compare_with_book(preview,quotes)
             final_player = (adjusted if adjusted_on else baseline).iloc[0].copy()
@@ -1272,16 +1281,16 @@ def render_live_dashboard(ui, roster):
                 {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %','Matchup rating','Book line (Over)','Recent role status']},
                  **{column:'{:.1%}' for column in PROBABILITY_COLUMNS},'Edge %':'{:+.2f}%', 'Recent change %':'{:+.1f}%'},na_rep='—'),hide_index=True,width='stretch')
             ui.caption('Experimental probabilities use the displayed projection and line, conditional on playing. An Over wins above the line, an Under wins below it, and a tie on a whole-number line is a push.')
-            for stat in comparison.loc[comparison['Market status'].isin(['Current','Manual line']), 'Stat']:
+            for stat in comparison.loc[comparison['Market status'].isin(['Current',SAVED,'Manual line']), 'Stat']:
                 if probability_status[stat] != 'Experimental':
                     ui.caption(f"{stat} probability unavailable · {probability_status[stat]}")
             ui.caption('Matchup ratings measure opponent lift versus baseline. 1 ⬇️⬇️ poor (−10% or worse), 2 ⬇️ below average, 3 ↔️ average (within ±3%), 4 ⬆️ good, 5 ⬆️⬆️ excellent (+10% or better). The 3PM rating uses three-point attempts. Fewer turnovers or fouls rate higher. Ratings are blank when adjustments are off or data is unavailable. Book line (Over) includes the Over price.')
             ui.caption('PF = personal fouls committed. Enter a line under Personal fouls probability to see its chances.')
             unavailable = comparison.loc[comparison['Book implied total'].isna(),'Stat'].tolist()
             if unavailable:
-                ui.caption('No usable current two-sided line for: '+', '.join(unavailable)+'. Unavailable comparisons stay blank.')
+                ui.caption('No usable current or saved two-sided line for: '+', '.join(unavailable)+'. Unavailable comparisons stay blank.')
             with ui.expander('Sportsbook prices and implied-total calculation'):
-                ui.dataframe(comparison[['Stat','Book line','Over odds','Under odds','Fair over probability','Book implied total','Updated UTC','Market status']],hide_index=True,width='stretch')
+                ui.dataframe(comparison[['Stat','Book line','Over odds','Under odds','Fair over probability','Book implied total','Updated UTC','Saved UTC','Market status']],hide_index=True,width='stretch')
                 ui.write('American odds convert to implied probabilities. Fair P(over) = raw P(over) / [raw P(over) + raw P(under)]. The implied total is the Poisson mean whose over probability matches that fair probability; integer lines account for a push. One line and its prices do not uniquely identify the real stat distribution, so this is an explicitly modeled mean, not a sportsbook-published forecast. Minutes changes update your projection; the market estimate remains tied to the book’s game and prices.')
                 ui.write('For illustration only: over 2.5 threes at -150 with under +120 implies a mean above 2.5. Both prices are needed to remove margin; the over price alone is insufficient.')
                 ui.download_button('Download stat and sportsbook comparison',comparison.to_csv(index=False),'player_sportsbook_comparison.csv','text/csv')
@@ -1455,7 +1464,7 @@ def render_live_dashboard(ui, roster):
         for index, game in enumerate(games):
             label = f"{game['Away']} @ {game['Home']}"
             progress.progress(index / len(games), text=f'Checking {label} · {index + 1} of {len(games)} games')
-            row = {'Game': label, 'Eligible plays': 0, 'More robust': 0,
+            row = {'Game': label, 'Lines': '', 'Eligible plays': 0, 'More robust': 0,
                    'Minutes unchecked': 0, 'Role unchecked': 0, 'Injury unchecked': 0, 'Status': 'Checked'}
             blocked = blocked_matchup_message(approved_bundle, game['Away'], game['Home'], game['GameTimeUTC'])
             if blocked:
@@ -1465,15 +1474,19 @@ def render_live_dashboard(ui, roster):
             try:
                 base, combined = game_frames(game['Away'], game['Home'], game['GameTimeUTC'])
                 payload = sportsbook_props(game['id'], BOOKS[book_name], api_key)
+                row['Lines'] = source_notice(payload)
+                render_source(ui, payload, label + ' · ' + book_name)
                 if not combined.empty:
                     event = {**game, 'commence_time': game['GameTimeUTC'].isoformat()}
                     combined = team_projection_preview(ProjectionNotes(), combined, event, BOOKS[book_name], api_key, team_rates)
+                if 'Saved game lines' in combined and combined['Saved game lines'].any():
+                    ui.warning(label + ' · Game spread/total · ' + combined['Game lines source'].iloc[0])
                 edges, captured = edge_snapshot(combined, payload, game, BOOKS[book_name], datetime.now(timezone.utc))
                 # Count all qualifying categories/directions, independent of display filters.
                 edges, _ = filter_game_edges(edges, True, 'Both', EDGE_STATS, '')
                 observations.extend(captured)
                 if edges.empty:
-                    row['Status'] = 'No eligible current quotes / projections'
+                    row['Status'] = 'No eligible current or saved quotes / projections'
                 else:
                     try:
                         reviewed = reviewed_game(edges, combined, game, base, BOOKS[book_name], api_key)
@@ -1499,7 +1512,7 @@ def render_live_dashboard(ui, roster):
         eligible = sum(row['Eligible plays'] for row in coverage)
         unavailable = [row['Game'] for row in coverage if row['Status'] != 'Checked']
         ui.success(f'{total} more robust plays across {len(games)} upcoming games · {eligible} eligible plays checked')
-        ui.caption('Full-slate count before player, stat and direction filters. Only current quotes and completed checks qualify; missing inputs never count as passes.')
+        ui.caption('Full-slate count before player, stat and direction filters. Saved-price comparisons are labeled by game and are not confirmed live offers; missing inputs never count as passes.')
         if unavailable:
             ui.warning('No verified qualifying results from: ' + ', '.join(unavailable) + '. See slate coverage below; these games are not assumed to have passed.')
         if not review.empty:
@@ -1515,7 +1528,7 @@ def render_live_dashboard(ui, roster):
                 ui.caption(f'Showing {len(shown)} of {total} more robust plays. Players are grouped by their best Edge % across all games.')
                 shown['Book line (Over)'] = [over_line_label(line, price) for line, price in zip(shown['Book line'], shown['Over odds'])]
                 columns = ['Rank', 'Player', 'Team', 'Game', 'Stat', 'Play', 'Edge %', 'Projected',
-                           'Book line (Over)', 'Under odds', 'Projected minutes', 'Good-to minutes',
+                           'Book line (Over)', 'Under odds', 'Market status', 'Projected minutes', 'Good-to minutes',
                            'Matchup rating', 'Review flags', 'Reference minutes', 'Minutes cushion',
                            'Book implied total', 'Over odds', *PROBABILITY_COLUMNS]
                 if show_recent:
@@ -1536,6 +1549,7 @@ def render_live_dashboard(ui, roster):
     def render_edges_page():
         probability_observations = []
         ui.subheader('💰 Sportsbook Edges')
+        ui.caption('Saved-line fallback is on. If live prices fail, the last saved lines appear with their timestamp and age.')
         ui.caption('Players are ranked by their strongest edge from the juice-adjusted book total. More robust plays combines all games. Steals and blocks Unders require an Under price of −160 or better.')
         # All plays stays game-scoped; only the opt-in robust view loads the slate.
         try:
@@ -1614,6 +1628,7 @@ def render_live_dashboard(ui, roster):
                     if notice:
                         ui.warning(notice)
                     payload = sportsbook_props(game_id,BOOKS[edge_book_name],edge_key)
+                    render_source(ui, payload, edge_book_name)
                     with ui.expander('Game projection details', expanded=False):
                         ui.caption(game_minutes_caption(game_projections, [game['Away'], game['Home']]))
                         ui.dataframe(game_projections[['Player','Team','Your minutes','Tabs minutes','Tabs minutes basis','Projected minutes','Minutes blend status']],
@@ -1621,6 +1636,8 @@ def render_live_dashboard(ui, roster):
                         if not combined.empty:
                             market_event = {**game,'commence_time':game['GameTimeUTC'].isoformat()}
                             combined = team_projection_preview(ui,combined,market_event,BOOKS[edge_book_name],edge_key,team_rates)
+                    if 'Saved game lines' in combined and combined['Saved game lines'].any():
+                        ui.warning('Game spread/total · ' + combined['Game lines source'].iloc[0])
                     ranked, probability_observations = edge_snapshot(combined, payload, game, BOOKS[edge_book_name], now)
                     ranked, total_edges = filter_game_edges(ranked, plays_only, edge_direction, selected_stats, player_search)
                     reviewed = ranked
@@ -1632,7 +1649,7 @@ def render_live_dashboard(ui, roster):
                         ranked = filter_review(reviewed,review_view)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
                     render_tabs_minutes_status([game], 'edges_game_tabs_status')
-                    ui.caption('Snapshot of paired Over/Under prices; quotes older than 15 minutes are excluded when loaded. Use Refresh live data to update. Edge % is a projection gap, not a win probability or expected betting return.')
+                    ui.caption('Paired Over/Under prices. Saved-price comparisons show their original saved time above and are excluded from live probability tracking. Use Refresh live data to retry. Edge % is a projection gap, not a win probability or expected betting return.')
                     if not selected_stats:
                         ui.info('Check at least one stat category to show edges.')
                     elif ranked.empty:
@@ -1645,7 +1662,7 @@ def render_live_dashboard(ui, roster):
                     else:
                         ui.success(f'Showing {len(ranked)} of {total_edges} eligible player-stat edges · {int(reviewed["Robust play"].sum())} pass all robustness checks')
                         ranked['Book line (Over)'] = [over_line_label(line,price) for line,price in zip(ranked['Book line'],ranked['Over odds'])]
-                        display_columns = ['Rank','Player','Stat','Play','Edge %','Projected','Book line (Over)','Under odds','Projected minutes','Good-to minutes','Matchup rating','Review flags','Reference minutes','Minutes cushion','Book implied total','Over odds', *PROBABILITY_COLUMNS]
+                        display_columns = ['Rank','Player','Stat','Play','Edge %','Projected','Book line (Over)','Under odds','Market status','Projected minutes','Good-to minutes','Matchup rating','Review flags','Reference minutes','Minutes cushion','Book implied total','Over odds', *PROBABILITY_COLUMNS]
                         ui.caption('Players ordered by their best Edge % within each team. Each player’s plays stay together, highest edge first. Click a flag or matchup rating for details.')
                         if show_recent:
                             recent = recent_role_comparison(combined, roster, players, logs, SEASON, matched_players=matched_players)

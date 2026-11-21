@@ -43,7 +43,7 @@ Selecting a player team defaults the opponent to its next verified regular-seaso
 
 Automatic selections follow the schedule whenever the page reruns or you refresh live data; they are tracked separately from manual choices. **Use next opponent** (or clearing the dropdown) restores automatic selection. Only the schedule response is cached for five minutes, so an expired game cannot remain the automatic default just because it was cached. A recovered schedule fills an empty automatic selection. This does not add automatic page reloads or enable in-game sportsbook prices; retained matchups remain pregame model previews.
 
-Sportsbook events must match the scheduled teams, home/away orientation and tip within 30 minutes. This shared window covers feed discrepancies such as BOS–DEN on November 18, 2026 (ESPN 02:30 UTC; The Odds API 02:10 UTC). It applies to all projection pages and completed-box prediction tracking. The sportsbook event time remains the pregame cutoff; wrong opponents, later rematches and non-scheduled games remain excluded. Quote freshness still requires prices no more than 15 minutes old.
+Sportsbook events must match the scheduled teams, home/away orientation and tip within 30 minutes. This shared window covers feed discrepancies such as BOS–DEN on November 18, 2026 (ESPN 02:30 UTC; The Odds API 02:10 UTC). It applies to all projection pages and completed-box prediction tracking. The sportsbook event time remains the pregame cutoff; wrong opponents, later rematches and non-scheduled games remain excluded. Live quote freshness requires prices no more than 15 minutes old. Timestamped saved-price comparisons are available during outages as described below.
 
 The **Player vs Opponent** tab selects a player and any other team, with an opponent-adjustment toggle and baseline/adjusted stat comparison. A 0–48 minute slider (half-minute steps) recalculates the selected player’s baseline and opponent-adjusted stat line from the underlying per-minute rates, including players whose automatic minutes are zero. Each player’s custom value persists within the browser session; **Use automatic minutes** restores the exact workbook/season-average value. Custom minutes affect only this player preview and its CSV, not the saved workbook or daily matchup rankings. The **Today’s Best Matchups** tab uses the day’s verified upcoming regular-season schedule (date selectable), ranks by any supported percentage, includes a negative-matchup toggle and minimum-sample filter, and displays a green/red heatmap, home/away, archetypes, sample counts, projected lines and CSV download. Empty slates stay empty; choose another date for previews. Rosters remain the user's workbook scenario, not confirmed lineups.
 
@@ -73,6 +73,37 @@ prior game-equivalents are excluded from the observed sample counts. Multi-stat 
 `data/game_logs_2026.csv.gz` contains 26,547 player appearances across all **1,230 2025–26 regular-season games**, retrieved 2026-10-19 from ESPN team schedules and summary box scores. Each of 30 teams has 82 games. The NBA Cup Championship is explicitly excluded even though ESPN tags it season type 2. Source details are in `data/game_logs_2026.csv.source.json`. Current approved archetypes/manual overrides label these historical appearances; archived labels cover players outside the current roster. Exact unambiguous canonical/workbook name matching links providers; unmatched players do not contribute cluster samples. Full-season averages derived from these box scores supersede partial archived stat baselines where matched; archived feature data remains unchanged for clustering. RotoWire still covers players without actual prior-season profiles.
 
 Rebuild the historical snapshot with `python matchup_data.py --year 2026 --cache /path/to/local/boxscore-cache`. The cache holds raw source JSON outside the repository. Current-season schedules/box scores refresh every five minutes once a team reaches the matchup boundary; completed box scores are cached locally to avoid downloading them again. Every box score must match the requested season, type and completed status. Partial feed failures produce a visible warning.
+
+### Last saved sportsbook lines
+
+Player vs Opponent, Team Projections and Top Sportsbook Edges keep the last
+successful response for each exact request, sportsbook, event and account. If The
+Odds API fails (including exhausted allowance), the app uses that verified saved
+response for the same upcoming game. A visible **Saved lines — not live** warning
+shows the original save date/time in Mountain time, its age, and the oldest price
+update. Age is recalculated on each render; retries never refresh the original
+timestamps. Prices aging past 15 minutes are also labeled saved. Refresh live data
+retries the provider; a successful response takes precedence, including an empty
+response when a book has withdrawn its markets. Games without a backup remain
+unavailable, and started games, other books and later rematches never substitute.
+
+Saved paired props can be compared with the current projection, including
+experimental probabilities. Saved spreads/totals can supply the existing team
+adjustments, with a separate source warning. Calculations and exports retain the
+original quote times and saved-price status. These are comparisons against saved
+prices, not confirmed live offers. Neither saved props nor projections using saved
+game targets create new live probability-tracking observations. Sending a pick to
+Jae's card still requires its existing fresh-price verification.
+
+Backups contain only source payloads, original timestamps, hashed request identity
+and checksums, written atomically to private files outside the repository. API keys
+and request URLs are not saved. Default storage is the server's temporary
+`nba-prop-sportsbook-lines-v1` directory; set `SPORTSBOOK_LINES_CACHE_DIR` to a
+private persistent volume to retain backups across hosting/container replacements.
+Normal reruns, manual cache refreshes and app process restarts retain the files;
+Streamlit Cloud redeploys or reboots may replace temporary storage. This feature
+cannot recover responses that were never saved before deployment. No source
+quotes or account credentials are committed to the repository.
 
 ### Experimental prop probabilities
 
@@ -111,7 +142,7 @@ individual scoring mix uses historical/current per-minute scoring components
 and a 30-minute style prior. The app's final PTS and 3PM means are held fixed;
 the remaining expected points are split into twos/free throws using that mix.
 Inconsistent PTS/3PM means, missing individual scoring history, nonpositive
-minutes and unavailable/stale lines produce blank probabilities, never a changed
+minutes and unavailable/unverified lines produce blank probabilities, never a changed
 projection. Temporary archetype-average profiles are excluded.
 
 `data/points_probability_profile.json` contains the frozen fit, scoring totals,

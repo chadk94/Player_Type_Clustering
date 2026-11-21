@@ -25,7 +25,9 @@ def record_id(record):
 def snapshot(row, event, bookmaker, context, page, mode='Standard', now=None):
     """Freeze the exact line/mean once; all later changes get a different ID."""
     now = pd.Timestamp(now or datetime.now(timezone.utc))
-    if row.get('Probability status') != 'Experimental':
+    if (row.get('Probability status') != 'Experimental' or
+            row.get('Market status') == 'Saved quote — not live' or
+            row.get('Saved game lines', False)):
         return None
     try:
         start = pd.Timestamp(event['commence_time'])

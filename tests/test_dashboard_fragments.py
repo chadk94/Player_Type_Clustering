@@ -232,6 +232,42 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
         self.assertIn("Today's Plays", [tab.label for tab in self.app.tabs])
         self.assertEqual(len(self.app.tabs), 6)
 
+    def test_saved_lines_banner_and_edges_survive_outage_without_live_tracking(self):
+        from saved_sportsbook_lines import SOURCE, SAVED
+        now = datetime.now(timezone.utc)
+        saved_at = (now - timedelta(hours=2)).isoformat()
+        start = (now + timedelta(hours=4)).isoformat()
+        event = dict(id='saved-lines-game', home_team='Houston Rockets',
+                     away_team='Atlanta Hawks', commence_time=start)
+        self.mock('get_odds_api_key', return_value='test-key')
+        self.mock('next_team_game', return_value={'Opponent':'HOU', 'GameTimeUTC':start})
+        self.mock('sportsbook_events', return_value=[event])
+        self.mock('sportsbook_game_lines', return_value={})
+        self.mock('team_projection_preview', side_effect=lambda ui, rows, *args: rows)
+        payload = {**event, SOURCE:dict(saved_at=saved_at, fallback=True),
+            'bookmakers':[{'key':'fanduel', 'markets':[{
+                'key':'player_points', 'last_update':saved_at, 'outcomes':[
+                    dict(description=name, name=side, point=20.5, price=-110)
+                    for name in self.roster.loc[self.roster.TEAM_ABBREVIATION.isin(['ATL','HOU']), 'PLAYER_NAME']
+                    for side in ['Over','Under']]}]}]}
+        self.mock('sportsbook_props', return_value=payload)
+        self.schedule.return_value = pd.DataFrame([
+            dict(TEAM_ID=TEAM_IDS[side], Opponent=opp, Venue=venue,
+                 GameTimeUTC=start, GameStatus='Scheduled')
+            for side,opp,venue in [('HOU','ATL','home'),('ATL','HOU','away')]])
+        self.probability_tracking.reset_mock()
+        self.app.run()
+        self.assert_no_errors()
+        warnings = [w.value for w in self.app.warning]
+        self.assertTrue(any('Saved lines — not live' in w and '2 hr' in w and 'Last saved' in w for w in warnings))
+        tables = self.edge_frames()
+        self.assertTrue(tables)
+        self.assertTrue(all(table['Market status'].eq(SAVED).all() for table in tables))
+        self.assertTrue(all(table['Exp. P(over)'].notna().any() for table in tables))
+        observations = [call.args[1] for call in self.probability_tracking.call_args_list]
+        self.assertTrue(observations)
+        self.assertTrue(all(not rows for rows in observations))
+
     def test_prop_probabilities_match_across_player_and_edges_with_stat_specific_tracking(self):
         now = datetime.now(timezone.utc)
         start = (now + timedelta(hours=4)).isoformat()
