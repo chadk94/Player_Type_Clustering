@@ -1,4 +1,4 @@
-"""Informational Tabs stat comparisons; never replace the model or its filters."""
+"""Tabs stat comparisons and agreement screening; never change model values."""
 from math import isfinite
 
 import numpy as np
@@ -10,8 +10,10 @@ TABS_STATS = ('PTS', 'REB', 'AST', '3PM', 'STL', 'BLK', 'TOV')
 TECHNICAL = ('Compares TabsNBA’s unedited stat projection with this exact sportsbook line, '
              'using Tabs’ own minutes and selected scenario. It is not our model recalculated '
              'with Tabs minutes. Equal-to-line projections are neutral. Missing, stale, OUT '
-             'or zero-minute comparisons produce no disagreement flag. This is informational; '
-             'our projections, probabilities, edge rankings and More robust filter are unchanged.')
+             'or zero-minute comparisons produce no Tabs flag. More robust plays requires '
+             'Tabs agreement plus the existing minutes, role and injury checks. Neutral or '
+             'unavailable comparisons do not qualify. Our projections, probabilities and '
+             'edge rankings are unchanged.')
 
 
 def finite_number(value):
@@ -74,6 +76,24 @@ def add_tabs_projection_review(edges, references, game, as_of):
     checks = [tabs_projection_check(row, references, game, as_of) for _, row in out.iterrows()]
     for column in ('Tabs projection flag', 'Tabs stat projection', 'Tabs projection detail', 'Tabs projection technical'):
         out[column] = [check[column] for check in checks]
+    if 'Robust play' in out:
+        passed = out['Robust play'].eq(True)
+        agrees = out['Tabs projection flag'].eq('Agrees')
+        demoted = passed & ~agrees
+        out['Robust play'] = passed & agrees
+        if 'Review group' in out:
+            out.loc[demoted, 'Review group'] = 'Needs review'
+            out.loc[demoted & out['Tabs projection flag'].eq('Unavailable'), 'Review group'] = 'Unchecked'
+        if 'Review flags' in out:
+            out.loc[demoted, 'Review flags'] = 'Review'
+        if 'Review detail' in out:
+            notes = {
+                'Agrees': 'Tabs agrees with this pick; all robustness checks passed.',
+                'OPPOSES': 'Minutes, role and injury checks passed, but Tabs favors the opposite side.',
+                'Neutral': 'Minutes, role and injury checks passed, but Tabs projects exactly on the line.',
+                'Unavailable': 'Minutes, role and injury checks passed; a fresh Tabs stat comparison is still needed.',
+            }
+            out.loc[passed, 'Review detail'] = out.loc[passed, 'Tabs projection flag'].map(notes)
     return out
 
 
@@ -81,4 +101,4 @@ def tabs_projection_coverage(edges):
     available = edges.get('Tabs projection flag', pd.Series('Unavailable', index=edges.index)).isin(['OPPOSES', 'Agrees', 'Neutral'])
     if not available.any():
         return 'Tabs stat comparison pending — connect a current Tabs projection with the updated connector. No disagreements are inferred from missing data.'
-    return f'Tabs stat comparison: {int(available.sum())} of {len(edges)} plays checked. “Tabs disagrees” means their projection is on the opposite side of the line.'
+    return f'Tabs stat comparison: {int(available.sum())} of {len(edges)} plays checked. Green agrees with the pick; yellow disagrees; gray is exactly on the line.'

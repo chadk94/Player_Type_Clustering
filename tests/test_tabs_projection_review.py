@@ -8,6 +8,7 @@ import pandas as pd
 from tabs_minutes import parse_tabs_browser_snapshot, parse_tabs_minutes, resolve_browser_result
 from tabs_projection_review import add_tabs_projection_review, tabs_projection_check
 from edge_rating_table import table_payload
+from edge_review import filter_review
 
 NOW = pd.Timestamp('2026-11-22T21:00:00Z')
 GAME = dict(id='demo', Away='BOS', Home='SAC', GameTimeUTC=NOW+pd.Timedelta(hours=3))
@@ -91,17 +92,71 @@ class TabsProjectionTests(unittest.TestCase):
         self.assertEqual(self.refs(old).minutes.iloc[0],30)
         self.assertEqual(tabs_projection_check(edge(),self.refs(old),GAME,NOW)['Tabs projection flag'],'Unavailable')
 
-    def test_annotation_preserves_original_values_filters_and_order_and_reaches_badge(self):
+    def test_review_preserves_model_values_order_and_reaches_both_badges(self):
         rows=pd.DataFrame([edge(),edge(Play='Under',Projected=1.8)])
         original=rows.copy(deep=True)
         result=add_tabs_projection_review(rows,self.refs(),GAME,NOW)
-        pd.testing.assert_frame_equal(result[original.columns],original)
+        model_columns=original.columns.drop(['Robust play','Review group'])
+        pd.testing.assert_frame_equal(result[model_columns],original[model_columns])
+        pd.testing.assert_frame_equal(rows,original)
+        self.assertEqual(result['Robust play'].tolist(),[False,True])
         payload=table_payload(result,['Rank','Player','Stat','Play','Projected','Edge %'],ROSTER,{},'BOS',GAME,'FanDuel',date(2026,11,22))
         badges=[r['reviewBadges'] for r in payload['rows']]
         self.assertEqual(badges[0][0]['label'],'Tabs disagrees')
         self.assertIn('Scenario: Default',badges[0][0]['technical'])
-        self.assertFalse(any(b['label']=='Tabs disagrees' for b in badges[1]))
+        self.assertEqual(badges[1][0]['label'],'Tabs agrees')
+        self.assertEqual(badges[1][0]['color'],'tabs-agrees')
         self.assertTrue(add_tabs_projection_review(rows.iloc[:0],None,GAME,NOW).empty)
+
+    def test_neutral_badge_is_distinct_from_missing_data(self):
+        rows=pd.DataFrame([edge(**{'Book line':2.2}),edge(Stat='AST')])
+        refs=self.refs();refs['Tabs projection AST']=np.nan
+        result=add_tabs_projection_review(rows,refs,GAME,NOW)
+        self.assertEqual(result['Tabs projection flag'].tolist(),['Neutral','Unavailable'])
+        payload=table_payload(result,['Rank','Player','Stat','Play','Projected','Edge %'],ROSTER,{},'BOS',GAME,'FanDuel',date(2026,11,22))
+        self.assertEqual(payload['rows'][0]['reviewBadges'][0]['label'],'Tabs neutral')
+        self.assertEqual(payload['rows'][0]['reviewBadges'][0]['color'],'tabs-neutral')
+        self.assertFalse(any(b['label'].startswith('Tabs ') for b in payload['rows'][1]['reviewBadges']))
+        self.assertFalse(result['Robust play'].any())
+        self.assertEqual(result['Review group'].tolist(),['Needs review','Unchecked'])
+
+    def test_agreement_is_required_in_addition_to_all_existing_checks(self):
+        rows=pd.DataFrame([
+            edge(**{'Book line':2.0}),
+            edge(Play='Under'),
+            edge(**{'Book line':2.0,'Robust play':False,'Review group':'Waiting on news','Injury flag':'Q'}),
+            edge(**{'Book line':2.0,'Robust play':False,'Review group':'Needs review','Minutes flag':'MIN'}),
+            edge(**{'Book line':2.0,'Robust play':False,'Review group':'Unchecked','Role flag':'Unchecked'}),
+            edge(),
+            edge(**{'Book line':2.2}),
+            edge(Stat='AST'),
+        ],index=[8,2,7,5,4,9,1,6])
+        rows['Review flags']='existing';rows['Review detail']='existing detail'
+        refs=self.refs();refs['Tabs projection AST']=np.nan
+        result=add_tabs_projection_review(rows,refs,GAME,NOW)
+        self.assertEqual(result['Robust play'].tolist(),[True,True,False,False,False,False,False,False])
+        self.assertEqual(filter_review(result,'More robust plays').index.tolist(),[8,2])
+        self.assertEqual(filter_review(result,'All plays').index.tolist(),rows.index.tolist())
+        self.assertEqual(filter_review(result,'Waiting on news').index.tolist(),[7])
+        self.assertEqual(filter_review(result,'Needs review / unchecked').index.tolist(),[5,4,9,1,6])
+        for idx in [7,5,4]:
+            for col in ['Review group','Review flags','Review detail']:
+                self.assertEqual(result.loc[idx,col],rows.loc[idx,col])
+        self.assertEqual(result.loc[9,'Review flags'],'Review')
+        self.assertIn('Tabs favors the opposite side',result.loc[9,'Review detail'])
+        self.assertIn('exactly on the line',result.loc[1,'Review detail'])
+        self.assertIn('still needed',result.loc[6,'Review detail'])
+
+    def test_stat_refresh_rechecks_robust_eligibility_without_changing_cached_review(self):
+        original=pd.DataFrame([edge()])
+        refs=self.refs()
+        first=add_tabs_projection_review(original,refs,GAME,NOW)
+        self.assertFalse(first['Robust play'].iloc[0])
+        refs['Tabs projection 3PM']=3.1
+        refreshed=add_tabs_projection_review(original,refs,GAME,NOW)
+        self.assertTrue(refreshed['Robust play'].iloc[0])
+        self.assertTrue(original['Robust play'].iloc[0])
+        self.assertEqual(refreshed['Projected'].iloc[0],3.2)
 
 
 if __name__=='__main__':unittest.main()

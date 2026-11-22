@@ -14,7 +14,7 @@ from points_probability import PROBABILITY_COLUMNS
 from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT, FANDUEL_THREES_OVER_ONLY
 from todays_plays import edge_pick
 
-EDGE_TABLE_UI_VERSION = 'tabs_disagreement_v1'
+EDGE_TABLE_UI_VERSION = 'tabs_agreement_v2'
 
 PLAYER_PREVIEW_STATS = {'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', '3PM': 'FG3M',
                         'STL': 'STL', 'BLK': 'BLK', 'TOV': 'TOV', 'PF': 'PF', 'PRA': 'PRA'}
@@ -41,7 +41,7 @@ HEADER_HELP = {
     'Edge %':'Players are ordered by their highest qualifying edge; props within each player are highest first. This projection gap is not win probability or expected return.',
     'Good-to minutes':'Minutes at which this side still clears 5% edge: lower limit for an Over, upper limit for an Under. Tested in half-minute steps through 48.',
     'Matchup rating':'1 = poor, 3 = average, 5 = excellent. Hover for 3 recent similar-player performances; click for up to 10.',
-    'Review flags':'Minutes unverified = no completed minutes check; Minutes risk = playing time could weaken the bet; ROLE = recent-role risk; Q = availability risk; Tabs disagrees = their stat projection favors the opposite side of this line; green History + supports this pick, red History − opposes it (informational); ? = unchecked. Click a badge for details.',
+    'Review flags':'Minutes unverified = no completed minutes check; Minutes risk = playing time could weaken the bet; ROLE = recent-role risk; Q = availability risk; Tabs agrees = same side of the line; Tabs disagrees = opposite side; Tabs neutral = exactly on the line; green History + supports this pick, red History − opposes it (informational); ? = unchecked. Click a badge for details.',
     'Book line (Over)':'Sportsbook line followed by the Over price. Under prices appear in the next column.',
     'Exp. P(over)':'Experimental probability of going Over, conditional on playing. Whole-number lines can push.',
     'Exp. P(under)':'Experimental probability of going Under, conditional on playing. Whole-number lines can push.',
@@ -284,8 +284,12 @@ def table_payload(edges, columns, roster, effects, team, game, book, day, projec
                 badges.append(dict(label=label,
                     color=color if status!='Unchecked' else 'unchecked',
                     **popup))
-        if row.get('Tabs projection flag') == 'OPPOSES':
-            badges.append(dict(label='Tabs disagrees', color='tabs',
+        tabs_badges = {'OPPOSES': ('Tabs disagrees', 'tabs'),
+                       'Agrees': ('Tabs agrees', 'tabs-agrees'),
+                       'Neutral': ('Tabs neutral', 'tabs-neutral')}
+        if row.get('Tabs projection flag') in tabs_badges:
+            label, color = tabs_badges[row['Tabs projection flag']]
+            badges.append(dict(label=label, color=color,
                                detail=row.get('Tabs projection detail',''),
                                technical=row.get('Tabs projection technical','')))
         if row.get('History flag') in ('HISTORY', 'SUPPORTS'):
