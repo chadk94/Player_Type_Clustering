@@ -1,5 +1,7 @@
 """Small game-scoped source marker; never fetches or recalculates projections."""
 from functools import lru_cache
+from hashlib import sha256
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -45,6 +47,11 @@ def render_tabs_minutes_status(games, key):
         day = str(pd.Timestamp(game['GameTimeUTC']).tz_convert('America/New_York').date())
         scopes.extend(dict(team=team, opponent=opponent, day=day)
                       for team, opponent in ((game['Away'], game['Home']), (game['Home'], game['Away'])))
-    _status_component(st.runtime.get_instance())(key=key, data=dict(
+    browser = st.session_state.get('tabs_minutes_mode', 'Browser connection') == 'Browser connection'
+    # Component callbacks retain their mounted game scope. Mount a new marker
+    # when changing games/dates or source mode; timestamp events can then update
+    # rows without restoring the previous game's label.
+    scope_key = sha256(json.dumps([scopes, browser], sort_keys=True).encode()).hexdigest()[:16]
+    _status_component(st.runtime.get_instance())(key=f'{key}_{scope_key}', data=dict(
         scopes=scopes, rows=minutes_metadata(st.session_state.get('tabs_minutes_reference')),
-        browser=st.session_state.get('tabs_minutes_mode', 'Browser connection') == 'Browser connection'))
+        browser=browser))
