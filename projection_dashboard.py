@@ -33,6 +33,8 @@ from team_rebounds import apply_team_rebounds, REBOUND_METADATA
 from team_rate_blend import (season_rates, blend_team_rates, PRIOR_GAMES, POLICY_VERSION,
                             DEFENSIVE_PRIOR_GAMES, DEFENSIVE_FULL_CURRENT_GAMES)
 from team_projection_view import upcoming_team_games, team_projection_tables, TEAM_STATS, TEAM_GAME_RETENTION
+from defensive_recency import comparison_rates
+from defensive_recency_view import render_trial as render_defensive_trial
 from slate_player_view import PLAYER_SORTS, rank_slate_players
 from sportsbook_edges import scheduled_book_games, game_edges, filter_game_edges, add_play_ev, EDGE_STATS, EVENT_TIME_TOLERANCE
 from sportsbook_injuries import KEY_MINUTES, game_injuries, injury_alert_changes, latest_report, pending_key_players
@@ -751,13 +753,13 @@ def render_all_team_players(ui, games, book_name, date, schedule, now, snapshots
                              {g['key']: g for g in games}, book_name, date, notes)
 
 
-def render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
+def render_team_projections(ui, team_rates, game_frames, approved_bundle=None, trial_context=None):
     ui.html('<style>' + Path(__file__).with_name('team_projection_readability.css').read_text() + '</style>')
     with ui.container(key='team_projection_readable'):
-        _render_team_projections(ui, team_rates, game_frames, approved_bundle)
+        _render_team_projections(ui, team_rates, game_frames, approved_bundle, trial_context)
 
 
-def _render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
+def _render_team_projections(ui, team_rates, game_frames, approved_bundle=None, trial_context=None):
     ui.subheader('🏀 Team Projections')
     ui.caption('Team totals and player projections use the same saved minutes and adjustments as Sportsbook Edges. Games stay available until one hour after tip-off.')
     now = pd.Timestamp(datetime.now(timezone.utc))
@@ -832,6 +834,8 @@ def _render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
                                 **{stat: st.column_config.NumberColumn(width='small', format='%.2f') for stat in TEAM_STATS}})
     if totals.PTS.notna().all():
         ui.caption(f"Combined projected points: {totals.PTS.sum():.2f}. Team totals sum the unrounded player projections.")
+    if trial_context is not None:
+        render_defensive_trial(ui, final, game, book_name, trial_context['rates'], trial_context['logs'])
     with ui.expander('How the team adjustments change projections'):
         ui.caption('Baseline uses player stat rates and saved minutes. After archetypes adds opponent effects. Team adjustment % compares the final projection with After archetypes.')
         ui.dataframe(readable_projection_style(breakdown, {'Team adjustment %': '{:+.2f}%'}),
@@ -1139,6 +1143,10 @@ def render_live_dashboard(ui, roster):
             return apply_matchup(projections.loc[projections.Team.eq(team)], roster, teams, prior_effects, current_effects, opponent)
 
         team_rates = blend_team_rates(prior_team_rates(), logs, teams)
+        @lru_cache(maxsize=1)
+        def defensive_trial_rates():
+            # Only evaluated when the comparison is opened; no extra feed calls.
+            return comparison_rates(prior_team_rates(), team_rates, logs)
         probability_context = {int(pid): row.to_dict() for pid, row in matched_players.items()}
         ui.caption(f'Allowed assist, three-attempt and offensive-rebound shares use a {DEFENSIVE_PRIOR_GAMES:g}-game prior through eight completed games, then phase out last season by {DEFENSIVE_FULL_CURRENT_GAMES:g}. Other team rates keep a {PRIOR_GAMES:g}-game prior. Threes preserve individual shooting percentages; PRA uses final points + rebounds + assists.')
         ui.caption('Three-point accuracy blends prior-career NBA shooting with this season using a 200-attempt prior. Career weight never falls below 50%. Minutes and normalized archetype attempt shares still determine volume. Players without prior NBA attempts retain their existing baseline.')
@@ -1785,6 +1793,7 @@ def render_live_dashboard(ui, roster):
 
     @st.fragment(run_every='1h')
     def render_team_page():
-        render_team_projections(ui, team_rates, game_frames, approved_bundle)
+        render_team_projections(ui, team_rates, game_frames, approved_bundle,
+                                {'rates': defensive_trial_rates, 'logs': logs})
     with team_tab:
         render_team_page()
