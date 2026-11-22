@@ -14,7 +14,7 @@ import streamlit as st
 
 from live_projections import name_key
 from tabs_minutes_status import minutes_metadata
-from tabs_projection_review import tabs_stat_values
+from tabs_projection_review import TABS_STATS, tabs_stat_values
 
 # Tabs uses the short name; resolve only this known alias on the same team.
 ALIASES = {('POR','robert williams'):'robert williams iii',
@@ -202,12 +202,16 @@ def render_tabs_comparison(ui,roster,games):
         coverage['Status']=coverage.source_saved.map({True:'Saved Tabs minutes',False:'Live Tabs minutes'})
         coverage['Tabs updated']=pd.to_datetime(coverage.source_updated_at,utc=True).dt.tz_convert('America/Denver').dt.strftime('%b %d %I:%M %p %Z')
         ui.dataframe(coverage[['Team','Opponent','Status','Tabs updated','Players','Minutes','scenario']].rename(columns={'scenario':'Scenario'}),hide_index=True,width='stretch')
-        with ui.expander('View saved player minutes',expanded=False):
+        stat_columns=[f'Tabs projection {stat}' for stat in TABS_STATS]
+        stat_players=int(refs.reindex(columns=stat_columns).notna().any(axis=1).sum())
+        ui.caption(f'Tabs stat projections received for {stat_players} of {len(refs)} matched players. '
+                   'Only fresh, active-player values can be compared with sportsbook lines.')
+        with ui.expander('View saved player minutes and projections',expanded=False):
             saved_rows=refs.merge(roster[['PLAYER_ID','TEAM_ABBREVIATION','PLAYER_NAME']].drop_duplicates(),
                 left_on=['PLAYER_ID','Team'],right_on=['PLAYER_ID','TEAM_ABBREVIATION'],how='left')
             saved_rows['Status']=saved_rows.source_saved.map({True:'Saved',False:'Live'})
             saved_rows['Tabs updated']=pd.to_datetime(saved_rows.source_updated_at,utc=True).dt.tz_convert('America/Denver').dt.strftime('%b %d %I:%M %p %Z')
-            ui.dataframe(saved_rows[['PLAYER_NAME','Team','Opponent','minutes','source_status','Status','Tabs updated']].rename(
+            ui.dataframe(saved_rows[['PLAYER_NAME','Team','Opponent','minutes','source_status','Status','Tabs updated',*stat_columns]].rename(
                 columns={'PLAYER_NAME':'Player','minutes':'Tabs minutes','source_status':'Availability'}),hide_index=True,width='stretch')
         ui.caption(f"{details['export_date']} · {details['scope']} · {details['scenario']} · {len(refs)} matched players")
         if details['unmatched']:
