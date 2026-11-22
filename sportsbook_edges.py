@@ -38,7 +38,7 @@ def add_play_ev(edges):
 
 EDGE_COLUMNS = ['Rank','Player','PLAYER_ID','Team','Opponent','Stat','Play','Projected minutes',
                 'Baseline','Matchup rating','Projected','Book line','Book implied total','Edge %','Signed edge %','Over odds',
-                'Under odds','Updated UTC','Market status','Saved UTC','Off samples','Def samples','Stat baseline','Matchup data',*MATCHUP_METADATA,'Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Saved game lines','Game lines saved UTC','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]
+                'Under odds','Updated UTC','Market status','Saved UTC','Quote basis','Off samples','Def samples','Stat baseline','Matchup data',*MATCHUP_METADATA,'Pre-market PTS','Pre-market PRA','Market PTS factor','Market team total','Saved game lines','Game lines saved UTC','Pre-team AST','Team AST factor','Team AST target','Team assist rate','Expected team FGM','Assist share','Pre-team 3PM','Pre-team 3PA','Team 3PM factor','Team 3PM target','Team three rate','Three-point share',*REBOUND_METADATA]
 
 
 def scheduled_book_games(events, schedule, now=None):

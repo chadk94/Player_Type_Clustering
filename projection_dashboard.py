@@ -55,7 +55,7 @@ from player_navigation import (apply_pending_navigation, selected_game_context,
 from approved_minutes import render_import, for_matchup, projection_gaps, game_minutes_caption, unmatched_minutes_message, blocked_matchup_message
 from import_minutes import TEAM_IDS
 from schedule_feed import load_daily_schedule, ScheduleMemory
-from sportsbook_lines import (BOOKS, MARKETS, OddsFeedError, read_feed, next_matchup,
+from sportsbook_lines import (BOOKS, MARKETS, projection_markets, FANDUEL_THREES_OVER_ONLY, OddsFeedError, read_feed, next_matchup,
                               game_quotes, player_quotes, compare_with_book, comparison_style, TEAM_NAMES)
 
 
@@ -318,7 +318,7 @@ SPORTSBOOK_REFRESH_SECONDS = 3600
 def sportsbook_props(event_id, bookmaker, _api_key, *, force=False):
     payload = read_saved_feed(f'/events/{event_id}/odds', _api_key, read_feed,
                         refresh_after=SPORTSBOOK_REFRESH_SECONDS, force=force,
-                        bookmakers=bookmaker,markets=','.join(MARKETS),oddsFormat='american')
+                        bookmakers=bookmaker,markets=projection_markets(bookmaker),oddsFormat='american')
     if not isinstance(payload,dict):
         raise OddsFeedError('Sportsbook prices are unavailable.')
     return payload
@@ -344,7 +344,7 @@ def render_sportsbook_refresh(ui, event, book, api_key, key, *, props=True):
     if pd.isna(start) or start.tzinfo is None or start <= pd.Timestamp.now(tz='UTC'):
         return False
     if not ui.button('Refresh sportsbook lines', key=key,
-                     help=('Fetch this game and sportsbook only. Up to 10 credits for props plus spread/total.'
+                     help=('Fetch this game and sportsbook only. Up to 11 credits for props plus spread/total.'
                            if props else 'Fetch this game’s spread/total only. Up to 2 credits.')):
         return False
     failures = []
@@ -1320,6 +1320,8 @@ def render_live_dashboard(ui, roster):
                 ui.caption(RECENT_CAPTION)
             display = comparison[display_columns]
             ui.caption('Edge % measures the gap from the book-implied total. Plays require a gap above 5%. Steals and blocks Unders also require an Under price of −160 or better. Darker shading indicates a larger edge.')
+            if comparison['Quote basis'].eq(FANDUEL_THREES_OVER_ONLY).any():
+                ui.caption('3PM uses FanDuel’s X+ threes offer because no main line is posted. Only the Over is quoted; its implied total retains the book margin. No Under price is assumed.')
             ui.dataframe(display.style.apply(comparison_style,axis=1).format(
                 {**{column:'{:.2f}' for column in display_columns if column not in ['Stat','Play','Edge %','Matchup rating','Book line (Over)','Recent role status']},
                  **{column:'{:.1%}' for column in PROBABILITY_COLUMNS},'Edge %':'{:+.2f}%', 'Recent change %':'{:+.1f}%'},na_rep='—'),hide_index=True,width='stretch')
@@ -1331,9 +1333,9 @@ def render_live_dashboard(ui, roster):
             ui.caption('PF = personal fouls committed. Enter a line under Personal fouls probability to see its chances.')
             unavailable = comparison.loc[comparison['Book implied total'].isna(),'Stat'].tolist()
             if unavailable:
-                ui.caption('No usable current or saved two-sided line for: '+', '.join(unavailable)+'. Unavailable comparisons stay blank.')
+                ui.caption('No usable current or saved line for: '+', '.join(unavailable)+'. Unavailable comparisons stay blank.')
             with ui.expander('Sportsbook prices and implied-total calculation'):
-                ui.dataframe(comparison[['Stat','Book line','Over odds','Under odds','Fair over probability','Book implied total','Updated UTC','Saved UTC','Market status']],hide_index=True,width='stretch')
+                ui.dataframe(comparison[['Stat','Book line','Over odds','Under odds','Fair over probability','Book implied total','Quote basis','Updated UTC','Saved UTC','Market status']],hide_index=True,width='stretch')
                 ui.write('American odds convert to implied probabilities. Fair P(over) = raw P(over) / [raw P(over) + raw P(under)]. The implied total is the Poisson mean whose over probability matches that fair probability; integer lines account for a push. One line and its prices do not uniquely identify the real stat distribution, so this is an explicitly modeled mean, not a sportsbook-published forecast. Minutes changes update your projection; the market estimate remains tied to the book’s game and prices.')
                 ui.write('For illustration only: over 2.5 threes at -150 with under +120 implies a mean above 2.5. Both prices are needed to remove margin; the over price alone is insufficient.')
                 ui.download_button('Download stat and sportsbook comparison',comparison.to_csv(index=False),'player_sportsbook_comparison.csv','text/csv')
@@ -1594,7 +1596,7 @@ def render_live_dashboard(ui, roster):
         probability_observations = []
         ui.subheader('💰 Sportsbook Edges')
         ui.caption('Hourly sportsbook updates while the app is open. Saved lines show their timestamp and age between updates. Refresh sportsbook lines checks this game early.')
-        ui.caption('Players are ranked by their strongest edge from the juice-adjusted book total. More robust plays combines all games. Steals and blocks Unders require an Under price of −160 or better.')
+        ui.caption('Players are ranked by their strongest edge from the book-implied total. Paired prices remove the margin; FanDuel X+ threes fallbacks retain it and quote only the Over. More robust plays combines all games. Steals and blocks Unders require an Under price of −160 or better.')
         # All plays stays game-scoped; only the opt-in robust view loads the slate.
         try:
             edge_key = get_odds_api_key()
@@ -1694,7 +1696,7 @@ def render_live_dashboard(ui, roster):
                         ranked = filter_review(reviewed,review_view)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
                     render_tabs_minutes_status([game], 'edges_game_tabs_status')
-                    ui.caption('Paired Over/Under prices. Saved-price comparisons show their original saved time above and are excluded from live probability tracking. Use Refresh sportsbook lines to retry. Edge % is a projection gap, not a win probability or expected betting return.')
+                    ui.caption('Paired prices where available. X+ threes marks FanDuel’s Over-only fallback; no Under price is assumed. Saved and Over-only quotes are excluded from live probability tracking. Use Refresh sportsbook lines to retry. Edge % is a projection gap, not a win probability or expected betting return.')
                     if not selected_stats:
                         ui.info('Check at least one stat category to show edges.')
                     elif ranked.empty:

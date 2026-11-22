@@ -17,6 +17,7 @@ MARKETS = {'player_points':'PTS','player_rebounds':'REB','player_assists':'AST',
            'player_threes':'3PM','player_steals':'STL','player_blocks':'BLK',
            'player_turnovers':'TOV','player_points_rebounds_assists':'PRA'}
 STAT_ORDER = ['PTS','REB','AST','3PM','STL','BLK','TOV','PRA']
+FANDUEL_THREES_OVER_ONLY = 'FanDuel threes milestone — Over only'
 PLAY_THRESHOLD_PCT = 5.
 MIN_STEALS_BLOCKS_UNDER_ODDS = -160
 # Schedule and book feeds can disagree by 20 minutes (BOS–DEN, Nov 18, 2026).
@@ -84,6 +85,11 @@ def fair_over_probability(over, under):
     return p/(p+q)
 
 
+def projection_markets(bookmaker):
+    """Include FD's X+ threes offers, which may be absent from its main market."""
+    return ','.join([*MARKETS, *(['player_threes_alternate'] if bookmaker == 'fanduel' else [])])
+
+
 @lru_cache(maxsize=4096)
 def implied_total(line, over, under):
     """Solve for a Poisson mean using paired, proportional no-vig prices.
@@ -97,7 +103,11 @@ def implied_total(line, over, under):
         raise ValueError('Expected a nonnegative integer or half-point prop line')
     if line==0:
         raise ValueError('A zero integer line cannot identify an over/under mean')
-    target=fair_over_probability(over,under)
+    return _implied_total(line, fair_over_probability(over,under))
+
+
+@lru_cache(maxsize=4096)
+def _implied_total(line, target):
     integer=line.is_integer()
     k=math.floor(line)
     def over_probability(mu):
@@ -115,7 +125,64 @@ def implied_total(line, over, under):
 def _empty_quotes():
     return {stat:{'Stat':stat,'Book line':np.nan,'Over odds':np.nan,'Under odds':np.nan,
                 'Book implied total':np.nan,'Fair over probability':np.nan,'Updated UTC':'',
-                'Market status':'No posted line','Saved UTC':''} for stat in STAT_ORDER}
+                'Market status':'No posted line','Saved UTC':'','Quote basis':''} for stat in STAT_ORDER}
+
+
+def _fanduel_threes_fallback(payload, rows, targets, now, max_age_seconds):
+    """Use one missing-main Over offer, never create an unquoted Under.
+
+    Select the threshold closest to even money without consulting projections.
+    Retain the quoted margin in the implied mean: a one-sided offer cannot be
+    de-vigged. This makes the Over comparison more conservative than removing vig.
+    """
+    offers = {}
+    for book in payload.get('bookmakers', []):
+        if book.get('key') != 'fanduel':
+            continue
+        for market in book.get('markets', []):
+            if market.get('key') != 'player_threes_alternate':
+                continue
+            updated = market.get('last_update', book.get('last_update', ''))
+            for outcome in market.get('outcomes', []):
+                matches = targets.get(sportsbook_player_key(outcome.get('description', '')), [])
+                if len(matches) != 1 or outcome.get('name') != 'Over':
+                    continue
+                try:
+                    line, price = float(outcome['point']), float(outcome['price'])
+                    american_probability(price)
+                    # X+ offers translate to positive half-point lines only.
+                    if not np.isfinite(line) or line < .5 or not (line + .5).is_integer():
+                        continue
+                    offers.setdefault(matches[0], {}).setdefault(line, set()).add((price, updated))
+                except (KeyError, TypeError, ValueError):
+                    continue
+    for player, lines in offers.items():
+        row = rows[player]['3PM']
+        if row['Market status'] != 'No posted line':
+            continue  # Never replace a main line, even an ambiguous or stale one.
+        if any(len(quotes) != 1 for quotes in lines.values()):
+            row['Market status'] = 'Ambiguous alternate prices'
+            continue
+        ranked = sorted((abs(american_probability(price) - .5), line, price, updated)
+                        for line, quotes in lines.items() for price, updated in quotes)
+        if len(ranked) > 1 and abs(ranked[0][0] - ranked[1][0]) < 1e-10:
+            row['Market status'] = 'Ambiguous alternate lines'
+            continue
+        _, line, price, updated = ranked[0]
+        row.update({'Book line':line, 'Over odds':price, 'Updated UTC':updated,
+                    'Quote basis':FANDUEL_THREES_OVER_ONLY})
+        try:
+            age = (now - datetime.fromisoformat(updated.replace('Z', '+00:00'))).total_seconds()
+            saved = quote_is_saved(payload, updated, now, max_age_seconds)
+            if (age < -60 or (age > max_age_seconds and not saved) or
+                    (payload.get(SOURCE, {}).get('fallback') and not saved)):
+                row['Market status'] = 'Stale quote — comparison unavailable'
+                continue
+            row['Book implied total'] = _implied_total(line, american_probability(price))
+            row['Market status'] = SAVED if saved else 'Current'
+            row['Saved UTC'] = payload.get(SOURCE, {}).get('saved_at', '')
+        except (ValueError, TypeError, OverflowError):
+            row['Market status'] = 'Unusable quote — comparison unavailable'
 
 
 def game_quotes(payload, player_names, book_key, now=None, max_age_seconds=900):
@@ -162,6 +229,7 @@ def game_quotes(payload, player_names, book_key, now=None, max_age_seconds=900):
                 over,under=sides['Over'][0],sides['Under'][0]
                 row=rows[player][stat]
                 row.update({'Book line':line,'Over odds':over,'Under odds':under,
+                            'Quote basis':'Paired Over/Under — no vig',
                             'Updated UTC':market.get('last_update',book.get('last_update',''))})
                 try:
                     updated=datetime.fromisoformat(row['Updated UTC'].replace('Z','+00:00'))
@@ -177,6 +245,8 @@ def game_quotes(payload, player_names, book_key, now=None, max_age_seconds=900):
                     row['Saved UTC']=payload.get(SOURCE, {}).get('saved_at', '')
                 except (ValueError,TypeError,OverflowError):
                     row['Market status']='Unusable quote — comparison unavailable'
+    if book_key == 'fanduel':
+        _fanduel_threes_fallback(payload, rows, targets, now, max_age_seconds)
     return {player: pd.DataFrame(markets.values()) for player, markets in rows.items()}
 
 
@@ -193,6 +263,9 @@ def compare_with_book(preview, quotes):
     comparison=preview.merge(quotes,on='Stat',how='left',validate='one_to_one')
     implied=comparison['Book implied total']
     valid=implied.gt(0) & np.isfinite(implied) & np.isfinite(comparison.Projected)
+    if 'Quote basis' in comparison:
+        over_only = comparison['Quote basis'].eq(FANDUEL_THREES_OVER_ONLY)
+        valid &= ~over_only | comparison.Projected.ge(implied)
     # An Under uses the selected book's Under price, even when the table
     # displays the Over price beside the line. Keep the projection and quote.
     stocks_under = comparison.Stat.isin(['STL', 'BLK']) & comparison.Projected.lt(implied)

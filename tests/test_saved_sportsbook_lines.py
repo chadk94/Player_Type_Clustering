@@ -124,6 +124,8 @@ class SavedLinesTests(unittest.TestCase):
                     dict(name=side, point=220, price=-110) for side in ('Over', 'Under')])])])
         with patch.dict(os.environ, {'SPORTSBOOK_LINES_CACHE_DIR': self.temp.name}), \
              patch('saved_sportsbook_lines.datetime', wraps=datetime) as clock, \
+             patch.object(dashboard, 'market_targets', side_effect=lambda *a, **kw:
+                          market_targets(*a, now=clock.now(), **kw)), \
              patch.object(dashboard, 'read_feed') as paid:
             clock.now.return_value = self.now
             paid.return_value = [game(2)]

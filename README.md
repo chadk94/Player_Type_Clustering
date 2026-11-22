@@ -122,6 +122,21 @@ Streamlit Cloud redeploys or reboots may replace temporary storage. This feature
 cannot recover responses that were never saved before deployment. No source
 quotes or account credentials are committed to the repository.
 
+### FanDuel X+ threes fallback
+
+FanDuel threes may be posted only in the **X+ threes** market. When a player has
+no main threes quote, projections and Edges use the unique alternate Over offer
+closest to even money. Selection never depends on the player's projection.
+The table labels the equivalent threshold (3+ = Over 2.5), leaves Under odds
+blank, and only permits Over edges. Its Poisson implied mean uses the quoted
+Over probability **with margin retained**, since one price cannot establish a
+no-vig probability. Existing paired quotes keep their original calculation and
+take priority. These offers use the same timestamp, saved-price and ambiguity
+checks; they can be saved to Today's Plays and freshly verified for Jae's card.
+The paired-price probability tracker skips one-sided quotes. Fetching FanDuel
+props includes `player_threes_alternate` in the same hourly request (one extra
+market credit); other sportsbooks retain their original request.
+
 ### Experimental prop probabilities
 
 **Player vs Opponent** and **Top Sportsbook Edges** show the probabilities of going over, under, or pushing the current paired sportsbook line, conditional on the player appearing. The input mean is the final projection shown on the page, including any minutes override in the player preview. Integer lines can push. Turnovers appear on the player page. For personal fouls, enter a whole or half line in **Personal fouls probability** on the player page. Manual lines are labeled and excluded from sportsbook grading.

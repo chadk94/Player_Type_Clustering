@@ -356,6 +356,7 @@ export default function({data, parentElement}) {
                     td.append(playerIdentity(label, row.playerId, row.playerRowSpan, row.projection));
                 } else {
                     td.textContent = label;
+                    if (data.columns[i] === 'Book line (Over)' && row.quoteDetail) td.title = row.quoteDetail;
                     if (data.columns[i] === 'EV %' && pick && row.values[i] != null) {
                         td.title = pick.side + ' at ' + (pick.odds > 0 ? '+' : '') + pick.odds;
                     }

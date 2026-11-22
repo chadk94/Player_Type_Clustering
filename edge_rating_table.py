@@ -11,10 +11,10 @@ from edge_calculation_cache import GameCalculationCache
 from matchup_projections import RECENT_OPPONENT_GAMES
 from matchup_evidence import peer_panels
 from points_probability import PROBABILITY_COLUMNS
-from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT
+from sportsbook_lines import comparison_style, PLAY_THRESHOLD_PCT, FANDUEL_THREES_OVER_ONLY
 from todays_plays import edge_pick
 
-EDGE_TABLE_UI_VERSION = 'opponent_history_v2'
+EDGE_TABLE_UI_VERSION = 'threes_milestone_v1'
 
 PLAYER_PREVIEW_STATS = {'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', '3PM': 'FG3M',
                         'STL': 'STL', 'BLK': 'BLK', 'TOV': 'TOV', 'PF': 'PF', 'PRA': 'PRA'}
@@ -271,6 +271,8 @@ def table_payload(edges, columns, roster, effects, team, game, book, day, projec
                 labels.append(format(v, FORMATS[col]) + ('%' if col in ('Edge %', 'Recent change %') else ''))
             else:
                 labels.append(str(v))
+            if col == 'Book line (Over)' and row.get('Quote basis') == FANDUEL_THREES_OVER_ONLY:
+                labels[-1] += f' · {row["Book line"] + .5:g}+ threes'
         player = players.loc[row.PLAYER_ID] if row.PLAYER_ID in players.index else {}
         badges=[]
         for flag,title,color in [('Minutes','MIN','minutes'),('Role','ROLE','role'),('Injury','Q','injury')]:
@@ -290,6 +292,9 @@ def table_payload(edges, columns, roster, effects, team, game, book, day, projec
         if not badges and 'Review group' in row:
             badges.append(dict(label='✓' if row.get('Robust play') else 'Review',color='clear' if row.get('Robust play') else 'unchecked',detail=row.get('Review detail','')))
         output.append(dict(pick=edge_pick(row, event, book, day), values=values, labels=labels, styles=comparison_style(raw),
+                           quoteDetail=('FanDuel X+ threes, equivalent to this Over line. No Under price is posted. '
+                                        'The implied total retains the quoted margin; no vig removal is assumed.'
+                                        if row.get('Quote basis') == FANDUEL_THREES_OVER_ONLY else ''),
                            playerId=int(row.PLAYER_ID),
                            projection=card if row.Rank != last_rank else None,
                            minutesDetail=card['minutesDetail'] if card else 'Minutes comparison unavailable for this game.',
