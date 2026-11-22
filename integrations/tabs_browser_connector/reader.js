@@ -70,7 +70,7 @@ function tabsSnapshot(doc, now = new Date()) {
     }
     if (!rows.length || rows.length>600) throw Error('No usable players are displayed in Tabs. Clear its player/team filters.');
     const scope=doc.querySelector('#game');
-    return {schema:1,source:'TabsNBA',source_url:'https://app.tabsnba.com/projections',
+    return {schema:1,source:'TabsNBA',source_url:'https://app.tabsnba.com/projections',connector_version:'0.3.0',
         slate_date:slateDate,scenario,source_updated_at:new Date(updated).toISOString(),
         observed_at:now.toISOString(),manual_edits:false,
         scope:scope?.options[scope.selectedIndex]?.textContent?.trim()||'Displayed players',rows};

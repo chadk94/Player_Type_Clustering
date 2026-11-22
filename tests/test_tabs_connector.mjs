@@ -22,6 +22,8 @@ function doc({edited=false,scenario='POR: Avdija OUT (Q) ×',published='5:57 PM 
 
 test('rendered inputs and explicit OUT rows retain chosen scenario and source timestamp',()=>{
     const snapshot=capture(doc());
+    const manifest=JSON.parse(readFileSync(new URL('../integrations/tabs_browser_connector/manifest.json',import.meta.url),'utf8'));
+    assert.equal(snapshot.connector_version,manifest.version);
     assert.equal(snapshot.rows.length,2);assert.equal(snapshot.rows[0].Player,'Jrue Holiday');
     assert.equal(snapshot.rows[0].minutes,28);assert.equal(snapshot.rows[1].minutes,0);
     assert.equal(snapshot.scenario,'POR: Avdija OUT (Q)');assert.equal(snapshot.slate_date,'2026-11-17');
@@ -121,6 +123,11 @@ test('only changed snapshots update Python; disconnect clears; cleanup stops pol
         const cleanup=render({data:{previous:{ok:true,snapshot}},parentElement:{querySelector:k=>k==='button'?button:status},setStateValue:(_key,value)=>saved.push(value)});
         reply({ok:true,snapshot:{...snapshot,observed_at:'2026-11-18T01:05:30Z'}});
         assert.equal(saved.length,0);assert.match(status.textContent,/Connected/);
+        assert.match(status.textContent,/Connector 0\.3\.0/);
+        button.onclick();reply({ok:true,snapshot:{...snapshot,connector_version:undefined}});
+        assert.match(status.textContent,/Connector version not reported/);
+        // Restore the initial state before checking unchanged refreshes.
+        button.onclick();reply({ok:true,snapshot});saved.length=0;
         button.onclick();reply({ok:true,snapshot:{...snapshot,rows:[...snapshot.rows].reverse()}});
         assert.equal(saved.length,0); // Sorting Tabs does not rerun the dashboard.
         button.onclick();reply({ok:true,snapshot:{...snapshot,scenario:'Default'}});assert.equal(saved.length,1);

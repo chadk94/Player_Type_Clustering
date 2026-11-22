@@ -55,7 +55,8 @@ export default function({data,parentElement,setStateValue}) {
         if (!value?.ok || !value.snapshot) {unavailable(value?.error||'Tabs comparison unavailable.');return;}
         const s=value.snapshot;
         if (JSON.stringify(s).length>300000) {unavailable('Tabs comparison too large.');return;}
-        status.textContent=`Connected · ${s.scope} · ${s.scenario} · Tabs updated ${new Date(s.source_updated_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`;
+        const version=/^\d+\.\d+\.\d+$/.test(s.connector_version||'') ? ` · Connector ${s.connector_version}` : ' · Connector version not reported';
+        status.textContent=`Connected${version} · ${s.scope} · ${s.scenario} · Tabs updated ${new Date(s.source_updated_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`;
         publish({...value,...(saved?{saved_snapshot:saved}:{})});
         announce('checked','Tabs checked. The update time above is Tabs’ publication time, not the time of this check.');
     }
