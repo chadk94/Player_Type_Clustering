@@ -1,0 +1,15 @@
+/* Scale the native grid's layout along with its canvas so sorting and player
+   selection retain their coordinates. Keep this local to Team Projections. */
+.st-key-team_projection_readable [data-testid="stElementContainer"]:has([data-testid="stDataFrame"]) {
+    zoom: 1.3;
+    width: calc(100% / 1.3) !important;
+}
+.st-key-team_projection_readable [data-testid="stWidgetLabel"] p,
+.st-key-team_projection_readable [data-testid="stMarkdownContainer"] p {
+    font-size: 18px;
+    line-height: 1.5;
+}
+.st-key-team_projection_readable [data-testid="stCaptionContainer"] p {
+    font-size: 16px;
+    line-height: 1.5;
+}

@@ -637,6 +637,27 @@ class ProjectionNotes:
     warning = caption
 
 
+def readable_projection_style(frame, formats=None):
+    """Keep native grid interactions, with readable identity columns and stripes."""
+    styles = pd.DataFrame('', index=frame.index, columns=frame.columns)
+    styles.iloc[1::2, :] = 'background-color: rgba(110, 140, 170, 0.16)'
+    for column in ['Player', 'Team']:
+        if column in styles:
+            styles[column] += '; font-weight: bold'
+    return frame.style.apply(lambda _: styles, axis=None).format(
+        formats or {}, precision=2, na_rep='—')
+
+
+def player_projection_columns():
+    return {**{stat: st.column_config.NumberColumn(width='small', format='%.2f')
+               for stat in TEAM_STATS},
+            'Rank': st.column_config.NumberColumn('#', width='small', format='%d'),
+            'Player': st.column_config.TextColumn(pinned=True, width='medium'),
+            'Team': st.column_config.TextColumn(width='small'),
+            'Opponent': st.column_config.TextColumn('Opp', width='small'),
+            'Projected minutes': st.column_config.NumberColumn('Min', width='small', format='%.1f')}
+
+
 @st.fragment
 def render_slate_player_table(ui, frame, by_key, book_name, date, notes):
     # Searching, sorting and row clicks reuse this captured frame. They never fetch odds,
@@ -680,7 +701,10 @@ def render_slate_player_table(ui, frame, by_key, book_name, date, notes):
     identity = ranked[['Game key', 'PLAYER_ID']].to_csv(index=False) + book_name + sort_label
     token = hashlib.sha256(identity.encode()).hexdigest()[:16]
     widget_key = f'all_game_players_{token}_{st.session_state.get("contribution_selection_revision", 0)}'
-    ui.dataframe(display.round(2), hide_index=True, width='stretch', height=650, key=widget_key,
+    visible = ['Rank', 'Player', 'Team', 'Opponent', 'Projected minutes', *TEAM_STATS]
+    ui.dataframe(readable_projection_style(display.round(2), {'Rank': '{:.0f}', 'Projected minutes': '{:.1f}'}),
+                 hide_index=True, width='stretch', height=500, row_height=36, key=widget_key,
+                 column_order=[c for c in visible if c in display], column_config=player_projection_columns(),
                  on_select=lambda: queue_player_selection(widget_key, ranked, by_key, book_name),
                  selection_mode=['single-row', 'single-cell'])
     send_player_navigation()
@@ -727,9 +751,14 @@ def render_all_team_players(ui, games, book_name, date, schedule, now, snapshots
 
 
 def render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
+    ui.html('<style>' + Path(__file__).with_name('team_projection_readability.css').read_text() + '</style>')
+    with ui.container(key='team_projection_readable'):
+        _render_team_projections(ui, team_rates, game_frames, approved_bundle)
+
+
+def _render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
     ui.subheader('🏀 Team Projections')
-    ui.caption('Compare team totals or rank all players using the same saved minutes and adjustments as Top Sportsbook Edges. Player sliders affect individual previews only.')
-    ui.caption('Games stay available until one hour after their scheduled tip-off. The list updates when you use a control or refresh.')
+    ui.caption('Team totals and player projections use the same saved minutes and adjustments as Sportsbook Edges. Games stay available until one hour after tip-off.')
     now = pd.Timestamp(datetime.now(timezone.utc))
     snapshots = st.session_state.setdefault('team_projection_snapshots', {})
     for key in list(snapshots):
@@ -793,18 +822,21 @@ def render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
     calibrated = breakdown['Team target'].notna()
     if not calibrated.all():
         ui.info('Some team targets are unavailable. Those rows retain the existing model projection; missing player data stays blank. See Adjustment details.')
-    ui.dataframe(totals.style.format({'Minutes': '{:.1f}', **{stat: '{:.2f}' for stat in TEAM_STATS}}, na_rep='—'),
-                 hide_index=True, width='stretch')
+    ui.subheader('Team totals')
+    ui.dataframe(readable_projection_style(totals, {'Minutes': '{:.1f}'}),
+                 hide_index=True, width='stretch', row_height=38,
+                 column_order=['Team', 'Minutes', *TEAM_STATS],
+                 column_config={'Team': st.column_config.TextColumn(pinned=True, width='small'),
+                                'Minutes': st.column_config.NumberColumn('Min', format='%.1f', width='small'),
+                                **{stat: st.column_config.NumberColumn(width='small', format='%.2f') for stat in TEAM_STATS}})
     if totals.PTS.notna().all():
         ui.caption(f"Combined projected points: {totals.PTS.sum():.2f}. Team totals sum the unrounded player projections.")
-    ui.subheader('How the team adjustments change projections')
-    ui.caption('Baseline uses player stat rates and saved minutes. After archetypes adds opponent effects. Team adjustment % compares the final projection with After archetypes.')
-    ui.dataframe(breakdown.style.format({'Baseline': '{:.2f}', 'After archetypes': '{:.2f}',
-                                        'Team target': '{:.2f}', 'Final projection': '{:.2f}',
-                                        'Team adjustment %': '{:+.2f}%'}, na_rep='—'),
-                 hide_index=True, width='stretch')
-    ui.caption('PTS targets come from the selected sportsbook’s spread and total. Allowed assist, three-attempt and offensive-rebound shares use a 5-game prior that phases out by 20 completed games; other team rates keep a 10-game prior. 3PM uses the roster’s shooting percentages. Steals, blocks and turnovers retain their player matchup projections. PRA = final PTS + REB + AST.')
-    with ui.expander('Player contributions and minutes'):
+    with ui.expander('How the team adjustments change projections'):
+        ui.caption('Baseline uses player stat rates and saved minutes. After archetypes adds opponent effects. Team adjustment % compares the final projection with After archetypes.')
+        ui.dataframe(readable_projection_style(breakdown, {'Team adjustment %': '{:+.2f}%'}),
+                     hide_index=True, width='stretch', row_height=36)
+        ui.caption('PTS targets come from the selected sportsbook’s spread and total. Allowed assist, three-attempt and offensive-rebound shares use a 5-game prior that phases out by 20 completed games; other team rates keep a 10-game prior. 3PM uses the roster’s shooting percentages. Steals, blocks and turnovers retain their player matchup projections. PRA = final PTS + REB + AST.')
+    with ui.expander('Player contributions and minutes', expanded=True):
         active = final['Projected minutes'].gt(0) | final['Projected minutes'].isna()
         columns = ['Player', 'Team', 'Projected minutes', *TEAM_STATS.values(), 'OREB', 'DREB', 'Minutes source', 'Stat baseline', 'Fallback details', 'Status', 'Matchup status', 'Matchup fallback stats']
         player_rows = final.loc[active].sort_values(['Team', 'Projected minutes'], ascending=[True, False])
@@ -816,7 +848,10 @@ def render_team_projections(ui, team_rates, game_frames, approved_bundle=None):
         row_ids = ','.join(player_rows.PLAYER_ID.astype(str))
         table_key = hashlib.sha256(f'{selected}:{row_ids}'.encode()).hexdigest()[:16]
         widget_key = f'contribution_players_{table_key}_{st.session_state.get("contribution_selection_revision", 0)}'
-        ui.dataframe(display.round(2), hide_index=True, width='stretch', key=widget_key,
+        ui.dataframe(readable_projection_style(display.round(2), {'Projected minutes': '{:.1f}'}),
+                     hide_index=True, width='stretch', height=500, row_height=36, key=widget_key,
+                     column_order=['Player', 'Team', 'Projected minutes', *TEAM_STATS],
+                     column_config=player_projection_columns(),
                      on_select=lambda: queue_player_selection(widget_key, player_rows, game, book_name),
                      selection_mode=['single-row', 'single-cell'])
         send_player_navigation()
