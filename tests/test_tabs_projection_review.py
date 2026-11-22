@@ -9,6 +9,7 @@ from tabs_minutes import parse_tabs_browser_snapshot, parse_tabs_minutes, resolv
 from tabs_projection_review import add_tabs_projection_review, tabs_projection_check
 from edge_rating_table import table_payload
 from edge_review import filter_review
+from sportsbook_lines import implied_total, _implied_total, american_probability, FANDUEL_THREES_OVER_ONLY
 
 NOW = pd.Timestamp('2026-11-22T21:00:00Z')
 GAME = dict(id='demo', Away='BOS', Home='SAC', GameTimeUTC=NOW+pd.Timedelta(hours=3))
@@ -24,7 +25,7 @@ def snapshot():
 
 def edge(**kwargs):
     return pd.Series(dict(PLAYER_ID=1, Player='Example Wing', Team='BOS', Opponent='SAC', Stat='3PM',
-        Play='Over', Projected=3.2, **{'Book line':2.5, 'Book implied total':2.1, 'Over odds':-110,
+        Play='Over', Projected=3.2, **{'Book line':2.5, 'Book implied total':implied_total(2.5,-110,-110), 'Over odds':-110,
         'Under odds':-110, 'Edge %':20., 'Signed edge %':20., 'Robust play':True, 'Review group':'More robust',
         'Exp. P(over)':.65}) | kwargs)
 
@@ -33,23 +34,56 @@ class TabsProjectionTests(unittest.TestCase):
     def refs(self, data=None):
         return parse_tabs_browser_snapshot(data or snapshot(), ROSTER, [GAME], NOW)[0]
 
-    def test_opposite_sides_use_actual_line_not_book_implied_total(self):
+    def test_prices_change_verdict_even_when_projection_and_line_are_unchanged(self):
+        refs=self.refs();refs['Tabs projection PTS']=7.8
+        for over,under,status in [(-110,-110,'Neutral'),(-108,-122,'Neutral'),(-140,110,'Neutral'),(-200,150,'OPPOSES'),(140,-180,'Agrees')]:
+            with self.subTest(over=over):
+                row=edge(Stat='PTS',Projected=8.65,**{'Book line':7.5,'Over odds':over,'Under odds':under,
+                         'Book implied total':implied_total(7.5,over,under)})
+                result=tabs_projection_check(row,refs,GAME,NOW)
+                self.assertEqual(result['Tabs projection flag'],status)
+                self.assertIn(f'at {over:+g}',result['Tabs projection detail'])
+                self.assertIn('Tabs projects 7.80 PTS; price-adjusted market:',result['Tabs projection detail'])
+                if over == -110:
+                    self.assertEqual(result['Tabs edge %'],1.7)
+                    self.assertIn('+1.70% for this Over. Neutral',result['Tabs projection detail'])
+                if over == -108:
+                    self.assertEqual(result['Tabs edge %'],3.02)
+
+    def test_direction_and_rounded_five_percent_boundaries(self):
         refs=self.refs()
-        over=tabs_projection_check(edge(),refs,GAME,NOW)
-        self.assertEqual(over['Tabs projection flag'],'OPPOSES')
-        self.assertIn('Tabs projects 2.20 3PM — below the 2.5 line.',over['Tabs projection detail'])
-        self.assertIn('Our projection: 3.20',over['Tabs projection detail'])
-        under=tabs_projection_check(edge(Play='Under',Projected=1.5,**{'Book line':2.0}),refs,GAME,NOW)
-        self.assertEqual(under['Tabs projection flag'],'OPPOSES')
-        for side,line,status in [('Over',2.0,'Agrees'),('Under',2.5,'Agrees'),('Over',2.2,'Neutral'),('Under',2.2,'Neutral')]:
-            with self.subTest(side=side,line=line):
-                self.assertEqual(tabs_projection_check(edge(Play=side,**{'Book line':line}),refs,GAME,NOW)['Tabs projection flag'],status)
+        for value,over_status,under_status in [(2.10008,'Neutral','Neutral'),(1.89992,'Neutral','Neutral'),
+                                               (2.1002,'Agrees','OPPOSES'),(1.8998,'OPPOSES','Agrees'),
+                                               (2.,'Neutral','Neutral'),(0.,'OPPOSES','Agrees')]:
+            refs['Tabs projection 3PM']=value
+            for side,status in [('Over',over_status),('Under',under_status)]:
+                with self.subTest(value=value,side=side):
+                    result=tabs_projection_check(edge(Play=side,**{'Book implied total':2.}),refs,GAME,NOW)
+                    self.assertEqual(result['Tabs projection flag'],status)
+
+    def test_missing_prices_do_not_fall_back_to_raw_line_comparisons(self):
+        refs=self.refs()
+        for implied in [None,np.nan,np.inf,0,-1]:
+            self.assertEqual(tabs_projection_check(edge(**{'Book implied total':implied}),refs,GAME,NOW)['Tabs projection flag'],'Unavailable')
+        for side in ['Over','Under']:
+            for price in [None,np.nan,np.inf,0,99,-99]:
+                self.assertEqual(tabs_projection_check(edge(Play=side,**{f'{side} odds':price}),refs,GAME,NOW)['Tabs projection flag'],'Unavailable')
+
+    def test_over_only_uses_existing_margin_retaining_market_projection(self):
+        refs=self.refs();refs['Tabs projection 3PM']=3.2
+        row=edge(**{'Over odds':122,'Under odds':np.nan,'Quote basis':FANDUEL_THREES_OVER_ONLY,
+                    'Book implied total':_implied_total(2.5,american_probability(122))})
+        result=tabs_projection_check(row,refs,GAME,NOW)
+        self.assertEqual(result['Tabs projection flag'],'Agrees')
+        self.assertIn('Over-only quotes retain it',result['Tabs projection technical'])
+        row['Play']='Under'
+        self.assertEqual(tabs_projection_check(row,refs,GAME,NOW)['Tabs projection flag'],'Unavailable')
 
     def test_every_supported_stat_and_pra_uses_matching_stat_totals(self):
         refs=self.refs()
         expected={'PTS':18,'REB':5,'AST':4,'3PM':2.2,'STL':.8,'BLK':.3,'TOV':1.4,'PRA':27}
         for stat,value in expected.items():
-            result=tabs_projection_check(edge(Stat=stat,**{'Book line':value+.5}),refs,GAME,NOW)
+            result=tabs_projection_check(edge(Stat=stat,**{'Book line':value+.5,'Book implied total':value*1.1}),refs,GAME,NOW)
             self.assertEqual(result['Tabs stat projection'],value)
             self.assertEqual(result['Tabs projection flag'],'OPPOSES')
         refs['Tabs projection AST']=np.nan
@@ -109,7 +143,7 @@ class TabsProjectionTests(unittest.TestCase):
         self.assertTrue(add_tabs_projection_review(rows.iloc[:0],None,GAME,NOW).empty)
 
     def test_neutral_badge_is_distinct_from_missing_data(self):
-        rows=pd.DataFrame([edge(**{'Book line':2.2}),edge(Stat='AST')])
+        rows=pd.DataFrame([edge(**{'Book line':2.2,'Book implied total':2.2}),edge(Stat='AST')])
         refs=self.refs();refs['Tabs projection AST']=np.nan
         result=add_tabs_projection_review(rows,refs,GAME,NOW)
         self.assertEqual(result['Tabs projection flag'].tolist(),['Neutral','Unavailable'])
@@ -122,13 +156,13 @@ class TabsProjectionTests(unittest.TestCase):
 
     def test_agreement_is_required_in_addition_to_all_existing_checks(self):
         rows=pd.DataFrame([
-            edge(**{'Book line':2.0}),
+            edge(**{'Book line':2.0,'Book implied total':2.0}),
             edge(Play='Under'),
-            edge(**{'Book line':2.0,'Robust play':False,'Review group':'Waiting on news','Injury flag':'Q'}),
-            edge(**{'Book line':2.0,'Robust play':False,'Review group':'Needs review','Minutes flag':'MIN'}),
-            edge(**{'Book line':2.0,'Robust play':False,'Review group':'Unchecked','Role flag':'Unchecked'}),
+            edge(**{'Book line':2.0,'Book implied total':2.0,'Robust play':False,'Review group':'Waiting on news','Injury flag':'Q'}),
+            edge(**{'Book line':2.0,'Book implied total':2.0,'Robust play':False,'Review group':'Needs review','Minutes flag':'MIN'}),
+            edge(**{'Book line':2.0,'Book implied total':2.0,'Robust play':False,'Review group':'Unchecked','Role flag':'Unchecked'}),
             edge(),
-            edge(**{'Book line':2.2}),
+            edge(**{'Book line':2.2,'Book implied total':2.2}),
             edge(Stat='AST'),
         ],index=[8,2,7,5,4,9,1,6])
         rows['Review flags']='existing';rows['Review detail']='existing detail'
@@ -144,7 +178,7 @@ class TabsProjectionTests(unittest.TestCase):
                 self.assertEqual(result.loc[idx,col],rows.loc[idx,col])
         self.assertEqual(result.loc[9,'Review flags'],'Review')
         self.assertIn('Tabs favors the opposite side',result.loc[9,'Review detail'])
-        self.assertIn('exactly on the line',result.loc[1,'Review detail'])
+        self.assertIn('price-adjusted edge cutoff',result.loc[1,'Review detail'])
         self.assertIn('still needed',result.loc[6,'Review detail'])
 
     def test_stat_refresh_rechecks_robust_eligibility_without_changing_cached_review(self):
