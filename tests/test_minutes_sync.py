@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch, Mock
 import hashlib
 import json
+import requests
 
 from test_approved_minutes import example, reseal
 from minutes_sync import validate_feed, read_feed
@@ -10,6 +11,104 @@ from approved_minutes import apply_bundle_change, for_matchup
 
 
 class MinutesSyncTests(unittest.TestCase):
+    connection = 'https://script.google.com/macros/s/example/exec#'+'a'*64
+
+    @staticmethod
+    def response(status=200, snapshot=None):
+        response = Mock(status_code=status)
+        if status >= 400:
+            response.raise_for_status.side_effect = requests.HTTPError('private-url', response=response)
+        raw = json.dumps(snapshot or dict(schema='nba_minutes_feed_v1', bundles=[]))
+        response.json.return_value = dict(ok=True, snapshot=raw, digest=hashlib.sha256(raw.encode()).hexdigest())
+        return response
+
+    def test_transient_errors_retry_once_and_recover(self):
+        for failure in [requests.Timeout('private-url'), requests.ConnectionError('private-url'), self.response(503)]:
+            with self.subTest(failure=type(failure).__name__), patch('minutes_sync.sleep') as sleep, patch(
+                'minutes_sync.requests.post', side_effect=[failure, self.response()]
+            ) as post:
+                self.assertEqual(read_feed(self.connection)['bundles'], [])
+                self.assertEqual(post.call_count, 2)
+                sleep.assert_called_once()
+
+    def test_redirect_retry_does_not_forward_credentials(self):
+        redirect = Mock(status_code=302, headers={'Location':'https://script.googleusercontent.com/macros/echo?private=example'})
+        with patch('minutes_sync.sleep'), patch('minutes_sync.requests.post', return_value=redirect) as post, patch(
+            'minutes_sync.requests.get', side_effect=[requests.Timeout('private-url'), self.response()]
+        ) as get:
+            self.assertEqual(read_feed(self.connection)['bundles'], [])
+            self.assertEqual(post.call_count, 2)
+            self.assertEqual(get.call_count, 2)
+            for call in get.call_args_list:
+                self.assertEqual(set(call.kwargs), {'timeout', 'allow_redirects'})
+                self.assertFalse(call.kwargs['allow_redirects'])
+
+    def test_retries_are_bounded_and_errors_do_not_expose_private_urls(self):
+        cases = [(requests.Timeout('private-url'), 'timed out', 2),
+                 (requests.ConnectionError('private-url'), 'connection', 2),
+                 (self.response(503), 'HTTP 503', 2),
+                 (self.response(401), 'denied access', 1),
+                 (self.response(403), 'denied access', 1)]
+        for failure, message, attempts in cases:
+            kwargs = dict(side_effect=failure) if isinstance(failure, Exception) else dict(return_value=failure)
+            with self.subTest(message=message), patch('minutes_sync.sleep'), patch('minutes_sync.requests.post', **kwargs) as post:
+                with self.assertRaisesRegex(ValueError, message) as error:
+                    read_feed(self.connection)
+                self.assertNotIn('private-url', str(error.exception))
+                self.assertEqual(post.call_count, attempts)
+
+    def test_untrusted_redirect_and_invalid_payloads_are_not_retried(self):
+        redirect = Mock(status_code=302, headers={'Location':'https://example.com/private'})
+        unreadable = self.response()
+        unreadable.json.side_effect = ValueError('private-url')
+        non_object = self.response()
+        non_object.json.return_value = []
+        bad_checksum = self.response()
+        bad_checksum.json.return_value['digest'] = 'bad'
+        invalid_snapshot = self.response(snapshot=['invalid'])
+        for response, message in [(redirect,'owner'), (unreadable,'unreadable'), (non_object,'unsupported'),
+                                  (bad_checksum,'transfer check'), (invalid_snapshot,'unsupported')]:
+            with self.subTest(message=message), patch('minutes_sync.requests.post', return_value=response) as post, patch('minutes_sync.requests.get') as get:
+                with self.assertRaisesRegex(ValueError, message):
+                    read_feed(self.connection)
+                post.assert_called_once()
+                get.assert_not_called()
+
+    def test_failed_poll_preserves_verified_minutes_and_retry_recovers(self):
+        from streamlit.testing.v1 import AppTest
+        app = AppTest.from_string('''
+import streamlit as st
+from unittest.mock import patch
+from types import SimpleNamespace
+from minutes_sync import render_sync, validate_feed
+from approved_minutes import apply_bundle_change
+from test_approved_minutes import example
+bundle, roster = example()
+feed = {'bundles':[bundle]}
+linked = validate_feed(feed, roster, '2026-27')
+connection = 'https://script.google.com/macros/s/example/exec#'+'a'*64
+if 'nba_minutes_link' not in st.session_state:
+    st.session_state['nba_minutes_link'] = dict(ready=True, connection=connection, bundle=linked, success_at='Nov 20, 08:00 PM UTC')
+    st.session_state['approved_minutes_bundle'] = linked['bundle_id']
+    st.session_state['custom_minutes_2'] = 37
+with patch('minutes_sync.connection_component',return_value=lambda **kw: SimpleNamespace(connection={'ready':True,'connection':connection})):
+    with patch('minutes_sync.read_feed', side_effect=ValueError('Google’s minutes feed timed out after retrying.') if not st.session_state.get('recovered') else None, return_value=feed):
+        render_sync(roster,'2026-27')
+apply_bundle_change(st.session_state,st.session_state['nba_minutes_link']['bundle'])
+st.success('Verified minutes still available')
+''').run(timeout=10)
+        self.assertFalse(app.exception)
+        self.assertIn('Using the last verified approvals', app.warning[0].value)
+        self.assertIn('Nov 20, 08:00 PM UTC', app.warning[0].value)
+        self.assertEqual(app.session_state['custom_minutes_2'], 37)
+        original = app.session_state['nba_minutes_link']['bundle']
+        app.session_state['recovered'] = True
+        app.button(key='retry_nba_minutes_sync').click().run(timeout=10)
+        self.assertFalse(app.exception)
+        self.assertFalse(app.warning)
+        self.assertEqual(app.session_state['nba_minutes_link']['bundle'], original)
+        self.assertEqual(app.session_state['custom_minutes_2'], 37)
+
     def test_approved_dates_revisions_and_zero_minutes_reach_projections(self):
         first, roster = example()
         second = deepcopy(first)
