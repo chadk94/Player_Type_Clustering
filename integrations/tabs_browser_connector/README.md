@@ -2,7 +2,17 @@
 
 This Chrome extension reads the TabsNBA projection table and chosen If/Then scenario,
 whether you are browsing **Projections or Props**. The prop app compares those minutes with
-your own approved minutes. It never edits either site's minutes or saved plays.
+your own approved minutes. Version 0.3.0 also reads displayed PTS, REB, AST, 3PM,
+STL, BLK and TOV totals. Sportsbook Edges shows **Tabs disagrees** when their stat
+projection is on the opposite side of the exact betting line from our pick. PRA
+uses their points + rebounds + assists. This extra flag does not change model
+projections, rankings or the More robust filter. It never edits either site's
+minutes or saved plays.
+
+To update an existing installation, reload **Tabs minutes comparison** on Chrome's
+Extensions page, then refresh TabsNBA and click the extension so it shows **ON**.
+Missing, stale, OUT and zero-minute stat comparisons do not produce disagreement
+flags. An old connector continues supplying minutes until it is updated.
 
 ## Connection
 
@@ -30,6 +40,8 @@ visible; it does not become an injury override in your model.
 Personal minute/boost edits on Tabs suspend the independent browser comparison. You can
 instead export a CSV and use **CSV upload**, which reads the separate **Tabs Min** column.
 CSV imports require the selected scenario and visible publication time and do not auto-refresh.
+CSV stat comparisons additionally require matching Tabs Min and My Min and a zero
+Boost % on that row; edited totals are never treated as independent Tabs projections.
 Publication timestamps over two hours old cannot clear the minutes check. Closing the connected
 Tabs tab, leaving the projections page entirely, or losing access retains the last validated
 snapshot for each team and its matching game. Filtering Tabs to one team cannot erase the
@@ -43,7 +55,7 @@ replaces it automatically on reconnection. Switching between Projections and Pro
 - Access is limited to `app.tabsnba.com` and `cktest2.streamlit.app`; actual readers run on
   `/projections` and the prop app, respectively. No all-sites, cookies, browsing history,
   downloads or web-request permissions.
-- Reads visible names, team/opponent, minutes, OUT labels, scenario, slate date and update time.
+- Reads visible names, team/opponent, minutes, stat totals, OUT labels, scenario, slate date and update time.
   No login details, hidden application state or authentication tokens are read.
 - No external fetches. Chrome relays the data to your own open prop-app tab; Streamlit receives
   it in that tab's private session. Nothing is published to GitHub or shared with other visitors.

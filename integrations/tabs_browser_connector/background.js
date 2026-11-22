@@ -27,7 +27,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
             const tab=await chrome.tabs.get(id);
             if (!isSource(tab.url)) throw Error('The connected Tabs tab is no longer on its projections page.');
             const result=await chrome.tabs.sendMessage(id,{type:'tabs-minutes-capture-v1'},{frameId:0});
-            if (!result || JSON.stringify(result).length>150000) throw Error('Tabs returned an invalid comparison.');
+            if (!result || JSON.stringify(result).length>300000) throw Error('Tabs returned an invalid comparison.');
             reply(result);
         } catch(error) {reply({ok:false,error:'Tabs comparison unavailable. Keep the connected Tabs page open and reload it if needed.'});}
     })();

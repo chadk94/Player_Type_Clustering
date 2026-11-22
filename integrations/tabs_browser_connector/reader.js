@@ -35,7 +35,7 @@ function tabsSnapshot(doc, now = new Date()) {
     });
     if (!table) throw Error('The Tabs minutes table is not available.');
     const allRows=[...table.querySelectorAll('tr')];
-    const headers=[...allRows[0].querySelectorAll('th')].map(c=>c.innerText.trim());
+    const headers=[...allRows[0].querySelectorAll('th')].map(c=>c.innerText.replace(/[▾▴▼▲↑↓↕]/g,'').trim());
     const col = name=>headers.indexOf(name), rows=[];
     for (const tr of allRows.slice(1)) {
         if (!tr.getClientRects().length) continue;
@@ -56,7 +56,17 @@ function tabsSnapshot(doc, now = new Date()) {
         const Team=cells[col('TEAM')]?.innerText.trim(), Opp=cells[col('OPP')]?.innerText.trim();
         if (!Player || Player.length>100 || !raw || !Number.isFinite(minutes) || minutes<0 || minutes>48 || !/^[A-Z]{2,3}$/.test(Team||'') || !/^[A-Z]{2,3}$/.test(Opp||''))
             throw Error('A Tabs minutes row could not be verified.');
-        rows.push({Player,Team,Opp,minutes,status:out?'Out':'Projected'});
+        // Use displayed raw stat totals, never FPTS, percentages or prop edges.
+        // Missing cells stay missing so an older connector still supplies minutes.
+        const stats={};
+        for (const stat of ['PTS','REB','AST','3PM','STL','BLK','TOV']) {
+            const rawStat=cells[col(stat)]?.innerText.trim();
+            if (!out && rawStat && /^\d+(?:\.\d+)?$/.test(rawStat)) {
+                const value=Number(rawStat);
+                if (Number.isFinite(value)) stats[stat]=value;
+            }
+        }
+        rows.push({Player,Team,Opp,minutes,status:out?'Out':'Projected',...stats});
     }
     if (!rows.length || rows.length>600) throw Error('No usable players are displayed in Tabs. Clear its player/team filters.');
     const scope=doc.querySelector('#game');

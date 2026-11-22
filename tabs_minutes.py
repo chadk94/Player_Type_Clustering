@@ -14,6 +14,7 @@ import streamlit as st
 
 from live_projections import name_key
 from tabs_minutes_status import minutes_metadata
+from tabs_projection_review import tabs_stat_values
 
 # Tabs uses the short name; resolve only this known alias on the same team.
 ALIASES = {('POR','robert williams'):'robert williams iii',
@@ -24,7 +25,7 @@ SOURCE_MAX_AGE_HOURS = 2
 def parse_tabs_browser_snapshot(snapshot, roster, games, as_of=None, *, saved=False):
     """Validate a displayed-page snapshot, reusing the strict same-game name map."""
     now=pd.Timestamp(as_of if as_of is not None else pd.Timestamp.now(tz='UTC'))
-    if not isinstance(snapshot,dict) or len(json.dumps(snapshot))>150000:
+    if not isinstance(snapshot,dict) or len(json.dumps(snapshot))>300000:
         raise ValueError('Invalid Tabs browser comparison.')
     if (snapshot.get('schema')!=1 or snapshot.get('source')!='TabsNBA' or
         snapshot.get('source_url')!='https://app.tabsnba.com/projections' or snapshot.get('manual_edits') is not False):
@@ -46,7 +47,7 @@ def parse_tabs_browser_snapshot(snapshot, roster, games, as_of=None, *, saved=Fa
     if frame.loc[frame.status.eq('Out'),'minutes'].ne(0).any():raise ValueError('An OUT row must explicitly have zero minutes.')
     frame=frame.rename(columns={'minutes':'Tabs Min'})
     refs,details=parse_tabs_minutes(frame.to_csv(index=False).encode(),f"Tabs_DK_{snapshot.get('slate_date')}.csv",
-        roster,games,observed,snapshot.get('scenario'),published)
+        roster,games,observed,snapshot.get('scenario'),published, unedited_projection_stats=True)
     refs['source_mode']='Browser comparison'
     refs['source_saved']=saved
     details['scope']=str(snapshot.get('scope','Displayed players'))[:120]
@@ -85,7 +86,7 @@ def _refresh_dashboard():
 
 def _saved_parts(cache):
     """Migrate the original single snapshot; never let one filtered team erase others."""
-    if not isinstance(cache,dict) or len(json.dumps(cache))>450000:return []
+    if not isinstance(cache,dict) or len(json.dumps(cache))>900000:return []
     if cache.get('schema')==1:return [cache]
     parts=cache.get('snapshots',[])
     if cache.get('schema')==2 and isinstance(parts,list) and len(parts)<=90:
@@ -186,7 +187,7 @@ def render_tabs_comparison(ui,roster,games):
             key='tabs_minutes_browser',on_result_change=lambda:_remember_browser_result(roster,games))
         value=result.result
         refs,details,error=_apply_browser_result(value,roster,games)
-        ui.caption('Keep TabsNBA and this app open in Chrome. Connector 0.2.0 works in either Projections or Props view and checks every 30 seconds. Timestamp-only updates stay in this panel; changed minutes or availability refresh projections. Select All games and clear Tabs filters for full coverage.')
+        ui.caption('Keep TabsNBA and this app open in Chrome. Connector 0.3.0 compares minutes and stat projections in either Projections or Props view and checks every 30 seconds. Timestamp-only updates stay in this panel. Select All games and clear Tabs filters for full coverage.')
         ui.caption('Each team’s last valid Tabs rotation is saved privately in this browser. Filtering to one team or player cannot erase the other saved rotations. Saved minutes stay in projections until that team has a valid fresh update; the live minutes check remains pending.')
         if refs is None:
             ui.info('Waiting for a current Tabs comparison. Missing data remains unchecked.')
@@ -221,7 +222,7 @@ def export_day(filename):
     return pd.Timestamp(found.group(1)).date()
 
 
-def parse_tabs_minutes(content, filename, roster, games, captured_at, scenario, source_updated_at=None):
+def parse_tabs_minutes(content, filename, roster, games, captured_at, scenario, source_updated_at=None, *, unedited_projection_stats=False):
     """Map Tabs Min, never My Min or its fantasy-platform ID, to our roster.
 
     CSV omits out players. Missing rows therefore stay missing; they never become
@@ -269,9 +270,10 @@ def parse_tabs_minutes(content, filename, roster, games, captured_at, scenario, 
             minutes=float(r['Tabs Min']),source='TabsNBA',updated_at=capture.isoformat(),independent=True,
             scenario=scenario.strip(),source_updated_at=published.isoformat() if published is not None else None,
             source_max_age_hours=SOURCE_MAX_AGE_HOURS,requires_source_timestamp=True,source_mode='CSV snapshot',
-            source_status=r.get('status','Unknown')))
+            source_status=r.get('status','Unknown'), **tabs_stat_values(r, unedited=unedited_projection_stats)))
     columns=['PLAYER_ID','Team','Opponent','game_date','minutes','source','updated_at','independent','scenario',
-             'source_updated_at','source_max_age_hours','requires_source_timestamp','source_mode','source_status']
+             'source_updated_at','source_max_age_hours','requires_source_timestamp','source_mode','source_status',
+             *tabs_stat_values({})]
     result=pd.DataFrame(rows,columns=columns)
     # Unmatched reserves with explicit zero minutes contribute no allocation.
     # Missing players can be resolved only from a complete browser rotation.

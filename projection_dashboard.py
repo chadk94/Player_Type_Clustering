@@ -42,6 +42,7 @@ from opponent_history import history_index, add_opponent_history
 from edge_review_sources import MinutesReferenceFeed, parse_minutes, review_passing
 from tabs_minutes import render_tabs_comparison, export_day
 from tabs_minutes_status import render_tabs_minutes_status
+from tabs_projection_review import add_tabs_projection_review, tabs_projection_coverage
 from minutes_blend import minutes_plan
 from todays_plays import render_shortlist
 from projection_presentation import over_line_label, player_matchup_rating
@@ -1498,7 +1499,7 @@ def render_live_dashboard(ui, roster):
             calculate_review,
             lambda: (*source_deadlines(refs, stamp), *log_deadlines, pd.Timestamp(game['GameTimeUTC']).value))
         result['Review captured UTC'] = now.isoformat()
-        return result
+        return add_tabs_projection_review(result, st.session_state.get('tabs_minutes_reference'), game, now)
 
     def source_minutes_cases(game, book, api_key):
         cases = {}
@@ -1597,6 +1598,7 @@ def render_live_dashboard(ui, roster):
         if unavailable:
             ui.warning('No verified qualifying results from: ' + ', '.join(unavailable) + '. See slate coverage below; these games are not assumed to have passed.')
         if not review.empty:
+            ui.caption(tabs_projection_coverage(review))
             pending = review[['Minutes flag', 'Role flag', 'Injury flag']].eq('Unchecked').any(axis=1)
             if pending.any():
                 ui.info(f'{int(pending.sum())} plays still have an unfinished check. Missing or stale comparison data can keep plays out of this list.')
@@ -1672,6 +1674,7 @@ def render_live_dashboard(ui, roster):
             review_view = ui.pills('Play review',REVIEW_VIEWS,default='All plays',selection_mode='single',key='edges_review_view') or 'All plays'
             ui.caption('🟠 Minutes risk: the play fails with your minutes or TabsNBA’s · Gray Minutes unverified: a full source rotation is missing · 🟣 ROLE: recent role works against the bet · 🔵 Q: availability could hurt this bet. Click a badge for details. More robust requires more than 5% edge under both sources and the role checks.')
             ui.caption('🟢 History +: recent results support the pick · 🔴 History −: recent results oppose it. Informational only; projections and filters are unchanged.')
+            ui.caption('🟡 Tabs disagrees: Tabs projects the opposite side of the sportsbook line. Informational only; projections and the More robust filter are unchanged.')
             if ui.button('Refresh review checks',key='edges_review_refresh',help='Read any completed background minutes and passing updates. Your model projections stay unchanged.'):
                 review_cache.clear()
                 rotation_plan_cache.clear()
@@ -1731,6 +1734,8 @@ def render_live_dashboard(ui, roster):
                         ranked = filter_review(reviewed,review_view)
                     ui.subheader(f"{game['Away']} @ {game['Home']} — {edge_book_name}")
                     render_tabs_minutes_status([game], 'edges_game_tabs_status')
+                    if not reviewed.empty:
+                        ui.caption(tabs_projection_coverage(reviewed))
                     ui.caption('Paired prices where available. X+ threes marks FanDuel’s Over-only fallback; no Under price is assumed. Saved and Over-only quotes are excluded from live probability tracking. Use Refresh sportsbook lines to retry. Edge % is a projection gap, not a win probability or expected betting return.')
                     if not selected_stats:
                         ui.info('Check at least one stat category to show edges.')
@@ -1763,6 +1768,7 @@ def render_live_dashboard(ui, roster):
                         if not reviewed.empty:
                             detail_cols=['Player','Team','Stat','Play','Review group','Projected','Projected minutes','Reference minutes','Minutes difference','Reference source','Minutes test projection','Minutes test edge %','Recent test projection','Recent test edge %','Rebound trend %','Combined test projection','Combined test edge %','Minutes detail','Role detail','Injury detail','Review detail']
                             detail_cols += [c for c in ['History flag','History games','History detail','History technical'] if c in reviewed]
+                            detail_cols += [c for c in ['Tabs projection flag','Tabs stat projection','Tabs projection detail','Tabs projection technical'] if c in reviewed]
                             ui.dataframe(reviewed[detail_cols],hide_index=True,width='stretch')
                             ui.download_button('Download review snapshot',reviewed.to_csv(index=False),file_name=f'edge-review-{edge_date}-{game["Away"]}-{game["Home"]}.csv',mime='text/csv',key='edge_review_download')
                     with ui.expander('Game projection coverage'):

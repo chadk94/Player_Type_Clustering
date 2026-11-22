@@ -3,7 +3,7 @@ export const SAVED_TABS_KEY='nba-tabs-last-valid-minutes-v1';
 export function readSavedTabs(storage) {
     try {
         const text=storage?.getItem(SAVED_TABS_KEY);
-        if (!text || text.length>450000) return null;
+        if (!text || text.length>900000) return null;
         const snapshot=JSON.parse(text);
         return (snapshot?.schema===1 && Array.isArray(snapshot.rows)) ||
             (snapshot?.schema===2 && Array.isArray(snapshot.snapshots) && snapshot.snapshots.length<=90) ? snapshot : null;
@@ -54,7 +54,7 @@ export default function({data,parentElement,setStateValue}) {
         const value=msg.result;
         if (!value?.ok || !value.snapshot) {unavailable(value?.error||'Tabs comparison unavailable.');return;}
         const s=value.snapshot;
-        if (JSON.stringify(s).length>150000) {unavailable('Tabs comparison too large.');return;}
+        if (JSON.stringify(s).length>300000) {unavailable('Tabs comparison too large.');return;}
         status.textContent=`Connected · ${s.scope} · ${s.scenario} · Tabs updated ${new Date(s.source_updated_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`;
         publish({...value,...(saved?{saved_snapshot:saved}:{})});
         announce('checked','Tabs checked. The update time above is Tabs’ publication time, not the time of this check.');

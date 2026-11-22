@@ -7,12 +7,12 @@ import render, {readSavedTabs, SAVED_TABS_KEY} from '../tabs_browser_bridge.mjs'
 const source=readFileSync(new URL('../integrations/tabs_browser_connector/reader.js',import.meta.url),'utf8');
 const context=vm.createContext({Date,Error});vm.runInContext(source,context);
 const capture=(doc,now='2026-11-18T01:05:00Z')=>context.tabsSnapshot(doc,new Date(now));
-function doc({edited=false,scenario='POR: Avdija OUT (Q) ×',published='5:57 PM MST',date='NOV 17 2026 6:05 PM',slate='TUE, 11/17',missingChips=false,empty=false,minutes='28.0',joinedBadge=false,missingOut=false}={}) {
-    const head=['PLAYER','POS','TEAM','OPP','MIN ▾'].map(innerText=>({innerText}));
+function doc({edited=false,scenario='POR: Avdija OUT (Q) ×',published='5:57 PM MST',date='NOV 17 2026 6:05 PM',slate='TUE, 11/17',missingChips=false,empty=false,minutes='28.0',joinedBadge=false,missingOut=false,stats={}}={}) {
+    const head=['PLAYER','POS','TEAM','OPP','MIN ▾',...Object.keys(stats)].map(innerText=>({innerText}));
     const row=(name,min,hidden=false)=>({getClientRects:()=>hidden?[]:[{}],querySelectorAll:()=>[
         {innerText:(joinedBadge?'DA\n':'')+name+(min==null?(missingOut?'':joinedBadge?'OUT':' OUT')+'\n8:00 pm ET':' START\n8:00 pm ET'),
          querySelector:key=>joinedBadge?(key==='[data-pn]'?{innerText:name}:key==='.tag.out'&&!missingOut&&min==null?{innerText:'OUT'}:null):null},
-        {innerText:'PG'},{innerText:'POR'},{innerText:'MIN'},{}],
+        {innerText:'PG'},{innerText:'POR'},{innerText:'MIN'},{},...Object.values(stats).map(innerText=>({innerText}))],
         querySelector:()=>min==null?null:{value:min,getAttribute:()=>`Minutes for ${name}`}});
     const rows=[{querySelectorAll:()=>head},...empty?[]:[row('Jrue Holiday',minutes),row('Deni Avdija',null),row('Hidden player','48',true)]];
     const table={querySelectorAll:()=>rows};
@@ -43,6 +43,16 @@ test('default after news, midnight and year boundaries retain correct date',()=>
     assert.equal(capture(doc({scenario:''})).scenario,'Default');
     const s=capture(doc({date:'JAN 1 2027 12:05 AM',slate:'THU, 12/31',published:'11:57 PM MST'}),'2027-01-01T07:05:00Z');
     assert.equal(s.slate_date,'2026-12-31');assert.equal(s.source_updated_at,'2027-01-01T06:57:00.000Z');
+});
+
+test('raw stat totals travel with minutes; missing, percent, invalid and OUT cells stay absent',()=>{
+    const rows=capture(doc({stats:{'PTS ↓':'18.2','REB':'5.1','AST':'4.0','3PM':'2.2',STL:'0.0',BLK:'—',TOV:'-1',FPTS:'40.0','DD%':'10%'}})).rows;
+    assert.equal(rows[0].PTS,18.2);assert.equal(rows[0].REB,5.1);assert.equal(rows[0].AST,4);
+    assert.equal(rows[0]['3PM'],2.2);assert.equal(rows[0].STL,0);
+    for (const key of ['BLK','TOV','FPTS','DD%']) assert.equal(rows[0][key],undefined);
+    assert.equal(rows[1].PTS,undefined);assert.equal(rows[1].status,'Out');
+    for (const value of ['', 'NaN', '2.2%', '2.2 10%', 'Infinity'])
+        assert.equal(capture(doc({stats:{'3PM':value}})).rows[0]['3PM'],undefined);
 });
 
 function propsDoc(options={}) {
@@ -91,6 +101,13 @@ test('Props restores the selected view even when edited, stale or incomplete dat
         JSON.parse(JSON.stringify(capture(doc()))));
 });
 
+test('Props captures the same stat projection and restores the view',()=>{
+    const source=propsDoc({stats:{PTS:'18.2','3PM':'2.2'}});
+    const snapshot=context.tabsCapture(source.page,new Date('2026-11-18T01:05:00Z'));
+    assert.equal(snapshot.rows[0].PTS,18.2);assert.equal(snapshot.rows[0]['3PM'],2.2);
+    assert.equal(source.view(),'props');assert.deepEqual(source.clicks,['proj','props']);
+});
+
 test('only changed snapshots update Python; disconnect clears; cleanup stops polling',()=>{
     const handlers={},requests=[],saved=[],timers=new Map();let tid=0;
     globalThis.location={origin:'https://cktest2.streamlit.app'};
@@ -107,7 +124,9 @@ test('only changed snapshots update Python; disconnect clears; cleanup stops pol
         button.onclick();reply({ok:true,snapshot:{...snapshot,rows:[...snapshot.rows].reverse()}});
         assert.equal(saved.length,0); // Sorting Tabs does not rerun the dashboard.
         button.onclick();reply({ok:true,snapshot:{...snapshot,scenario:'Default'}});assert.equal(saved.length,1);
-        button.onclick();reply({ok:false,error:'Source tab closed'});assert.equal(saved.length,2);assert.equal(saved.at(-1).ok,false);
+        button.onclick();reply({ok:true,snapshot:{...snapshot,scenario:'Default',rows:snapshot.rows.map(r=>({...r,PTS:18.2}))}});
+        assert.equal(saved.length,2); // A stat-only update refreshes flags even with unchanged minutes.
+        button.onclick();reply({ok:false,error:'Source tab closed'});assert.equal(saved.length,3);assert.equal(saved.at(-1).ok,false);
         cleanup();assert.equal(timers.size,0);assert.equal(handlers.message,undefined);
     } finally {Object.assign(globalThis,real);}
 });
