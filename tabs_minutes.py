@@ -206,6 +206,10 @@ def render_tabs_comparison(ui,roster,games):
         stat_players=int(refs.reindex(columns=stat_columns).notna().any(axis=1).sum())
         ui.caption(f'Tabs stat projections received for {stat_players} of {len(refs)} matched players. '
                    'Only fresh, active-player values can be compared with sportsbook lines.')
+        if isinstance(value,dict) and value.get('ok') and stat_players == 0:
+            browser_rows=value.get('snapshot',{}).get('rows',[])
+            supplied=sum(any(stat in row for stat in TABS_STATS) for row in browser_rows if isinstance(row,dict))
+            ui.caption(f'Connection diagnostic: the browser supplied stat fields for {supplied} of {len(browser_rows)} player rows.')
         with ui.expander('View saved player minutes and projections',expanded=False):
             saved_rows=refs.merge(roster[['PLAYER_ID','TEAM_ABBREVIATION','PLAYER_NAME']].drop_duplicates(),
                 left_on=['PLAYER_ID','Team'],right_on=['PLAYER_ID','TEAM_ABBREVIATION'],how='left')
