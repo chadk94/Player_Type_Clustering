@@ -1,8 +1,12 @@
 """Player assist opportunities, applied before the existing matchup and team allocation."""
 from concurrent.futures import ThreadPoolExecutor, wait
+from contextlib import suppress
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
+import json
 from pathlib import Path
+import re
+from tempfile import NamedTemporaryFile
 from threading import Lock
 from time import monotonic
 
@@ -17,6 +21,17 @@ SEED_END = date(2026, 11, 9)
 DATA = Path(__file__).parent / 'data'
 STATS = ['AST', 'POTENTIAL_AST', 'PASSES_MADE', 'MIN']
 SAMPLE = ['box_gp', 'box_ast', 'box_min', 'tracked_gp', 'tracked_ast', 'potential', 'passes']
+
+
+def validated_passing_table(rows):
+    rows = rows[['GP', *STATS]].apply(pd.to_numeric).copy()
+    rows.index = pd.Index(pd.to_numeric(rows.index), name='PLAYER_ID')
+    if (rows.empty or not rows.index.is_unique or not np.isfinite(rows.index).all()
+            or (rows.index <= 0).any() or (rows.index % 1 != 0).any()
+            or not np.isfinite(rows).all().all() or rows.lt(0).any().any()
+            or (rows[['GP','AST','POTENTIAL_AST','PASSES_MADE']] % 1).ne(0).any().any()):
+        raise ValueError('Invalid NBA passing counts')
+    return rows
 
 
 @lru_cache(maxsize=2)
@@ -45,29 +60,70 @@ def fetch_passing_day(season, day):
         raise ValueError('Passing feed returned a different scope')
     table = payload['resultSets'][0]
     rows = pd.DataFrame(table['rowSet'], columns=table['headers'])
-    rows = rows.set_index('PLAYER_ID', verify_integrity=True)[['GP', *STATS]].apply(pd.to_numeric)
-    if (not np.isfinite(rows).all().all() or rows.lt(0).any().any()
-            or (rows[['GP','AST','POTENTIAL_AST','PASSES_MADE']] % 1).ne(0).any().any()):
-        raise ValueError('Invalid NBA passing counts')
-    return rows
+    return validated_passing_table(rows.set_index('PLAYER_ID', verify_integrity=True))
 
 
 class DailyPassingFeed:
     """Share completed requests across sessions and keep the last successful day."""
-    def __init__(self, fetch=fetch_passing_day):
+    def __init__(self, fetch=fetch_passing_day, cache_dir=None):
         self.fetch = fetch
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else None
         self.pool = ThreadPoolExecutor(max_workers=4)
         self.lock = Lock()
         self.pending = {}
         self.refresh_at = {}
         self.tables = {}
 
+    def _cache_path(self, season, day):
+        if self.cache_dir is None or not re.fullmatch(r'\d{4}-\d{2}', season):
+            return None
+        return self.cache_dir / f'{season}_{day.isoformat()}.json'
+
+    def _saved(self, season, day):
+        path = self._cache_path(season, day)
+        if path is None:
+            return None
+        try:
+            data = json.loads(path.read_text())
+            if data['season'] != season or data['day'] != day.isoformat():
+                return None
+            return validated_passing_table(pd.DataFrame(data['rows']).set_index('PLAYER_ID'))
+        except (OSError, KeyError, TypeError, ValueError):
+            return None
+
+    def _fetch_and_save(self, season, day):
+        # Persist in the worker, even if the user leaves before another rerun.
+        # Empty/failed responses never replace a successful daily snapshot.
+        frame = validated_passing_table(self.fetch(season, day))
+        path = self._cache_path(season, day)
+        temp_path = None
+        if path is not None:
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                payload = dict(season=season, day=day.isoformat(),
+                               rows=frame.reset_index().to_dict('records'))
+                with NamedTemporaryFile(dir=path.parent, mode='w', delete=False) as f:
+                    temp_path = Path(f.name)
+                    json.dump(payload, f, allow_nan=False)
+                temp_path.replace(path)
+            except OSError:
+                pass  # Read-only/ephemeral storage must not discard a live success.
+            finally:
+                if temp_path is not None:
+                    with suppress(OSError):
+                        temp_path.unlink(missing_ok=True)
+        return frame
+
     def read(self, season, days, timeout=3):
         keys = [(season, day) for day in sorted(days, reverse=True)]
         with self.lock:
             for key in keys:
+                if key not in self.tables:
+                    saved = self._saved(*key)
+                    if saved is not None:
+                        self.tables[key] = saved
                 if key not in self.pending and monotonic() >= self.refresh_at.get(key, 0):
-                    self.pending[key] = self.pool.submit(self.fetch, *key)
+                    self.pending[key] = self.pool.submit(self._fetch_and_save, *key)
             jobs = [self.pending[key] for key in keys if key in self.pending]
         if jobs:
             wait(jobs, timeout=timeout)

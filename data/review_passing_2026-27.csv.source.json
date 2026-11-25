@@ -1,9 +1,9 @@
 {
   "season": "2026-27",
-  "rows": 4500,
-  "through": "2026-11-16",
-  "retrieved_at": "2026-11-18T18:02:29.759365+00:00",
-  "sha256": "6a375f482ee1c754196b8f1b66bfedd4213d5e8744b98adff75cb3a317083973",
+  "rows": 5688,
+  "through": "2026-11-24",
+  "retrieved_at": "2026-11-25T19:17:22.363518+00:00",
+  "sha256": "976deab11bf4d4073c44ccf9ab6a5291f179355e7a055ede2816a610d54daa75",
   "source": "NBA Stats LeagueDashPtStats daily Passing Totals; verified by player, Eastern game date, one appearance, credited assists and rounded minutes against completed ESPN boxes.",
   "endpoint": "https://stats.nba.com/stats/leaguedashptstats",
   "verification": "GP=1; assists equal ESPN; minutes within 0.5 + 1/60. Review-only checkpoint; no picks, prices, minutes plans or private data."

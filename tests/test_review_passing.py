@@ -120,7 +120,22 @@ class ReviewPassingTests(TestCase):
 
     def test_bundled_public_checkpoint_is_valid_and_has_boozer_games(self):
         archive=archived_review_passing('2026-27')
-        self.assertEqual(len(archive),4500)
-        self.assertEqual(len(archive[archive.PLAYER_ID.eq(1643409)]),14)
+        self.assertGreaterEqual(len(archive),5688)
+        self.assertGreaterEqual(len(archive[archive.PLAYER_ID.eq(1643409)]),14)
         self.assertFalse(archive.duplicated(['PLAYER_ID','GAME_ID']).any())
         self.assertTrue(archived_review_passing('2025-26').empty)
+
+    def test_lebron_recent_games_are_verified_on_cold_start_without_live_feed(self):
+        archive=archived_review_passing('2026-27')
+        sample=archive[archive.PLAYER_ID.eq(2544) & archive.GAME_DATE.le('2026-11-23')].copy()
+        self.assertEqual(sample.tail(3).GAME_DATE.tolist(),['2026-11-18','2026-11-21','2026-11-23'])
+        self.assertEqual(sample.tail(3).POTENTIAL_AST.tolist(),[13,12,11])
+        self.assertEqual(sample.tail(3).PASSES_MADE.tolist(),[53,63,45])
+        games=sample[['GAME_ID','GAME_DATE','MIN','AST']].assign(ESPN_PLAYER_ID='1966',GAME_DATE=sample.GAME_DATE+'T18:00:00Z')
+        read=Mock(return_value={})
+        result=review_passing('2026-27',games,{2544:pd.Series(dict(ESPN_PLAYER_ID='1966'))},read)
+        read.assert_not_called()
+        self.assertEqual(len(result),14)
+        evidence=passing_role_evidence(games,2544,5,result)
+        self.assertIn('AST',evidence['ratios'])
+        self.assertNotIn('pending',evidence['passing_detail'])

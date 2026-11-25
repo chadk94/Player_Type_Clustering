@@ -1,4 +1,8 @@
 from datetime import date
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from threading import Event
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
@@ -13,6 +17,56 @@ from team_assists import apply_team_assists
 
 
 class AssistOpportunityTests(TestCase):
+    def test_background_success_survives_restart_without_a_second_page_read(self):
+        day = date(2026,11,23)
+        tracking = pd.DataFrame(dict(GP=[1], MIN=[30], AST=[3],
+                                     POTENTIAL_AST=[11], PASSES_MADE=[45]), index=[2544])
+        gate = Event()
+        def fetch(*_):
+            gate.wait(3)
+            return tracking
+        with TemporaryDirectory() as directory:
+            first = DailyPassingFeed(fetch, cache_dir=directory)
+            self.assertEqual(first.read('2026-27', {day}, timeout=0), {})
+            gate.set()
+            first.pool.shutdown(wait=True)
+            # A new process may lose memory, but the completed worker saved the day.
+            second = DailyPassingFeed(Mock(side_effect=Timeout()), cache_dir=directory)
+            self.addCleanup(second.pool.shutdown)
+            loaded = second.read('2026-27', {day})[day]
+            self.assertEqual(loaded.loc[2544, 'POTENTIAL_AST'], 11)
+            self.assertEqual(loaded.loc[2544, 'PASSES_MADE'], 45)
+            self.assertTrue((Path(directory) / '2026-27_2026-11-23.json').exists())
+
+    def test_saved_days_reject_wrong_scope_and_invalid_counts(self):
+        day = date(2026,11,23)
+        row = dict(PLAYER_ID=2544, GP=1, MIN=30, AST=3, POTENTIAL_AST=11, PASSES_MADE=45)
+        for update in [dict(season='2025-26'), dict(day='2026-11-22'),
+                       dict(rows=[{**row,'POTENTIAL_AST':-1}]), dict(rows=[row,row])]:
+            with self.subTest(update=update), TemporaryDirectory() as directory:
+                payload = dict(season='2026-27',day=day.isoformat(),rows=[row])
+                payload.update(update)
+                (Path(directory)/'2026-27_2026-11-23.json').write_text(json.dumps(payload))
+                feed = DailyPassingFeed(Mock(side_effect=Timeout()), cache_dir=directory)
+                try:
+                    self.assertEqual(feed.read('2026-27', {day}), {})
+                finally:
+                    feed.pool.shutdown()
+
+    def test_failed_or_empty_refresh_keeps_saved_passing_counts(self):
+        day = date(2026,11,23)
+        frame = pd.DataFrame(dict(GP=[1], MIN=[30], AST=[3],
+                                 POTENTIAL_AST=[11], PASSES_MADE=[45]), index=[2544])
+        with TemporaryDirectory() as directory:
+            feed = DailyPassingFeed(Mock(side_effect=[frame,pd.DataFrame(columns=frame.columns)]), cache_dir=directory)
+            self.addCleanup(feed.pool.shutdown)
+            first=feed.read('2026-27',{day})[day]
+            path=Path(directory)/'2026-27_2026-11-23.json'
+            saved=path.read_bytes()
+            feed.refresh_at['2026-27',day]=0
+            pd.testing.assert_frame_equal(feed.read('2026-27',{day})[day],first)
+            self.assertEqual(path.read_bytes(),saved)
+
     def test_formula_matches_separate_opportunity_estimates_with_partial_coverage(self):
         prior = pd.DataFrame({'AST':[60,80], 'MIN':[400,800], 'POTENTIAL_AST':[100,200], 'PASSES_MADE':[500,1000]},
                              index=[1,2])

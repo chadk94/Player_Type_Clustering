@@ -74,7 +74,7 @@ def live_state(season):
 
 @st.cache_resource
 def passing_feed():
-    return DailyPassingFeed()
+    return DailyPassingFeed(cache_dir=Path(tempfile.gettempdir()) / 'nba-passing-days')
 
 
 @st.cache_resource

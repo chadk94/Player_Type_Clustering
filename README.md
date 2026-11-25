@@ -1756,7 +1756,12 @@ does not blur their different effects on an Over or Under.
   change or loss of the 5% edge triggers purple. This is a sensitivity proxy, not a new production
   baseline. Steal and block role checks remain unchecked.
   The assist-role review reuses the public per-game passing checkpoint in
-  `data/review_passing_2026-27.csv.gz` (verified through November 16) after app restarts.
+  `data/review_passing_2026-27.csv.gz` (verified through November 24) after app restarts.
+  Successful daily NBA responses are also saved atomically in the app's temporary
+  cache as soon as the background request completes, even without another page rerun.
+  The feed can reuse these on a process restart while checking for corrections;
+  failed or empty refreshes never overwrite saved counts. A fresh cloud container
+  can still lose temporary storage, so the bundled checkpoint remains the fallback.
   Each archived game is rechecked against the current player ID, game ID, Eastern date,
   assists and minutes; new or mismatched games request fresh NBA daily tracking in the
   background. Up to three missing passing-data games are allowed across the player's
