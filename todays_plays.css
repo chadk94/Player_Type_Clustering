@@ -14,3 +14,5 @@ td,th {padding:.4rem .55rem;border:1px solid var(--st-border-color,#8886);white-
 th {background:var(--st-secondary-background-color,#8882)}
 td button+button {margin-inline-start:.4rem}
 a {color:var(--st-link-color,LinkText)}
+.alt-select {min-width:15rem;max-width:25rem}
+.alt-pending {display:block;margin-top:.2rem;color:var(--st-text-color);opacity:.8}

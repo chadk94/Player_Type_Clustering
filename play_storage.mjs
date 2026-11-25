@@ -35,6 +35,18 @@ export function acknowledgeConfidence(storage, synced) {
             storage.setItem(PICK_PREFIX+id,JSON.stringify({...p,confidence_edited:false}));
     }
 }
+export function saveAlternate(storage, pick, choice) {
+    if (!['auto','none','dd'].includes(choice) && !/^line:\d+(?:\.5)?$/.test(choice)) throw new Error('Choose a valid alternate.');
+    const saved=savedPlay(storage,pick.id) || pick;
+    storage.setItem(PICK_PREFIX+pick.id,JSON.stringify({...saved,alt_choice:choice,alt_edited:true}));
+}
+export function acknowledgeAlternates(storage, synced) {
+    for (const [id,choice] of Object.entries(synced)) {
+        const p=savedPlay(storage,id);
+        if (p && (p.alt_choice || 'auto')===choice)
+            storage.setItem(PICK_PREFIX+id,JSON.stringify({...p,alt_edited:false}));
+    }
+}
 export function savedPlay(storage, id) {
     const raw = storage.getItem(PICK_PREFIX + id);
     return raw === null ? null : JSON.parse(raw);

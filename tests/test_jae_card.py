@@ -176,7 +176,7 @@ class JaeCardTests(TestCase):
         fd=dict(original,book='FanDuel')
         fd['id']=prop_id(fd)
         req=Mock(side_effect=[dict(existing=[]),dict(added=1)])
-        sent,_,_=send_card(self.day,[dict(original,confidence_cents=10),dict(fd,confidence_cents=15)],'test',req,self.fetch)
+        sent,_,_,_=send_card(self.day,[dict(original,confidence_cents=10),dict(fd,confidence_cents=15)],'test',req,self.fetch)
         self.assertIn('1 added',sent)
         frozen,=req.call_args.kwargs['rows']
         self.assertEqual((frozen['id'],frozen['book']),(fd['id'],'FanDuel'))
@@ -189,7 +189,7 @@ class JaeCardTests(TestCase):
     def test_resending_an_edit_targets_original_row_without_requoting(self):
         req=Mock(side_effect=[dict(existing=[self.pick['id']],confidenceEdits=True),dict(added=0,updated=1)])
         p=dict(self.pick,confidence_cents=15,confidence_edited=True)
-        message,skipped,synced=send_card(self.day,[p],'test',req,self.fetch)
+        message,skipped,synced,_=send_card(self.day,[p],'test',req,self.fetch)
         self.assertEqual(req.call_args.kwargs,dict(rows=[],edits=[dict(id=p['id'],cents=15)]))
         self.assertEqual((skipped,synced),([],{p['id']:15}))
         self.assertIn('1 updated',message)
@@ -204,6 +204,38 @@ class JaeCardTests(TestCase):
         ]:
             result = next_over(dict(self.pick,stat=stat,side='Over',line=line),{('sample player',stat,'Over'):ladder})
             self.assertEqual(result,{'line':expected,'odds':next(iter(ladder[expected]))})
+
+    def test_alternate_edit_requotes_only_the_alt_and_retry_does_not_duplicate(self):
+        from jae_card import preview_alternates
+        p=dict(self.pick,side='Over',line=14.5,alt_choice='dd',alt_edited=True)
+        # The original main line is no longer in the feed. Its sent price must survive.
+        self.event['bookmakers'][0]['markets']=[dict(key='player_double_double',last_update=self.now.isoformat(),outcomes=[
+            dict(name='Yes',description=p['player'],price=275)])]
+        req=Mock(side_effect=[dict(existing=[p['id']],alternateEdits=True,altChoices={}),
+            dict(added=0,updated=0,altUpdated=1,altAccepted=[p['id']])])
+        message,skipped,_,synced=send_card(self.day,[p],'test',req,self.fetch)
+        self.assertFalse(skipped)
+        edit,=req.call_args.kwargs['alt_edits']
+        self.assertEqual(edit['shopping']['double'],275)
+        self.assertEqual(edit['alt_choice'],'dd')
+        self.assertEqual(req.call_args.kwargs['rows'],[])
+        self.assertEqual(synced,{p['id']:'dd'})
+        self.assertIn('1 alternate(s) updated',message)
+        options,_=preview_alternates([p],self.fetch)
+        self.assertIn({'value':'dd','label':'Double-double · FD +275'},options[p['id']]['options'])
+        self.fetch.reset_mock()
+        req=Mock(return_value=dict(existing=[p['id']],alternateEdits=True,altChoices={p['id']:'dd'}))
+        self.assertEqual(send_card(self.day,[p],'test',req,self.fetch)[3],{p['id']:'dd'})
+        self.fetch.assert_not_called();req.assert_called_once()
+
+    def test_missing_requested_alt_does_not_replace_existing_card(self):
+        p=dict(self.pick,side='Over',alt_choice='dd',alt_edited=True)
+        req=Mock(return_value=dict(existing=[p['id']],alternateEdits=True,altChoices={}))
+        _,skipped,_,synced=send_card(self.day,[p],'test',req,self.fetch)
+        self.assertIn('selected alternate',skipped[0]);self.assertFalse(synced)
+        req.assert_called_once()
+        rows,skipped=card_quotes([p],self.fetch,lambda:self.now)
+        self.assertFalse(rows);self.assertIn('play not sent',skipped[0])
 
     def test_unders_only_use_fresh_same_side_fd_alternates(self):
         from jae_card import alternate_prices, shopping_prices

@@ -82,6 +82,8 @@ export default function({data, parentElement, setStateValue}) {
     if (jaeReply && jaeReply.nonce === ui.jaePending) {
         if (jaeReply.connected) localStorage.setItem(connectionKey, ui.jaeCandidate);
         if (jaeReply.synced) acknowledgeConfidence(localStorage,jaeReply.synced);
+        if (jaeReply.alt_synced) acknowledgeAlternates(localStorage,jaeReply.alt_synced);
+        if (jaeReply.alt_options) ui.altOptions={...(ui.altOptions || {}),...jaeReply.alt_options};
         ui.jaeCandidate = null;
         ui.jaePending = null;
         ui.jaeFeedback = jaeReply;
@@ -119,7 +121,7 @@ export default function({data, parentElement, setStateValue}) {
                 const count = confirmed.length;
                 action = button(`Send ${count} confirmed ${count === 1 ? 'play' : 'plays'} to Jae`, () =>
                     requestJae('send', connection, confirmed));
-                action.title = 'Confidence sets the play-to from the original FanDuel quote.';
+                action.title = 'Confidence updates the original play-to. Alternate selections replace the existing alternate.';
                 action.className = 'jae-send';
                 bar.append(action);
             }
@@ -166,11 +168,15 @@ export default function({data, parentElement, setStateValue}) {
         root.append(status);
         renderJae(rows.filter(p => p.status === 'Confirmed'), rows.length > 0);
         if (rows.length) {
-            root.append(make('p','Send again after editing confidence to update the play-to from the original FanDuel quote. The card shows one alternate to shop.'));
+            const altTools=make('div');altTools.className='tools';
+            const loadAlts=button('Refresh alt prices',()=>requestJae('alternates','',rows));
+            loadAlts.disabled=!!ui.jaePending;
+            altTools.append(loadAlts,make('span','Choose an alt below, then Send to update Jae’s card. Main prices stay unchanged.'));
+            root.append(altTools);
             const scroll=make('div'); scroll.className='play-table';
             const table=make('table'); table.setAttribute('aria-label','Saved player props');
             const header=table.createTHead().insertRow();
-            for (const title of ['For Jae','Confidence','Player','Game','Prop','Odds','Sportsbook','Projection','Edge','Actions']) {
+            for (const title of ['For Jae','Confidence','Player','Game','Prop','Odds','Sportsbook','Projection','Edge','Alternate','Actions']) {
                 const th=make('th',title); th.scope='col'; header.append(th);
             }
             const body=table.createTBody();
@@ -207,6 +213,26 @@ export default function({data, parentElement, setStateValue}) {
                     tr.insertCell().textContent=text;
                 }
                 tr.title=p.quoted ? 'Quote updated '+p.quoted : 'Saved sportsbook quote';
+                const alternate=make('select');alternate.className='alt-select';
+                alternate.setAttribute('aria-label','Alternate for '+p.player+' '+prop);
+                alternate.add(new Option('Auto — closest standard alt','auto'));
+                const options=ui.altOptions?.[p.id]?.options || [];
+                for(const o of options) alternate.add(new Option(o.label,o.value));
+                if(p.side==='Over' && ['PTS','REB'].includes(p.stat) && !options.some(o=>o.value==='dd'))
+                    alternate.add(new Option('Double-double — check price on Send','dd'));
+                alternate.add(new Option('No alt','none'));
+                const choice=p.alt_choice || 'auto';
+                if(![...alternate.options].some(o=>o.value===choice))
+                    alternate.add(new Option(`${p.side} ${choice.slice(5)} ${p.stat} — refresh price`,choice));
+                alternate.value=choice;
+                alternate.disabled=!!ui.jaePending;
+                alternate.title=ui.altOptions?.[p.id]?.quoted ? 'FanDuel quotes checked '+ui.altOptions[p.id].quoted : 'Use Refresh alt prices to see available lines.';
+                alternate.onchange=()=>{
+                    try {saveAlternate(localStorage,p,alternate.value);notifyPicks(p.day);}
+                    catch {storageFailure();}
+                };
+                const altCell=tr.insertCell();altCell.append(alternate);
+                if(p.alt_edited) {const pending=make('small','Unsent change');pending.className='alt-pending';altCell.append(pending);}
                 const actions=tr.insertCell();
                 const remove=button('Remove',()=>{
                     try {

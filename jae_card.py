@@ -29,7 +29,7 @@ def current_event(event_id, stats, alternate_stats):
     from FanduelScrape import get_odds_api_key
     base = [key for key, stat in MARKETS.items() if stat in stats]
     alts = [key + '_alternate' for key, stat in MARKETS.items() if stat in alternate_stats]
-    if 'REB' in alternate_stats:
+    if {'PTS', 'REB'} & set(alternate_stats):
         alts.append('player_double_double')
     api_key = get_odds_api_key()
 
@@ -142,8 +142,74 @@ def shopping_prices(pick, ladders):
     ladder = ladders.get((name, stat, side), {})
     offers = [{'line':line, 'odds':next(iter(prices))} for line, prices in sorted(ladder.items())
               if len(prices) == 1 and (line > pick['line'] if side == 'Over' else line < pick['line'])]
-    double = ladders.get((name, 'DD', 'Yes'), {}).get(0, set()) if stat == 'REB' and side == 'Over' else set()
+    double = ladders.get((name, 'DD', 'Yes'), {}).get(0, set()) if stat in ('PTS', 'REB') and side == 'Over' else set()
     return {'offers': offers, 'double': next(iter(double)) if len(double) == 1 else None}
+
+
+def valid_alt_choice(pick):
+    choice = pick.get('alt_choice', 'auto')
+    if choice in ('auto', 'none'):
+        return choice
+    if choice == 'dd' and pick['side'] == 'Over' and pick['stat'] in ('PTS', 'REB'):
+        return choice
+    if isinstance(choice, str) and re.fullmatch(r'line:\d+(?:\.5)?', choice):
+        line = float(choice[5:])
+        if (line > pick['line'] if pick['side'] == 'Over' else line < pick['line']):
+            return choice
+    raise ValueError('Choose a valid alternate for this prop.')
+
+
+def alternate_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.utc), preview=False):
+    """Quote alternate choices without requiring or changing the original main price."""
+    rows, skipped = [], []
+    groups = defaultdict(list)
+    for p in picks:
+        groups[p['event']].append(p)
+    for event_id, group in groups.items():
+        try:
+            if not re.fullmatch(r'[a-fA-F0-9]{32}', event_id):
+                raise ValueError('Event unavailable.')
+            event = fetch(event_id, {p['stat'] for p in group}, {p['stat'] for p in group})
+            now = clock()
+            start = datetime.fromisoformat(event['commence_time'].replace('Z', '+00:00'))
+            if event['id'] != event_id or start <= now:
+                raise ValueError('Game has started or is unavailable.')
+            game = f"{TEAM_NAMES[event['away_team']]} @ {TEAM_NAMES[event['home_team']]}"
+            ladders = alternate_prices(event, now)
+        except (ValueError, KeyError, OddsFeedError):
+            skipped.extend(f"{p['player']}: alternate prices unavailable; existing card unchanged." for p in group)
+            continue
+        for p in group:
+            if game != p['game'] or start.astimezone(DENVER).date().isoformat() != p['day']:
+                skipped.append(f"{p['player']}: alternate game/date mismatch.")
+                continue
+            shopping = shopping_prices(p, ladders)
+            choice = valid_alt_choice(p)
+            if not preview and ((choice == 'dd' and shopping['double'] is None) or
+                    (choice.startswith('line:') and not any(o['line'] == float(choice[5:]) for o in shopping['offers']))):
+                skipped.append(f"{p['player']}: selected alternate has no fresh FanDuel quote; existing card unchanged.")
+                continue
+            rows.append({**p, 'start': start.isoformat(), 'quoted': now.isoformat(),
+                         'shopping': shopping, 'alt_choice': choice})
+    return rows, skipped
+
+
+def preview_alternates(picks, fetch=current_event):
+    rows, skipped = alternate_quotes(picks, fetch, preview=True)
+    result = {}
+    for p in rows:
+        options = []
+        step = {'PTS': 5, 'REB': 2}.get(p['stat'], 1)
+        offers = sorted(p['shopping']['offers'], key=lambda o: (
+            (o['line'] + .5) % step != 0, abs(o['line'] - p['line'])))
+        for o in offers:
+            line = o['line']
+            label = f"{line + .5:g}+ {p['stat']}" if p['side'] == 'Over' and line % 1 == .5 else f"{p['side']} {line:g} {p['stat']}"
+            options.append({'value': f'line:{line:g}', 'label': f"{label} · FD {o['odds']:+d}"})
+        if p['shopping']['double'] is not None:
+            options.append({'value': 'dd', 'label': f"Double-double · FD {p['shopping']['double']:+d}"})
+        result[p['id']] = {'options': options, 'quoted': p['quoted']}
+    return result, skipped
 
 
 def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.utc)):
@@ -183,21 +249,27 @@ def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.
                 continue
             price = int(raw_odds)
             worst = worst_price(price, p.get('confidence_cents', 5))
+            choice = valid_alt_choice(p)
+            shopping = shopping_prices(p, ladders)
+            if ((choice == 'dd' and shopping['double'] is None) or
+                    (choice.startswith('line:') and not any(o['line'] == float(choice[5:]) for o in shopping['offers']))):
+                skipped.append(f"{p['player']}: selected alternate has no fresh FanDuel quote; play not sent.")
+                continue
             rows.append(dict(id=p['id'], day=p['day'], start=start.isoformat(), game=game,
                              player=p['player'], stat=p['stat'], side=p['side'], line=p['line'],
-                             book='FanDuel', alt=next_over(p, ladders), shopping=shopping_prices(p,ladders), odds=price, worst=worst, breakeven=american_probability(worst),
+                             book='FanDuel', alt=next_over(p, ladders), shopping=shopping, alt_choice=choice, odds=price, worst=worst, breakeven=american_probability(worst),
                              quoted=quote['Updated UTC'], sent=now.isoformat()))
     return rows, skipped
 
 
-def sheet_request(connection, action, day, *, ids=(), rows=(), edits=()):
+def sheet_request(connection, action, day, *, ids=(), rows=(), edits=(), alt_edits=()):
     """Use the private write key only for the owner's selected Google deployment."""
     import requests
     endpoint, separator, key = connection.partition('#')
     if (not separator or not re.fullmatch(r'https://script\.google\.com/macros/s/[\w-]{20,200}/exec', endpoint)
             or not re.fullmatch(r'[a-f0-9]{64}', key)):
         raise ValueError('Paste the connection from the Jae card menu in your Google Sheet.')
-    body = dict(key=key, action=action, day=day, ids=list(ids), rows=list(rows), edits=list(edits))
+    body = dict(key=key, action=action, day=day, ids=list(ids), rows=list(rows), edits=list(edits), alt_edits=list(alt_edits))
     try:
         response = requests.post(endpoint, json=body, timeout=(4,25), allow_redirects=False)
         if response.status_code in (302, 303):
@@ -221,7 +293,7 @@ def send_card(day, picks, connection, request=sheet_request, fetch=current_event
     source_ids = defaultdict(list)
     # Prefer an explicit edit. If both are edits, use the tighter limit.
     def priority(item):
-        return (not item.get('confidence_edited', False), item.get('confidence_cents', 5))
+        return (not item.get('alt_edited', False), not item.get('confidence_edited', False), item.get('confidence_cents', 5))
 
     for p in picks:
         if p['status'] == 'Confirmed':
@@ -255,15 +327,47 @@ def send_card(day, picks, connection, request=sheet_request, fetch=current_event
         edits.append(dict(id=next(iter(matching),p['id']), cents=p['confidence_cents']))
     if edits and not check.get('confidenceEdits'):
         raise ValueError('The connected sheet needs the confidence update before sending these changes.')
-    added = updated = 0
-    if rows or edits:
-        reply = request(connection, 'append', day, rows=rows, **({'edits':edits} if edits else {}))
+    alt_pending, alt_synced = [], {}
+    for p in confirmed:
+        if not p.get('alt_edited') or p['id'] not in existing:
+            continue
+        matching = aliases[p['id']] & sent
+        if len(matching) != 1:
+            raise ValueError('Multiple sent rows match this prop. Check the card before changing its alternate.')
+        stored_id = next(iter(matching))
+        if not check.get('alternateEdits'):
+            raise ValueError('The sheet needs the alternate update before sending these changes.')
+        if check.get('altChoices', {}).get(stored_id) == valid_alt_choice(p):
+            alt_synced[p['id']] = valid_alt_choice(p)
+        else:
+            alt_pending.append(dict(p, id=stored_id))
+    alt_edits, alt_skipped = alternate_quotes(alt_pending, fetch)
+    skipped.extend(alt_skipped)
+    added = updated = alt_updated = 0
+    if rows or edits or alt_edits:
+        reply = request(connection, 'append', day, rows=rows, **({'edits':edits} if edits else {}),
+                        **({'alt_edits': alt_edits} if alt_edits else {}))
         added = reply['added']
         if type(added) is not int or not 0 <= added <= len(rows):
             raise ValueError('Google did not confirm the row count. Retry to check the sheet.')
         updated = reply.get('updated',0) if not edits else reply.get('updated')
         if type(updated) is not int or not 0 <= updated <= len(edits):
             raise ValueError('Google did not confirm the confidence updates. Retry to check the sheet.')
+        alt_updated = reply.get('altUpdated', 0)
+        if type(alt_updated) is not int or not 0 <= alt_updated <= len(alt_edits):
+            raise ValueError('Google did not confirm the alternate updates. Retry to check the sheet.')
+        accepted = set(reply.get('altAccepted', []))
+        for p in confirmed:
+            if aliases[p['id']] & accepted:
+                alt_synced[p['id']] = valid_alt_choice(p)
+        skipped.extend(reply.get('altSkipped', []))
+    for p in confirmed:
+        if p['id'] in new_ids:
+            alt_synced[p['id']] = valid_alt_choice(p)
+    alt_synced = {source: alt_synced[pid] for pid in alt_synced for source, _ in source_ids[pid]
+                  if unique[pid].get('alt_choice', 'auto') == next(p.get('alt_choice', 'auto') for p in picks if p['id'] == source)}
     synced = {source:cents for pid in delivered for source,cents in source_ids[pid]}
-    message = f'{added} added to {day} · {updated} updated · {len(delivered)-added-updated} already sent.'
-    return message, skipped, synced
+    message = f'{added} added to {day} · {updated} updated · {len(existing)} already sent.'
+    if alt_updated:
+        message += f' {alt_updated} alternate(s) updated.'
+    return message, skipped, synced, alt_synced

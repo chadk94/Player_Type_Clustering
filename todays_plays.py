@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-from jae_card import CONFIDENCE_TIERS, send_card, sheet_request
+from jae_card import CONFIDENCE_TIERS, send_card, sheet_request, valid_alt_choice, preview_alternates
 from play_identity import prop_id
 from sportsbook_lines import BOOKS
 
@@ -63,8 +63,11 @@ def clean_picks(day, picks, limit=MAX_PLAYS):
             p = {k: raw[k] for k in fields}
             p['confidence_cents'] = raw.get('confidence_cents', 5)
             p['confidence_edited'] = raw.get('confidence_edited', 'confidence_cents' in raw)
+            p['alt_choice'] = valid_alt_choice({**p, 'alt_choice': raw.get('alt_choice', 'auto')})
+            p['alt_edited'] = raw.get('alt_edited', False)
             if (p['day'] != day or p['book'] not in BOOKS or p['stat'] not in STATS
                     or type(p['confidence_edited']) is not bool
+                    or type(p['alt_edited']) is not bool
                     or type(p['confidence_cents']) is not int or p['confidence_cents'] not in CONFIDENCE_TIERS
                     or p['side'] not in ('Over','Under') or p['status'] not in ('Review','Confirmed')
                     or type(p['player_id']) is not int or type(p['odds']) is not int or abs(p['odds']) < 100
@@ -233,14 +236,18 @@ def render_shortlist(ui):
         reply = {'nonce': action.get('nonce'), 'day': action.get('day')}
         try:
             day = valid_day(action['day'])
-            connection = action['connection']
+            connection = action.get('connection', '')
             if action.get('type') == 'connect':
                 sheet_request(connection, 'check', day)
                 reply['connected'] = True
                 reply['message'] = 'Google Sheet connected.'
             elif action.get('type') == 'send':
                 picks = clean_picks(day, action['picks'])
-                reply['message'], reply['skipped'], reply['synced'] = send_card(day, picks, connection)
+                reply['message'], reply['skipped'], reply['synced'], reply['alt_synced'] = send_card(day, picks, connection)
+            elif action.get('type') == 'alternates':
+                picks = clean_picks(day, action['picks'])
+                reply['alt_options'], reply['skipped'] = preview_alternates(picks)
+                reply['message'] = 'Alternate prices loaded. Prices are checked again when you send.'
             else:
                 raise ValueError('Unknown Jae card action.')
         except (KeyError, TypeError, ValueError) as exc:
