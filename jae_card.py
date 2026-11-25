@@ -34,7 +34,8 @@ def current_event(event_id, stats, alternate_stats):
     api_key = get_odds_api_key()
 
     def fetch(markets):
-        source_links = {'includeLinks': 'true'} if 'player_points_alternate' in markets else {}
+        source_links = {'includeLinks': 'true'} if any(
+            market in markets for market in ('player_points_alternate', 'player_rebounds_alternate')) else {}
         return read_feed(f'/events/{event_id}/odds', api_key, bookmakers='fanduel',
                          markets=','.join(markets), oddsFormat='american', **source_links)
 
@@ -58,8 +59,8 @@ def _fanduel_ids(outcome):
         return None, None
 
 
-def _points_milestone_prices(markets):
-    # The feed combines two native sections. In Player Points X+, a market is
+def _milestone_prices(markets, stat):
+    # The feed combines two native sections. In Player Points/Rebounds X+, a market is
     # one threshold and its selections are players. A player's ordinary ladder
     # is one market with a different selection for each threshold.
     fixed = [rows for rows in markets.values()
@@ -75,14 +76,14 @@ def _points_milestone_prices(markets):
         multiple_players = len({row[0] for row in rows}) > 1
         for player, side, line, odds, runner in rows:
             if multiple_players or (runner and len(runner_lines[player, runner]) > 1):
-                preferred[player, 'PTS', side][line].add(odds)
+                preferred[player, stat, side][line].add(odds)
     return preferred
 
 
 def alternate_prices(event, now):
     """Collect fresh FanDuel alternate quotes by player, stat, side, and exact line."""
     prices = defaultdict(lambda: defaultdict(set))
-    point_markets = defaultdict(list)
+    milestone_markets = defaultdict(lambda: defaultdict(list))
     for book in event.get('bookmakers', []):
         if book.get('key') != 'fanduel':
             continue
@@ -111,12 +112,13 @@ def alternate_prices(event, now):
                     continue
                 player = sportsbook_player_key(outcome['description'])
                 prices[player, stat, side][line].add(int(odds))
-                if stat == 'PTS':
+                if stat in ('PTS', 'REB'):
                     market_id, runner = _fanduel_ids(outcome)
                     if market_id:
-                        point_markets[market_id].append((player, side, line, int(odds), runner))
-    for key, milestones in _points_milestone_prices(point_markets).items():
-        prices[key].update(milestones)
+                        milestone_markets[stat][market_id].append((player, side, line, int(odds), runner))
+    for stat, markets in milestone_markets.items():
+        for key, milestones in _milestone_prices(markets, stat).items():
+            prices[key].update(milestones)
     return prices
 
 

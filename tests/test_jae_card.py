@@ -41,6 +41,30 @@ class JaeCardTests(TestCase):
         self.assertEqual(fetch.call_args.kwargs['includeLinks'], 'true')
         self.assertIn('player_points_alternate', fetch.call_args.kwargs['markets'].split(','))
 
+    def test_rebound_x_plus_price_keeps_six_plus_instead_of_skipping_to_eight(self):
+        from jae_card import alternate_prices, next_over, shopping_prices, current_event
+        from unittest.mock import patch
+        def offer(line, odds, market, selection):
+            return dict(name='Over',description='Sidy Cissoko',point=line,price=odds,
+                        link=f'https://sportsbook.fanduel.com/addToBetslip?marketId={market}&selectionId={selection}')
+        # One runner across fixed milestone markets identifies Rebounds X+;
+        # the ordinary ladder has a different runner at each threshold.
+        six=offer(5.5,560,'42.6','milestone-runner')
+        outcomes=[offer(3.5,140,'42.4','milestone-runner'),six,
+                  offer(7.5,1700,'42.8','milestone-runner'),
+                  offer(4.5,280,'42.ladder','ladder-5'),offer(5.5,550,'42.ladder','ladder-6')]
+        market=dict(key='player_rebounds_alternate',last_update=self.now.isoformat(),outcomes=outcomes)
+        self.event['bookmakers'][0]['markets'].append(market)
+        pick=dict(self.pick,player='Sidy Cissoko',side='Over',stat='REB',line=3.5)
+        prices=alternate_prices(self.event,self.now)
+        self.assertEqual(next_over(pick,prices),dict(line=5.5,odds=560))
+        self.assertIn(dict(line=5.5,odds=560),shopping_prices(pick,prices)['offers'])
+        outcomes.append(dict(six,price=570))
+        self.assertNotIn(5.5,[o['line'] for o in shopping_prices(pick,alternate_prices(self.event,self.now))['offers']])
+        with patch('FanduelScrape.get_odds_api_key',return_value='test'), patch('jae_card.read_feed') as fetch:
+            current_event('a'*32,{'REB'},{'REB'})
+        self.assertEqual(fetch.call_args.kwargs['includeLinks'],'true')
+
     def setUp(self):
         self.now = datetime.now(timezone.utc)
         self.start = self.now + timedelta(days=1)
