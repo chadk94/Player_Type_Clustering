@@ -70,7 +70,7 @@ def minutes_plan(base, references, game, now):
                 for row in references.attrs.get('unmatched_players', [])
                 if row['Team'] == team and row['Opponent'] == opponent and row['Minutes'] > 0]
             metadata.loc[positions, 'Minutes blend status'] = (
-                'Using your minutes — TabsNBA roster profile missing: ' + ', '.join(gaps)
+                'Pending — using your minutes. TabsNBA roster profile missing: ' + ', '.join(gaps)
                 if gaps else 'Pending — TabsNBA roster coverage is incomplete')
             continue
         missing = set(own[own.gt(0)].index) - set(ref_values)

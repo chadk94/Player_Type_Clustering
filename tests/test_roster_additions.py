@@ -73,6 +73,8 @@ class RosterAdditionTests(unittest.TestCase):
                 self.assertFalse(before['blended'])
                 reserve_name = roster.set_index('PLAYER_ID').loc[reserve,'PLAYER_NAME']
                 self.assertTrue(meta['Minutes blend status'].str.contains(reserve_name,regex=False).all())
+                from edge_rating_table import minutes_source_detail
+                self.assertIn(reserve_name,minutes_source_detail(meta.iloc[0]))
                 # Reparse the existing browser backup after adding the profile.
                 refs,_,_,_ = resolve_browser_result({'ok':False},cache,self.roster,[game],now)
                 after,meta = minutes_plan(base,refs,game,now)
