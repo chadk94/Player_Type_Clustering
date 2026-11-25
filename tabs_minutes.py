@@ -75,7 +75,9 @@ def _reference_signature(refs, as_of=None):
         age=(now-pd.to_datetime(refs[clock],utc=True,errors='coerce')).dt.total_seconds()
         inputs[clock+'_fresh']=age.between(0,SOURCE_MAX_AGE_HOURS*3600)
     rows=inputs.sort_values(['Team','Opponent','PLAYER_ID']).to_json(orient='split',index=False)
-    return rows, tuple(sorted(refs.attrs.get('incomplete_teams',[])))
+    gaps=tuple(sorted((r['Team'],r['Opponent'],r['Player'],r['Minutes'])
+                      for r in refs.attrs.get('unmatched_players',[])))
+    return rows, tuple(sorted(refs.attrs.get('incomplete_teams',[]))), gaps
 
 
 def _refresh_dashboard():
@@ -148,6 +150,7 @@ def resolve_browser_result(value, saved_snapshot, roster, games, as_of=None):
     ordered=[entries[key] for key in sorted(entries)]
     refs=pd.concat([item[1] for item in ordered],ignore_index=True)
     refs.attrs['incomplete_teams']=sorted({team for _,r,_ in ordered for team in r.attrs.get('incomplete_teams',[])})
+    refs.attrs['unmatched_players']=[row for _,r,_ in ordered for row in r.attrs.get('unmatched_players',[])]
     stored={'schema':2,'snapshots':[item[0] for item in ordered]}
     details=dict(export_date=', '.join(sorted({k[0] for k in entries})),
         scope=f"{len(entries)} team rotations", scenario=' / '.join(sorted({r['scenario'] for _,_,r in ordered})),
@@ -286,6 +289,7 @@ def parse_tabs_minutes(content, filename, roster, games, captured_at, scenario, 
     # Unmatched reserves with explicit zero minutes contribute no allocation.
     # Missing players can be resolved only from a complete browser rotation.
     result.attrs['incomplete_teams'] = sorted({row['Team'] for row in unmatched if row['Minutes']>0})
+    result.attrs['unmatched_players'] = [row for row in unmatched if row['Minutes']>0]
     if result.duplicated(['PLAYER_ID','Team','Opponent']).any():raise ValueError('Multiple Tabs names map to the same player.')
     return result,dict(export_date=day.isoformat(),export_rows=len(frame),matched=len(result),
                        other_games=other_games,unmatched=unmatched,scenario=scenario.strip())

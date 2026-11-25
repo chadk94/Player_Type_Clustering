@@ -54,6 +54,20 @@ class TabsTests(unittest.TestCase):
         snapshot['rows'][-1].update(minutes=5,status='Projected')
         refs,_=parse_tabs_browser_snapshot(snapshot,ROSTER,[GAME],NOW)
         self.assertEqual(refs.attrs['incomplete_teams'],['POR'])
+        self.assertEqual(refs.attrs['unmatched_players'][0]['Player'],'Unknown Reserve')
+
+    def test_unmatched_diagnostics_refresh_on_changed_gap_not_source_sorting(self):
+        snapshot=browser()
+        snapshot['rows'] += [dict(Player=name,Team='POR',Opp='MIN',minutes=5,status='Projected')
+                             for name in ['First Reserve','Second Reserve']]
+        refs,_=parse_tabs_browser_snapshot(snapshot,ROSTER,[GAME],NOW)
+        signature=tabs_minutes._reference_signature(refs,NOW)
+        snapshot['rows'].reverse()
+        reordered,_=parse_tabs_browser_snapshot(snapshot,ROSTER,[GAME],NOW)
+        self.assertEqual(signature,tabs_minutes._reference_signature(reordered,NOW))
+        snapshot['rows'][0]['Player']='Third Reserve'
+        changed,_=parse_tabs_browser_snapshot(snapshot,ROSTER,[GAME],NOW)
+        self.assertNotEqual(signature,tabs_minutes._reference_signature(changed,NOW))
 
     def test_philon_suffix_alias_is_scoped_to_his_team(self):
         roster=pd.DataFrame([dict(PLAYER_ID=1642889,PLAYER_NAME='Labaron Philon',TEAM_ABBREVIATION='PHI')])

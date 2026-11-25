@@ -13,7 +13,7 @@ class RosterAdditionTests(unittest.TestCase):
     def setUp(self):
         self.original = pd.read_csv(ROOT/'preseason_archetypes.csv')
         self.roster = add_roster_profiles(self.original, '2026-27')
-        self.ids = {1641778, 1641807, 1643633, 1628396}
+        self.ids = {1641778, 1641807, 1643633, 1628396, 1641761, 1643022}
 
     def test_additions_preserve_existing_profiles_and_manual_precedence(self):
         pd.testing.assert_frame_equal(self.original, self.roster.iloc[:len(self.original)])
@@ -29,9 +29,9 @@ class RosterAdditionTests(unittest.TestCase):
         self.assertEqual(changed.loc[1641807, 'OffArchetype'], 'Stretch Big')
         self.assertEqual(changed.loc[1641807, 'OffAssignmentSource'], 'manual_override')
 
-    def test_all_four_match_tabs_and_current_stat_identities(self):
+    def test_all_additions_match_tabs_and_current_stat_identities(self):
         new = self.roster[self.roster.PLAYER_ID.isin(self.ids)]
-        opponents = {'SAC':'PHX','CLE':'MEM','GSW':'DAL','UTA':'LAL'}
+        opponents = {'SAC':'PHX','CLE':'MEM','GSW':'DAL','UTA':'LAL','BKN':'MIL','NYK':'BOS'}
         now = pd.Timestamp('2026-11-18T20:00:00Z')
         games = [dict(Home=team, Away=opp, GameTimeUTC=now+pd.Timedelta(hours=4))
                  for team,opp in opponents.items()]
@@ -47,6 +47,40 @@ class RosterAdditionTests(unittest.TestCase):
         current = pd.DataFrame([dict(PLAYER_NAME=p.PLAYER_NAME,ESPN_PLAYER_ID=str(i),GP=4,MIN=10)
                                 for i,p in enumerate(new.itertuples())])
         self.assertEqual(set(match_player_stats(new,current)),self.ids)
+
+    def test_new_reserves_unblock_the_full_team_blend_without_dropping_minutes(self):
+        from minutes_blend import minutes_plan
+        from tabs_minutes import resolve_browser_result
+        now = pd.Timestamp('2026-11-25T20:00:00Z')
+        for team, opponent, reserve in [('BKN','MIL',1641761), ('NYK','CLE',1643022)]:
+            with self.subTest(team=team):
+                roster = self.roster[self.roster.TEAM_ABBREVIATION.eq(team)]
+                active = roster.loc[roster.PLAYER_ID.ne(reserve)].head(8)
+                own = dict(zip(active.PLAYER_ID, [28.,32.,30.,30.,30.,30.,30.,30.]))
+                base = roster[['PLAYER_ID','PLAYER_NAME']].rename(columns={'PLAYER_NAME':'Player'}).copy()
+                base['Team'] = team
+                base['Projected minutes'] = base.PLAYER_ID.map(own).fillna(0.)
+                source = own | {active.PLAYER_ID.iloc[0]:24., active.PLAYER_ID.iloc[1]:30., reserve:6.}
+                snapshot = dict(schema=1,source='TabsNBA',source_url='https://app.tabsnba.com/projections',
+                    slate_date='2026-11-25',scenario='Default',source_updated_at=now.isoformat(),
+                    observed_at=now.isoformat(),manual_edits=False,scope='All games',
+                    rows=[dict(Player=p.PLAYER_NAME,Team=team,Opp=opponent,minutes=source.get(p.PLAYER_ID,0.),
+                               status='Projected') for p in roster.itertuples()])
+                game = dict(Home=opponent,Away=team,GameTimeUTC=now+pd.Timedelta(hours=5))
+                refs,_,cache,_ = resolve_browser_result({'ok':True,'snapshot':snapshot},None,
+                    self.original,[game],now)
+                before,meta = minutes_plan(base,refs,game,now)
+                self.assertFalse(before['blended'])
+                reserve_name = roster.set_index('PLAYER_ID').loc[reserve,'PLAYER_NAME']
+                self.assertTrue(meta['Minutes blend status'].str.contains(reserve_name,regex=False).all())
+                # Reparse the existing browser backup after adding the profile.
+                refs,_,_,_ = resolve_browser_result({'ok':False},cache,self.roster,[game],now)
+                after,meta = minutes_plan(base,refs,game,now)
+                self.assertEqual(after['blended'][active.PLAYER_ID.iloc[0]],26.)
+                self.assertEqual(after['blended'][reserve],3.)
+                self.assertEqual(sum(after['blended'].values()),240.)
+                self.assertEqual(after['yours'],base.set_index('PLAYER_ID')['Projected minutes'].to_dict())
+                self.assertTrue(meta['Minutes blend status'].str.startswith('50/50').all())
 
 
 if __name__ == '__main__':

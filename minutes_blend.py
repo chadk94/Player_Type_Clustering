@@ -65,7 +65,13 @@ def minutes_plan(base, references, game, now):
         metadata.loc[positions, 'Tabs minutes basis'] = metadata.loc[positions, 'PLAYER_ID'].map(
             {pid:'Explicit OUT' if status=='Out' else 'Published minutes' for pid,status in statuses.items()}).fillna('Unavailable')
         if references is None or team in references.attrs.get('incomplete_teams', []):
-            metadata.loc[positions, 'Minutes blend status'] = 'Pending — TabsNBA roster coverage is incomplete'
+            gaps = [] if references is None else [
+                f"{row['Player']} ({row['Minutes']:g} min)"
+                for row in references.attrs.get('unmatched_players', [])
+                if row['Team'] == team and row['Opponent'] == opponent and row['Minutes'] > 0]
+            metadata.loc[positions, 'Minutes blend status'] = (
+                'Using your minutes — TabsNBA roster profile missing: ' + ', '.join(gaps)
+                if gaps else 'Pending — TabsNBA roster coverage is incomplete')
             continue
         missing = set(own[own.gt(0)].index) - set(ref_values)
         inferred = set()
