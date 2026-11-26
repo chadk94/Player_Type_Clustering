@@ -7,11 +7,18 @@ import requests
 
 from test_approved_minutes import example, reseal
 from minutes_sync import validate_feed, read_feed
+from background_feed import BackgroundFeed
+from test_background_feed import ImmediateExecutor
 from approved_minutes import apply_bundle_change, for_matchup
 
 
 class MinutesSyncTests(unittest.TestCase):
     connection = 'https://script.google.com/macros/s/example/exec#'+'a'*64
+
+    def setUp(self):
+        patcher = patch('minutes_sync.minutes_feed_worker', return_value=BackgroundFeed(ImmediateExecutor()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @staticmethod
     def response(status=200, snapshot=None):
@@ -165,3 +172,52 @@ st.success('Projection page ready')
 ''').run(timeout=10)
         self.assertFalse(app.exception)
         self.assertEqual(app.success[0].value,'Projection page ready')
+
+    def test_pending_refresh_keeps_controls_and_verified_minutes_available(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
+        from time import perf_counter
+        from types import SimpleNamespace
+        from streamlit.testing.v1 import AppTest
+        raw, roster = example()
+        feed = dict(bundles=[raw])
+        linked = validate_feed(feed, roster, '2026-27')
+        release = Event()
+        def slow_read(_):
+            release.wait(5)
+            return feed
+        code = '''
+import streamlit as st
+from minutes_sync import render_sync
+from test_approved_minutes import example
+_, roster = example()
+render_sync(roster, '2026-27')
+st.slider('Still responsive', 0, 48, key='test_minutes_control')
+'''
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            worker = BackgroundFeed(pool)
+            component = lambda **kw: SimpleNamespace(connection={'ready':True,'connection':self.connection})
+            app = AppTest.from_string(code)
+            app.session_state['nba_minutes_link'] = dict(connection=self.connection, ready=True, bundle=linked)
+            with patch('minutes_sync.connection_component',return_value=component), \
+                 patch('minutes_sync.minutes_feed_worker',return_value=worker), \
+                 patch('minutes_sync.read_feed',side_effect=slow_read) as read:
+                try:
+                    start = perf_counter()
+                    app.run(timeout=2)
+                    self.assertLess(perf_counter()-start, 1)
+                    self.assertFalse(app.exception)
+                    self.assertTrue(app.session_state['nba_minutes_link']['pending'])
+                    app.slider[0].set_value(37).run(timeout=2)
+                    self.assertFalse(app.exception)
+                    self.assertEqual(app.slider[0].value, 37)
+                    self.assertEqual(app.session_state['nba_minutes_link']['bundle'], linked)
+                    read.assert_called_once()
+                finally:
+                    release.set()
+                worker.future.result(timeout=2)
+                app.run(timeout=2)
+                self.assertFalse(app.exception)
+                self.assertFalse(app.session_state['nba_minutes_link']['pending'])
+                self.assertEqual(app.session_state['nba_minutes_link']['bundle'], linked)
+                self.assertEqual(app.slider[0].value, 37)

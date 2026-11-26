@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from functools import lru_cache
 from edge_calculation_cache import GameCalculationCache, source_deadlines
+from background_feed import BackgroundFeed
 from pathlib import Path
 import tempfile
 import hashlib
@@ -106,12 +107,13 @@ def dashboard_assist_samples(season, roster, players, logs):
     return adjusted_assist_samples(season, logs, dict(zip(unique, unique.index)), passing_feed().read)
 
 
-@st.cache_data(ttl=240, show_spinner=False)
+@st.cache_resource(show_spinner=False)
+def injury_report_feed():
+    return BackgroundFeed()
+
+
 def edge_injury_report():
-    try:
-        return latest_report()
-    except (requests.RequestException, ValueError, OSError):
-        return None
+    return injury_report_feed().read(latest_report, refresh_after=240).value
 
 
 @lru_cache(maxsize=1)
@@ -132,7 +134,7 @@ def render_injury_voice(game_ids, report=None, messages=()):
         height='content' if game_ids else 0)
 
 
-@st.fragment(run_every='5m')
+@st.fragment(run_every='15s')
 def render_edge_injuries(ui, game, games, roster, projections, bundle):
     now = pd.Timestamp.now(tz='UTC')
     upcoming = [g for g in games if g['GameTimeUTC'] > now]
@@ -208,7 +210,7 @@ def render_edge_injuries(ui, game, games, roster, projections, bundle):
         if older:
             ui.caption('Latest quarter-hour update unconfirmed. Statuses above may be stale.')
         ui.caption(f'Over {KEY_MINUTES} minutes in the workbook rotation or game projection. Minutes shown are for this game. '
-                   f'[NBA report · {stamp:%b %d, %I:%M %p %Z}]({url}) · Checks every 5 minutes.')
+                   f'[NBA report · {stamp:%b %d, %I:%M %p %Z}]({url}) · Updates automatically while this page is open.')
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -963,6 +965,10 @@ def render_live_dashboard(ui, roster):
         render_archetypes_page(ui, roster)
     with details_panel:
         approved_bundle = render_import(ui, roster, SEASON)
+        linked = st.session_state.get('nba_minutes_link', {})
+        if linked.get('pending') and not linked.get('bundle'):
+            ui.info('Loading your approved minutes. Projections will appear when the first sync is verified.')
+            return
         roster = roster_for_approved_games(source_roster, SEASON, today, approved_bundle).copy()
         roster['PROJECTED_MIN'] = roster.PROJECTED_MIN.map(round_projected_minutes)
         # The connection belongs to the shared parent, so a changed snapshot
@@ -997,7 +1003,7 @@ def render_live_dashboard(ui, roster):
             current_matchup_logs.clear()
             dashboard_assist_samples.clear()
             sportsbook_events.clear()
-            edge_injury_report.clear()
+            injury_report_feed().invalidate()
         with ui.spinner('Loading team records and player averages…'):
             try:
                 state = live_state(SEASON)

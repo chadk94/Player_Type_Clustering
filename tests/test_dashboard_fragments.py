@@ -492,6 +492,10 @@ render_live_dashboard(st, pd.read_csv(ROOT / 'preseason_archetypes.csv'))
             result.loc[result.index[:2], ['Minutes flag','Role flag','Injury flag']] = 'Clear'
             return result
         self.mock('assess_edges', side_effect=reviewed)
+        # This fixture isolates slate aggregation. The live robust filter also
+        # requires Tabs agreement; absent Tabs data must not clear that check.
+        self.mock('add_tabs_projection_review', side_effect=lambda rows, *args:
+                  rows.assign(**{'Tabs projection flag': 'Agrees'}))
         self.app.session_state['edges_review_view'] = 'More robust plays'
         self.app.run()
         self.assert_no_errors()

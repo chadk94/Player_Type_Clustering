@@ -582,7 +582,7 @@ The NBA model's key-player cutoff is strictly above 20 minutes in either the
 saved workbook rotation or the game projection. The list shows game minutes,
 including a projected zero for a regular who is being held out. The panel
 checks [NBA injury reports](https://official.nba.com/nba-injury-report-2026-27-season/)
-every five minutes while open and links the timestamped report it used.
+in the background while open and links the timestamped report it used.
 Missing reports and unverified players are flagged. Injury updates are
 informational. Your approved minutes still control the projections.
 
@@ -1173,6 +1173,19 @@ calibrate the complete rotation. No saved minutes, archetypes or source stats ar
 changed. This release publishes the previously local fallback to the hosted app.
 
 ## Responsive projection tabs (October 26, 2026)
+
+The November 26 speed audit moved automatic NBA-model minutes sync and official
+injury-report downloads off the UI thread. A slow or failed refresh retains the
+last verified result and its original source timestamp. Repeated interactions
+share one pending request per source instead of starting duplicate downloads.
+Minutes requests remain roughly once a minute; the small connection fragment
+checks for completed work every five seconds. Injury requests remain four minutes
+apart and the alert fragment checks for completed work every 15 seconds. Existing
+report-age and robust-play checks still reject expired/unverified evidence.
+On a new connection, projections wait for the first verified minutes result.
+Network workers never read or mutate Streamlit session state. Only a changed
+rotation rebuilds the projection snapshot; routine polling leaves the other tabs
+and manual minute controls alone.
 
 Each tab now runs in its own Streamlit fragment. Changing a player, opponent,
 sportsbook or minutes slider recalculates only Player vs Opponent. It reuses the

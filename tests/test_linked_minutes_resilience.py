@@ -11,6 +11,8 @@ from streamlit.testing.v1 import AppTest
 from approved_minutes import digest, for_matchup, blocked_matchup_message, apply_bundle_change
 from import_minutes import TEAM_IDS
 from minutes_sync import validate_feed
+from background_feed import BackgroundFeed
+from test_background_feed import ImmediateExecutor
 from roster_membership import roster_for_approved_games
 from season_pipeline import ROOT, apply_roster_rules
 from live_projections import build_projections, STAT_NAMES
@@ -143,7 +145,8 @@ from approved_minutes import render_import
 bundle = render_import(st,apply_roster_rules(pd.read_csv(ROOT/'preseason_archetypes.csv')),'2026-27')
 st.success(f"Projection page ready: {len(bundle['games'])} games")
 '''
-        with patch('minutes_sync.connection_component',return_value=fake_component), \
+        with patch('minutes_sync.minutes_feed_worker', return_value=BackgroundFeed(ImmediateExecutor())), \
+             patch('minutes_sync.connection_component',return_value=fake_component), \
              patch('minutes_sync.read_feed',return_value=dict(bundles=[raw])) as read:
             app = AppTest.from_string(code).run(timeout=10)
             self.assertFalse(app.exception)

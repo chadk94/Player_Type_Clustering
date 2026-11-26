@@ -8,6 +8,7 @@ from time import sleep
 
 import requests
 import streamlit as st
+from background_feed import BackgroundFeed
 
 
 FEED_TIMEOUT = (4, 12)
@@ -112,7 +113,13 @@ def _request_sync_retry():
     st.session_state.setdefault('nba_minutes_link', {}).pop('checked', None)
 
 
-@st.fragment(run_every='60s')
+@st.cache_resource(max_entries=8, show_spinner=False)
+def minutes_feed_worker(connection_digest):
+    # Cache keys contain only a hash, never the private connection URL/key.
+    return BackgroundFeed()
+
+
+@st.fragment(run_every='5s')
 def render_sync(roster, season):
     state = st.session_state.setdefault('nba_minutes_link', {})
     reply = connection_component()(data={'connected':bool(state.get('connection'))},
@@ -124,6 +131,7 @@ def render_sync(roster, season):
     first_restore = not state.get('ready')
     changed = state.get('connection') != connection
     previous_id = (state.get('bundle') or {}).get('bundle_id')
+    waiting_for_first_result = state.get('pending') and not state.get('bundle')
     now = datetime.now(timezone.utc)
     if changed:
         state.clear()
@@ -131,16 +139,31 @@ def render_sync(roster, season):
     state['ready'] = True
     if reply.get('error'):
         st.caption(reply['error'])
-    if connection and (changed or now.timestamp()-state.get('checked',0) >= 55):
+    if connection:
+        worker = minutes_feed_worker(sha256(connection.encode()).hexdigest())
+        snapshot = worker.read(lambda: read_feed(connection), refresh_after=55,
+                               force=changed or not state.get('checked'))
+        state['pending'] = snapshot.pending
+        state['checked'] = now.timestamp()
+    else:
+        snapshot = None
+    if snapshot and snapshot.revision and snapshot.revision != state.get('feed_revision'):
         try:
-            data = read_feed(connection)
+            if snapshot.error is not None:
+                message = (str(snapshot.error) if isinstance(snapshot.error, ValueError)
+                           else 'The minutes feed could not be read. Retrying shortly.')
+                raise ValueError(message)
+            data = snapshot.value
             state['bundle'] = validate_feed(data, roster, season)
             state['published_at'] = data.get('published_at')
             state['error'] = None
-            state['success_at'] = now.strftime('%b %d, %I:%M %p UTC')
+            state['success_at'] = snapshot.checked_at.strftime('%b %d, %I:%M %p UTC')
         except (ValueError, KeyError, TypeError) as exc:
             state['error'] = str(exc)
-        state['checked'] = now.timestamp()
+        state['feed_revision'] = snapshot.revision
+    if state.get('pending'):
+        st.caption('Checking NBA model minutes in the background…' +
+                   (' Your last verified rotations remain in use.' if state.get('bundle') else ''))
     if state.get('error'):
         note = (' Using the last verified approvals (last successful sync: '+state.get('success_at','unknown')+').'
                 if state.get('bundle') else ' No verified minutes are available in this session yet.')
@@ -155,9 +178,9 @@ def render_sync(roster, season):
     if connection and state.get('bundle'):
         n = len(state['bundle']['approvals'])
         st.caption(f"NBA model linked · {n} approved team rotations · Last checked {state.get('success_at')}.")
-    elif connection and not state.get('error'):
+    elif connection and not state.get('error') and not state.get('pending'):
         st.info('NBA model linked. Approve both teams in a game to sync its minutes.')
     current_id = (state.get('bundle') or {}).get('bundle_id')
-    if first_restore or changed or previous_id != current_id:
+    if first_restore or changed or previous_id != current_id or (waiting_for_first_result and not state.get('pending')):
         # Only an actual rotation change refreshes projections. Timer checks stay in this panel.
         st.rerun()
