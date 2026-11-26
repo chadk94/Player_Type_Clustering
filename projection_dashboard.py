@@ -58,7 +58,7 @@ from player_navigation import (apply_pending_navigation, selected_game_context,
 from approved_minutes import render_import, for_matchup, projection_gaps, game_minutes_caption, unmatched_minutes_message, blocked_matchup_message
 from import_minutes import TEAM_IDS
 from schedule_feed import load_daily_schedule, ScheduleMemory
-from sportsbook_lines import (BOOKS, MARKETS, projection_markets, FANDUEL_THREES_OVER_ONLY, OddsFeedError, read_feed, next_matchup,
+from sportsbook_lines import (BOOKS, SELECTABLE_BOOKS, MARKETS, projection_markets, FANDUEL_THREES_OVER_ONLY, OddsFeedError, read_feed, next_matchup,
                               game_quotes, player_quotes, compare_with_book, comparison_style, TEAM_NAMES)
 
 
@@ -296,6 +296,14 @@ def current_matchup_effects(logs, roster, role_policy_version):
     for key, result in effects.items():
         result['performances'] = peers.get(key, [])
     return effects
+
+
+def sportsbook_selector(ui, label, *, key):
+    # Old browser sessions and saved-play navigation may retain a retired book.
+    # Reset before creating the widget, including on a fragment-only rerun.
+    if st.session_state.get(key) not in SELECTABLE_BOOKS:
+        st.session_state[key] = 'FanDuel'
+    return ui.selectbox(label, list(SELECTABLE_BOOKS), key=key)
 
 
 def heat_color(value):
@@ -771,7 +779,7 @@ def _render_team_projections(ui, team_rates, game_frames, approved_bundle=None, 
     with date_col:
         date = ui.date_input('Team projection date', value=datetime.now(ZoneInfo('America/Denver')).date(), key='team_projection_date')
     with book_col:
-        book_name = ui.selectbox('Sportsbook for team projections', list(BOOKS), key='team_projection_book')
+        book_name = sportsbook_selector(ui, 'Sportsbook for team projections', key='team_projection_book')
     schedule = schedule_for_view(ui, date, 'team_schedule_reload')
     if schedule is None:
         return
@@ -1411,7 +1419,7 @@ def render_live_dashboard(ui, roster):
                 if notice:
                     ui.warning(notice)
             adjusted_on = ui.toggle('Apply opponent matchup adjustments',value=True,key='opponent_adjustments')
-            book_name = ui.selectbox('Sportsbook', list(BOOKS), key='projection_sportsbook')
+            book_name = sportsbook_selector(ui, 'Sportsbook', key='projection_sportsbook')
             book_key = BOOKS[book_name]
             scheduled_start = upcoming['GameTimeUTC'] if upcoming and upcoming['Opponent'] == opponent else None
             team_matchups = player_team_matchups(team, opponent, scheduled_start)
@@ -1432,7 +1440,7 @@ def render_live_dashboard(ui, roster):
         if schedule.empty:
             ui.info(f'No upcoming regular-season games were found for {date:%b %d, %Y}. Choose another date to preview its matchups.')
         else:
-            matchup_book = ui.selectbox('Sportsbook for matchup projections',list(BOOKS),key='matchup_book')
+            matchup_book = sportsbook_selector(ui, 'Sportsbook for matchup projections', key='matchup_book')
             frames, uncovered = [], []
             abbreviations = {team_id: name for name, team_id in TEAM_IDS.items()}
             with ui.expander('Team projection adjustments'):
@@ -1661,7 +1669,7 @@ def render_live_dashboard(ui, roster):
             with date_col:
                 edge_date = ui.date_input('Game date',value=min(future_dates) if future_dates else datetime.now(ZoneInfo('America/Denver')).date(),key='edges_date')
             with book_col:
-                edge_book_name = ui.selectbox('Sportsbook for edges',list(BOOKS),key='edges_book')
+                edge_book_name = sportsbook_selector(ui, 'Sportsbook for edges', key='edges_book')
             with direction_col:
                 edge_direction = ui.selectbox('Edge direction',['Both','Over','Under'],key='edges_direction')
             player_search = ui.text_input(
