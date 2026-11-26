@@ -12,10 +12,11 @@ from live_projections import name_key
 from saved_sportsbook_lines import SOURCE, SAVED, quote_is_saved
 
 BASE = 'https://api.the-odds-api.com/v4/sports/basketball_nba'
-BOOKS = {'FanDuel':'fanduel','DraftKings':'draftkings','BetMGM':'betmgm'}
+BOOKS = {'FanDuel':'fanduel','Propbuilder (BetOnline)':'betonlineag',
+         'DraftKings':'draftkings','BetMGM':'betmgm'}
 # Keep retired books valid for saved plays and sent-card deduplication.
 # Only connected, enabled books belong in the projection-page menus.
-SELECTABLE_BOOKS = {'FanDuel':'fanduel'}
+SELECTABLE_BOOKS = {'FanDuel':'fanduel','Propbuilder (BetOnline)':'betonlineag'}
 MARKETS = {'player_points':'PTS','player_rebounds':'REB','player_assists':'AST',
            'player_threes':'3PM','player_steals':'STL','player_blocks':'BLK',
            'player_turnovers':'TOV','player_points_rebounds_assists':'PRA'}
