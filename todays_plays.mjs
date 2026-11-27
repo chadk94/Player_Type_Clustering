@@ -171,7 +171,7 @@ export default function({data, parentElement, setStateValue}) {
             const altTools=make('div');altTools.className='tools';
             const loadAlts=button('Refresh alt prices',()=>requestJae('alternates','',rows));
             loadAlts.disabled=!!ui.jaePending;
-            altTools.append(loadAlts,make('span','Choose an alt below, then Send to update Jae’s card. Main prices stay unchanged.'));
+            altTools.append(loadAlts,make('span','Check one or more alts below, then Send to update Jae’s card. Main prices stay unchanged.'));
             root.append(altTools);
             const scroll=make('div'); scroll.className='play-table';
             const table=make('table'); table.setAttribute('aria-label','Saved player props');
@@ -213,24 +213,27 @@ export default function({data, parentElement, setStateValue}) {
                     tr.insertCell().textContent=text;
                 }
                 tr.title=p.quoted ? 'Quote updated '+p.quoted : 'Saved sportsbook quote';
-                const alternate=make('select');alternate.className='alt-select';
-                alternate.setAttribute('aria-label','Alternate for '+p.player+' '+prop);
-                alternate.add(new Option('Auto — closest standard alt','auto'));
-                const options=ui.altOptions?.[p.id]?.options || [];
-                for(const o of options) alternate.add(new Option(o.label,o.value));
+                const alternate=make('div');alternate.className='alt-options';
+                alternate.setAttribute('role','group');
+                alternate.setAttribute('aria-label','Alternates for '+p.player+' '+prop);
+                const options=[{label:'Auto — closest standard alt',value:'auto'},...(ui.altOptions?.[p.id]?.options || [])];
                 if(p.side==='Over' && !options.some(o=>o.value==='dd'))
-                    alternate.add(new Option('Double-double — check price on Send','dd'));
-                alternate.add(new Option('No alt','none'));
-                const choice=p.alt_choice || 'auto';
-                if(![...alternate.options].some(o=>o.value===choice))
-                    alternate.add(new Option(`${p.side} ${choice.slice(5)} ${p.stat} — refresh price`,choice));
-                alternate.value=choice;
-                alternate.disabled=!!ui.jaePending;
+                    options.push({label:'Double-double — check price on Send',value:'dd'});
+                options.push({label:'No alt',value:'none'});
+                const rawChoice=p.alt_choice || 'auto', choices=Array.isArray(rawChoice)?rawChoice:[rawChoice];
+                for(const choice of choices) if(!options.some(o=>o.value===choice))
+                    options.push({label:`${p.side} ${choice.slice(5)} ${p.stat} — refresh price`,value:choice});
+                for(const o of options) {
+                    const label=make('label'), box=make('input');box.type='checkbox';
+                    box.checked=choices.includes(o.value);box.disabled=!!ui.jaePending;
+                    box.setAttribute('aria-label',`${p.player} ${prop}: ${o.label}`);
+                    box.onchange=()=>{
+                        try {saveAlternate(localStorage,p,toggleAlternate(savedPlay(localStorage,p.id)?.alt_choice || 'auto',o.value,box.checked));notifyPicks(p.day);}
+                        catch(error) {ui.jaeFeedback={day:ui.day,error:error.message};draw();}
+                    };
+                    label.append(box,make('span',o.label));alternate.append(label);
+                }
                 alternate.title=ui.altOptions?.[p.id]?.quoted ? 'FanDuel quotes checked '+ui.altOptions[p.id].quoted : 'Use Refresh alt prices to see available lines.';
-                alternate.onchange=()=>{
-                    try {saveAlternate(localStorage,p,alternate.value);notifyPicks(p.day);}
-                    catch {storageFailure();}
-                };
                 const altCell=tr.insertCell();altCell.append(alternate);
                 if(p.alt_edited) {const pending=make('small','Unsent change');pending.className='alt-pending';altCell.append(pending);}
                 const actions=tr.insertCell();

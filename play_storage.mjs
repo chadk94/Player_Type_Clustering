@@ -35,15 +35,32 @@ export function acknowledgeConfidence(storage, synced) {
             storage.setItem(PICK_PREFIX+id,JSON.stringify({...p,confidence_edited:false}));
     }
 }
+export function normalizeAltChoice(choice) {
+    if(Array.isArray(choice)) {
+        if(!choice.length || choice.length>20 || choice.some(c=>typeof c!=='string' || ['auto','none'].includes(c)))
+            throw new Error('Choose up to 20 alternates.');
+        const choices=[...new Set(choice.map(normalizeAltChoice))].sort();
+        return choices.length===1 ? choices[0] : choices;
+    }
+    if (typeof choice!=='string' || (!['auto','none','dd'].includes(choice) && !/^line:\d+(?:\.5)?$/.test(choice)))
+        throw new Error('Choose a valid alternate.');
+    return choice;
+}
+export function toggleAlternate(choice, value, checked) {
+    if(checked && ['auto','none'].includes(value)) return value;
+    const choices=(Array.isArray(choice)?choice:[choice]).filter(c=>!['auto','none',value].includes(c));
+    if(checked) choices.push(value);
+    return choices.length ? normalizeAltChoice(choices) : 'none';
+}
 export function saveAlternate(storage, pick, choice) {
-    if (!['auto','none','dd'].includes(choice) && !/^line:\d+(?:\.5)?$/.test(choice)) throw new Error('Choose a valid alternate.');
+    choice=normalizeAltChoice(choice);
     const saved=savedPlay(storage,pick.id) || pick;
     storage.setItem(PICK_PREFIX+pick.id,JSON.stringify({...saved,alt_choice:choice,alt_edited:true}));
 }
 export function acknowledgeAlternates(storage, synced) {
     for (const [id,choice] of Object.entries(synced)) {
         const p=savedPlay(storage,id);
-        if (p && (p.alt_choice || 'auto')===choice)
+        if (p && JSON.stringify(normalizeAltChoice(p.alt_choice || 'auto'))===JSON.stringify(normalizeAltChoice(choice)))
             storage.setItem(PICK_PREFIX+id,JSON.stringify({...p,alt_edited:false}));
     }
 }

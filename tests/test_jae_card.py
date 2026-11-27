@@ -79,6 +79,49 @@ class JaeCardTests(TestCase):
                           commence_time=self.start.isoformat(),bookmakers=[dict(key='fanduel',markets=[self.market])])
         self.fetch = Mock(return_value=self.event)
 
+    def test_assists_x_plus_resolves_the_missing_four_plus_rung(self):
+        from unittest.mock import patch
+        from jae_card import alternate_prices, shopping_prices, current_event
+        def offer(line,price,market,selection):
+            return dict(name='Over',description='Caleb Martin',point=line,price=price,
+                link=f'https://sportsbook.fanduel.com/addToBetslip?marketId={market}&selectionId={selection}')
+        outcomes=[offer(3.5,210,'42.ladder','ladder-4'),offer(4.5,470,'42.ladder','ladder-5'),
+                  offer(3.5,215,'42.x4','caleb'),offer(5.5,1000,'42.x6','caleb')]
+        self.event['bookmakers'][0]['markets']=[dict(key='player_assists_alternate',last_update=self.now.isoformat(),outcomes=outcomes)]
+        p=dict(self.pick,player='Caleb Martin',stat='AST',side='Over',line=2.5)
+        offers=shopping_prices(p,alternate_prices(self.event,self.now))['offers']
+        self.assertEqual(offers,[{'line':3.5,'odds':215},{'line':4.5,'odds':470},{'line':5.5,'odds':1000}])
+        outcomes.append(offer(3.5,220,'42.x4','caleb'))
+        self.assertNotIn(3.5,[o['line'] for o in shopping_prices(p,alternate_prices(self.event,self.now))['offers']])
+        with patch('FanduelScrape.get_odds_api_key',return_value='test'), patch('jae_card.read_feed') as feed:
+            current_event('a'*32,{'AST'},{'AST'})
+        self.assertEqual(feed.call_args.kwargs['includeLinks'],'true')
+
+    def test_multiple_alternates_validate_send_and_resend_without_new_main_rows(self):
+        from jae_card import valid_alt_choice
+        p=dict(self.pick,side='Over',line=14.5,alt_choice=['line:24.5','dd','line:19.5'],alt_edited=True)
+        self.event['bookmakers'][0]['markets']=[
+            dict(key='player_points_alternate',last_update=self.now.isoformat(),outcomes=[
+                dict(name='Over',description=p['player'],point=l,price=o) for l,o in [(19.5,200),(24.5,500)]]),
+            dict(key='player_double_double',last_update=self.now.isoformat(),outcomes=[dict(name='Yes',description=p['player'],price=700)])]
+        expected=['dd','line:19.5','line:24.5']
+        self.assertEqual(valid_alt_choice(p),expected)
+        req=Mock(side_effect=[dict(existing=[p['id']],alternateEdits=True,multipleAlternates=True,altChoices={}),
+            dict(added=0,altUpdated=1,altAccepted=[p['id']])])
+        _,skipped,_,synced=send_card(self.day,[p],'test',req,self.fetch)
+        self.assertFalse(skipped);self.assertEqual(synced,{p['id']:expected})
+        self.assertEqual(req.call_args.kwargs['rows'],[])
+        self.assertEqual(req.call_args.kwargs['alt_edits'][0]['alt_choice'],expected)
+        req=Mock(return_value=dict(existing=[p['id']],alternateEdits=True,multipleAlternates=True,altChoices={p['id']:expected}))
+        self.fetch.reset_mock()
+        send_card(self.day,[p],'test',req,self.fetch)
+        self.fetch.assert_not_called();req.assert_called_once()
+        for bad in [[],['auto','dd'],['none','dd'],[None],['line:10.5','dd']]:
+            with self.assertRaises(ValueError): valid_alt_choice(dict(p,alt_choice=bad))
+        req=Mock(return_value=dict(existing=[p['id']],alternateEdits=True))
+        with self.assertRaisesRegex(ValueError,'multiple-alternate update'):
+            send_card(self.day,[p],'test',req,self.fetch)
+
     def test_five_cent_ticks_and_current_price(self):
         for quote, worst in [(-110,-115),(130,125),(105,100),(102,-103),(100,-105),(-100,-105)]:
             self.assertEqual(worst_price(quote),worst)

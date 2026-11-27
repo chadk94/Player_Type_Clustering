@@ -34,8 +34,7 @@ def current_event(event_id, stats, alternate_stats):
     api_key = get_odds_api_key()
 
     def fetch(markets):
-        source_links = {'includeLinks': 'true'} if any(
-            market in markets for market in ('player_points_alternate', 'player_rebounds_alternate')) else {}
+        source_links = {'includeLinks': 'true'} if any(market.endswith('_alternate') for market in markets) else {}
         return read_feed(f'/events/{event_id}/odds', api_key, bookmakers='fanduel',
                          markets=','.join(markets), oddsFormat='american', **source_links)
 
@@ -60,7 +59,7 @@ def _fanduel_ids(outcome):
 
 
 def _milestone_prices(markets, stat):
-    # The feed combines two native sections. In Player Points/Rebounds X+, a market is
+    # The feed combines two native sections. In Player Stat X+, a market is
     # one threshold and its selections are players. A player's ordinary ladder
     # is one market with a different selection for each threshold.
     fixed = [rows for rows in markets.values()
@@ -112,7 +111,7 @@ def alternate_prices(event, now):
                     continue
                 player = sportsbook_player_key(outcome['description'])
                 prices[player, stat, side][line].add(int(odds))
-                if stat in ('PTS', 'REB'):
+                if stat != 'DD':
                     market_id, runner = _fanduel_ids(outcome)
                     if market_id:
                         milestone_markets[stat][market_id].append((player, side, line, int(odds), runner))
@@ -148,6 +147,11 @@ def shopping_prices(pick, ladders):
 
 def valid_alt_choice(pick):
     choice = pick.get('alt_choice', 'auto')
+    if isinstance(choice, list):
+        if not 1 <= len(choice) <= 20 or any(not isinstance(c, str) or c in ('auto', 'none') for c in choice):
+            raise ValueError('Choose up to 20 explicit alternates, or Auto / No alt on its own.')
+        choices = sorted({valid_alt_choice({**pick, 'alt_choice': c}) for c in choice})
+        return choices[0] if len(choices) == 1 else choices
     if choice in ('auto', 'none'):
         return choice
     if choice == 'dd' and pick['side'] == 'Over':
@@ -157,6 +161,13 @@ def valid_alt_choice(pick):
         if (line > pick['line'] if pick['side'] == 'Over' else line < pick['line']):
             return choice
     raise ValueError('Choose a valid alternate for this prop.')
+
+
+def missing_alt_quote(choice, shopping):
+    choices = choice if isinstance(choice, list) else [choice]
+    return any((c == 'dd' and shopping['double'] is None) or
+               (c.startswith('line:') and not any(o['line'] == float(c[5:]) for o in shopping['offers']))
+               for c in choices)
 
 
 def alternate_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.utc), preview=False):
@@ -185,8 +196,7 @@ def alternate_quotes(picks, fetch=current_event, clock=lambda: datetime.now(time
                 continue
             shopping = shopping_prices(p, ladders)
             choice = valid_alt_choice(p)
-            if not preview and ((choice == 'dd' and shopping['double'] is None) or
-                    (choice.startswith('line:') and not any(o['line'] == float(choice[5:]) for o in shopping['offers']))):
+            if not preview and missing_alt_quote(choice, shopping):
                 skipped.append(f"{p['player']}: selected alternate has no fresh FanDuel quote; existing card unchanged.")
                 continue
             rows.append({**p, 'start': start.isoformat(), 'quoted': now.isoformat(),
@@ -251,8 +261,7 @@ def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.
             worst = worst_price(price, p.get('confidence_cents', 5))
             choice = valid_alt_choice(p)
             shopping = shopping_prices(p, ladders)
-            if ((choice == 'dd' and shopping['double'] is None) or
-                    (choice.startswith('line:') and not any(o['line'] == float(choice[5:]) for o in shopping['offers']))):
+            if missing_alt_quote(choice, shopping):
                 skipped.append(f"{p['player']}: selected alternate has no fresh FanDuel quote; play not sent.")
                 continue
             rows.append(dict(id=p['id'], day=p['day'], start=start.isoformat(), game=game,
@@ -312,6 +321,8 @@ def send_card(day, picks, connection, request=sheet_request, fetch=current_event
     aliases = {p['id']: {p['id']} | {prop_id(dict(p, book=b)) for b in BOOKS} for p in confirmed}
     all_ids = sorted(set().union(*aliases.values()))
     check = request(connection, 'check', day, ids=all_ids)
+    if any(isinstance(valid_alt_choice(p), list) for p in confirmed) and not check.get('multipleAlternates'):
+        raise ValueError('The sheet needs the multiple-alternate update before sending these choices.')
     sent = set(check['existing'])
     existing = {pid for pid, keys in aliases.items() if keys & sent}
     rows, skipped = card_quotes([p for p in confirmed if p['id'] not in existing], fetch)
@@ -365,7 +376,7 @@ def send_card(day, picks, connection, request=sheet_request, fetch=current_event
         if p['id'] in new_ids:
             alt_synced[p['id']] = valid_alt_choice(p)
     alt_synced = {source: alt_synced[pid] for pid in alt_synced for source, _ in source_ids[pid]
-                  if unique[pid].get('alt_choice', 'auto') == next(p.get('alt_choice', 'auto') for p in picks if p['id'] == source)}
+                  if valid_alt_choice(unique[pid]) == next(valid_alt_choice(p) for p in picks if p['id'] == source)}
     synced = {source:cents for pid in delivered for source,cents in source_ids[pid]}
     message = f'{added} added to {day} · {updated} updated · {len(existing)} already sent.'
     if alt_updated:

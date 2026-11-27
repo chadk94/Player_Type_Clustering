@@ -1,12 +1,29 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {setPick,savedPlay,setPickStatus,allPicks,saveConfidence,acknowledgeConfidence,saveAlternate,acknowledgeAlternates} from '../play_storage.mjs';
+import {setPick,savedPlay,setPickStatus,allPicks,saveConfidence,acknowledgeConfidence,saveAlternate,acknowledgeAlternates,toggleAlternate} from '../play_storage.mjs';
 
 class Storage {
     getItem(k) { return this[k] ?? null; }
     setItem(k,v) { this[k]=String(v); }
     removeItem(k) { delete this[k]; }
 }
+test('multiple checkboxes keep independent selections and exclusive Auto/No alt',()=>{
+    const s=new Storage(),p={id:'p',odds:-110,status:'Confirmed'};
+    let choice=toggleAlternate('auto','line:3.5',true);
+    assert.equal(choice,'line:3.5');
+    choice=toggleAlternate(choice,'line:4.5',true);
+    assert.deepEqual(choice,['line:3.5','line:4.5']);
+    saveAlternate(s,p,choice);
+    acknowledgeAlternates(s,{p:'line:3.5'});
+    assert.equal(savedPlay(s,'p').alt_edited,true);
+    acknowledgeAlternates(s,{p:['line:4.5','line:3.5']});
+    assert.equal(savedPlay(s,'p').alt_edited,false);
+    assert.equal(toggleAlternate(choice,'line:3.5',false),'line:4.5');
+    assert.equal(toggleAlternate('line:4.5','line:4.5',false),'none');
+    assert.equal(toggleAlternate(choice,'auto',true),'auto');
+    assert.equal(toggleAlternate(choice,'none',true),'none');
+    assert.equal(savedPlay(s,'p').odds,-110);
+});
 test('alternate choices persist and an older send cannot clear a newer edit',()=>{
     const s=new Storage(),p={id:'p',odds:-110,status:'Confirmed',confidence_cents:10};
     setPick(s,p,true);saveAlternate(s,p,'dd');

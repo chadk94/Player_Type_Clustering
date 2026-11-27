@@ -14,5 +14,7 @@ td,th {padding:.4rem .55rem;border:1px solid var(--st-border-color,#8886);white-
 th {background:var(--st-secondary-background-color,#8882)}
 td button+button {margin-inline-start:.4rem}
 a {color:var(--st-link-color,LinkText)}
-.alt-select {min-width:15rem;max-width:25rem}
+.alt-options {min-width:17rem;max-width:26rem;max-height:9rem;overflow:auto;display:grid;gap:.3rem}
+.alt-options label {display:flex;align-items:center;gap:.45rem;font-weight:400;cursor:pointer}
+.alt-options input {width:1.1rem;height:1.1rem;accent-color:#176944;flex-shrink:0}
 .alt-pending {display:block;margin-top:.2rem;color:var(--st-text-color);opacity:.8}
