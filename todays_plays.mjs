@@ -218,7 +218,7 @@ export default function({data, parentElement, setStateValue}) {
                 alternate.add(new Option('Auto — closest standard alt','auto'));
                 const options=ui.altOptions?.[p.id]?.options || [];
                 for(const o of options) alternate.add(new Option(o.label,o.value));
-                if(p.side==='Over' && ['PTS','REB'].includes(p.stat) && !options.some(o=>o.value==='dd'))
+                if(p.side==='Over' && !options.some(o=>o.value==='dd'))
                     alternate.add(new Option('Double-double — check price on Send','dd'));
                 alternate.add(new Option('No alt','none'));
                 const choice=p.alt_choice || 'auto';

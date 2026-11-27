@@ -29,7 +29,7 @@ def current_event(event_id, stats, alternate_stats):
     from FanduelScrape import get_odds_api_key
     base = [key for key, stat in MARKETS.items() if stat in stats]
     alts = [key + '_alternate' for key, stat in MARKETS.items() if stat in alternate_stats]
-    if {'PTS', 'REB'} & set(alternate_stats):
+    if alternate_stats:
         alts.append('player_double_double')
     api_key = get_odds_api_key()
 
@@ -142,7 +142,7 @@ def shopping_prices(pick, ladders):
     ladder = ladders.get((name, stat, side), {})
     offers = [{'line':line, 'odds':next(iter(prices))} for line, prices in sorted(ladder.items())
               if len(prices) == 1 and (line > pick['line'] if side == 'Over' else line < pick['line'])]
-    double = ladders.get((name, 'DD', 'Yes'), {}).get(0, set()) if stat in ('PTS', 'REB') and side == 'Over' else set()
+    double = ladders.get((name, 'DD', 'Yes'), {}).get(0, set()) if side == 'Over' else set()
     return {'offers': offers, 'double': next(iter(double)) if len(double) == 1 else None}
 
 
@@ -150,7 +150,7 @@ def valid_alt_choice(pick):
     choice = pick.get('alt_choice', 'auto')
     if choice in ('auto', 'none'):
         return choice
-    if choice == 'dd' and pick['side'] == 'Over' and pick['stat'] in ('PTS', 'REB'):
+    if choice == 'dd' and pick['side'] == 'Over':
         return choice
     if isinstance(choice, str) and re.fullmatch(r'line:\d+(?:\.5)?', choice):
         line = float(choice[5:])

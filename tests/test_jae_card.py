@@ -237,6 +237,38 @@ class JaeCardTests(TestCase):
         rows,skipped=card_quotes([p],self.fetch,lambda:self.now)
         self.assertFalse(rows);self.assertIn('play not sent',skipped[0])
 
+    def test_double_double_for_other_over_props_previews_and_updates_only_the_alt(self):
+        from unittest.mock import patch
+        from jae_card import current_event, preview_alternates, valid_alt_choice
+        for stat in ('PRA', 'BLK', 'AST', '3PM', 'STL', 'TOV'):
+            with self.subTest(stat=stat):
+                p = dict(self.pick, stat=stat, side='Over', alt_choice='dd', alt_edited=True)
+                with patch('FanduelScrape.get_odds_api_key', return_value='test'), patch('jae_card.read_feed') as feed:
+                    current_event(p['event'], {stat}, {stat})
+                self.assertIn('player_double_double', feed.call_args.kwargs['markets'].split(','))
+                self.event['bookmakers'][0]['markets'] = [dict(
+                    key='player_double_double', last_update=self.now.isoformat(), outcomes=[
+                        dict(name='Yes', description=p['player'], price=275)])]
+                options, skipped = preview_alternates([p], self.fetch)
+                self.assertFalse(skipped)
+                self.assertEqual(options[p['id']]['options'], [{'value':'dd', 'label':'Double-double · FD +275'}])
+                req = Mock(side_effect=[dict(existing=[p['id']], alternateEdits=True, altChoices={}),
+                    dict(added=0, altUpdated=1, altAccepted=[p['id']])])
+                _, skipped, _, synced = send_card(self.day, [p], 'test', req, self.fetch)
+                self.assertFalse(skipped)
+                self.assertEqual(synced, {p['id']:'dd'})
+                self.assertEqual(req.call_args.kwargs['rows'], [])
+                edit, = req.call_args.kwargs['alt_edits']
+                self.assertEqual((edit['stat'], edit['shopping']['double']), (stat, 275))
+                with self.assertRaises(ValueError):
+                    valid_alt_choice(dict(p, side='Under'))
+                self.event['bookmakers'][0]['markets'][0]['last_update'] = (self.now - timedelta(minutes=16)).isoformat()
+                req = Mock(return_value=dict(existing=[p['id']], alternateEdits=True, altChoices={}))
+                _, skipped, _, synced = send_card(self.day, [p], 'test', req, self.fetch)
+                self.assertIn('selected alternate has no fresh', skipped[0])
+                self.assertFalse(synced)
+                req.assert_called_once()
+
     def test_unders_only_use_fresh_same_side_fd_alternates(self):
         from jae_card import alternate_prices, shopping_prices
         p = dict(self.pick, line=10.5)
