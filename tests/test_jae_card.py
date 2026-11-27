@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import TestCase
 from unittest.mock import Mock
 
-from jae_card import card_quotes, send_card, worst_price
+from jae_card import QuoteReviewRequired, card_quotes, send_card, worst_price
 
 
 class JaeCardTests(TestCase):
@@ -71,7 +71,7 @@ class JaeCardTests(TestCase):
         from jae_card import DENVER
         self.day = self.start.astimezone(DENVER).date().isoformat()
         self.pick = dict(id='a'*64, event='a'*32, day=self.day, book='FanDuel', stat='PTS', side='Under',
-                         game='OKC @ SAC', player_id=1, player='Sample Player', line=14.5, status='Confirmed',odds=-110)
+                         game='OKC @ SAC', player_id=1, player='Sample Player', line=14.5, status='Confirmed',odds=102)
         self.market = dict(key='player_points',last_update=self.now.isoformat(),
                            outcomes=[dict(name=s,description=self.pick['player'],point=14.5,price=o)
                                      for s,o in [('Under',102),('Over',-115)]])
@@ -166,6 +166,55 @@ class JaeCardTests(TestCase):
         self.assertEqual(calls,['check','append','check'])
         self.fetch.assert_called_once()
         self.assertEqual(list(written),[self.pick['id']])
+
+    def test_changed_prices_pause_the_entire_send_until_reviewed(self):
+        # Both worse and better prices need review; unchanged plays and existing
+        # confidence edits must not leak through while the batch is paused.
+        for saved, current in [(-128,-154),(-136,-170),(-150,120)]:
+            with self.subTest(saved=saved,current=current):
+                self.market['outcomes'][0]['price']=current
+                p=dict(self.pick,odds=saved)
+                stable=dict(p,id='b'*64,player='Other Player',odds=102)
+                existing=dict(p,id='c'*64,confidence_cents=10,confidence_edited=True)
+                self.market['outcomes']=[o for o in self.market['outcomes'] if o['description']==p['player']]
+                self.market['outcomes'] += [dict(o,description=stable['player'],price=102 if o['name']=='Under' else -115)
+                                           for o in self.market['outcomes'][:2]]
+                req=Mock(return_value=dict(existing=[existing['id']],confidenceEdits=True))
+                with self.assertRaises(QuoteReviewRequired) as caught:
+                    send_card(self.day,[p,stable,existing],'test',req,self.fetch)
+                req.assert_called_once()
+                change,=caught.exception.changes
+                self.assertEqual((change['kind'],change['saved_odds'],change['odds']),('price',saved,current))
+                self.assertEqual(change['worst'],worst_price(current))
+                accepted=dict(p,send_quote={'odds':current,'quoted':self.now.isoformat()})
+                req=Mock(side_effect=[dict(existing=[]),dict(added=1)])
+                send_card(self.day,[accepted],'test',req,self.fetch)
+                self.assertEqual(req.call_args.kwargs['rows'][0]['odds'],current)
+                self.assertEqual(accepted['odds'],saved)
+                # A later movement must be reviewed again, even after acceptance.
+                self.market['outcomes'][0]['price']=current-1
+                req=Mock(return_value=dict(existing=[]))
+                with self.assertRaises(QuoteReviewRequired):
+                    send_card(self.day,[accepted],'test',req,self.fetch)
+                req.assert_called_once()
+
+    def test_moved_line_is_reported_and_never_sent_as_the_saved_bet(self):
+        for o in self.market['outcomes']: o['point']=15.5
+        req=Mock(return_value=dict(existing=[]))
+        with self.assertRaises(QuoteReviewRequired) as caught:
+            send_card(self.day,[self.pick],'test',req,self.fetch)
+        change,=caught.exception.changes
+        self.assertEqual((change['kind'],change['line'],change['current_line']),('line',14.5,15.5))
+        req.assert_called_once()
+
+    def test_cross_book_review_targets_the_original_browser_pick(self):
+        from play_identity import prop_id
+        p=dict(self.pick,book='Propbuilder',odds=-130)
+        p['id']=prop_id(p)
+        req=Mock(return_value=dict(existing=[]))
+        with self.assertRaises(QuoteReviewRequired) as caught:
+            send_card(self.day,[p],'test',req,self.fetch)
+        self.assertEqual(caught.exception.changes[0]['id'],p['id'])
 
     def test_confidence_sets_play_to_from_the_fresh_side_price(self):
         for cents, limit in [(5,-115),(10,-120),(15,-125)]:

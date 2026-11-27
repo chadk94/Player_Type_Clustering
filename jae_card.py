@@ -14,6 +14,13 @@ DENVER = ZoneInfo('America/Denver')
 CONFIDENCE_TIERS = {5: 'Low', 10: 'Medium', 15: 'High'}
 
 
+class QuoteReviewRequired(ValueError):
+    def __init__(self, changes, skipped):
+        super().__init__('FanDuel prices changed. Review below before sending. Nothing was sent or updated.')
+        self.changes = changes
+        self.skipped = skipped
+
+
 def worst_price(odds, cents=5):
     """Move the selected number of price ticks against the bettor, counting even money once."""
     if type(odds) is not int or abs(odds) < 100:
@@ -222,7 +229,7 @@ def preview_alternates(picks, fetch=current_event):
     return result, skipped
 
 
-def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.utc)):
+def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.utc), *, review_changes=None):
     """Requote every confirmed play at FanDuel at its exact saved line."""
     groups = defaultdict(list)
     for p in picks:
@@ -250,8 +257,8 @@ def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.
                 skipped.append(f'{label} — game changed.')
                 continue
             quote = quotes[name_key(p['player'])].set_index('Stat').loc[p['stat']]
-            if quote['Market status'] != 'Current' or quote['Book line'] != p['line']:
-                skipped.append(f'{label} — line moved or no fresh price. Review it on Edges.')
+            if quote['Market status'] != 'Current':
+                skipped.append(f"{label} — no fresh price ({quote['Market status']}). Not sent.")
                 continue
             raw_odds = quote[p['side'] + ' odds']
             if not float(raw_odds).is_integer():
@@ -259,6 +266,22 @@ def card_quotes(picks, fetch=current_event, clock=lambda: datetime.now(timezone.
                 continue
             price = int(raw_odds)
             worst = worst_price(price, p.get('confidence_cents', 5))
+            previous = p.get('send_quote', {}).get('odds', p['odds'])
+            moved_line = quote['Book line'] != p['line']
+            # A send can only use the saved price or a price explicitly reviewed
+            # in this browser. Recheck on every attempt, including after approval.
+            if review_changes is not None and (moved_line or price != previous):
+                review_changes.append(dict(
+                    id=p.get('_source_id', p['id']), kind='line' if moved_line else 'price',
+                    player=p['player'], side=p['side'], stat=p['stat'], line=p['line'],
+                    current_line=float(quote['Book line']), saved_odds=p['odds'],
+                    previous_odds=previous, odds=price, worst=worst,
+                    saved_worst=worst_price(p['odds'], p.get('confidence_cents', 5)),
+                    quoted=quote['Updated UTC']))
+                continue
+            if moved_line:
+                skipped.append(f"{label} — line moved to {quote['Book line']:g}. Review it on Edges.")
+                continue
             choice = valid_alt_choice(p)
             shopping = shopping_prices(p, ladders)
             if missing_alt_quote(choice, shopping):
@@ -307,6 +330,7 @@ def send_card(day, picks, connection, request=sheet_request, fetch=current_event
     for p in picks:
         if p['status'] == 'Confirmed':
             source_id = p['id']
+            p = dict(p, _source_id=source_id)
             if p['book'] != 'FanDuel':
                 p = dict(p, book='FanDuel')
                 p['id'] = prop_id(p)
@@ -325,7 +349,11 @@ def send_card(day, picks, connection, request=sheet_request, fetch=current_event
         raise ValueError('The sheet needs the multiple-alternate update before sending these choices.')
     sent = set(check['existing'])
     existing = {pid for pid, keys in aliases.items() if keys & sent}
-    rows, skipped = card_quotes([p for p in confirmed if p['id'] not in existing], fetch)
+    changes = []
+    rows, skipped = card_quotes([p for p in confirmed if p['id'] not in existing], fetch, review_changes=changes)
+    if changes:
+        # Check the whole new batch before *any* append, confidence or alt edit.
+        raise QuoteReviewRequired(changes, skipped)
     new_ids = {r['id'] for r in rows}
     delivered = existing | new_ids
     edits = []

@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-from jae_card import CONFIDENCE_TIERS, send_card, sheet_request, valid_alt_choice, preview_alternates
+from jae_card import CONFIDENCE_TIERS, QuoteReviewRequired, send_card, sheet_request, valid_alt_choice, preview_alternates
 from play_identity import prop_id
 from sportsbook_lines import BOOKS
 
@@ -42,7 +42,7 @@ def edge_pick(row, event, book, day):
     pick = dict(day=day.isoformat(), event=str(event['id']), game=f"{event['Away']} @ {event['Home']}",
                 book=book, player_id=int(row.PLAYER_ID), player=row.Player, stat=row.Stat, side=side,
                 line=float(row['Book line']), odds=int(odds), projected=float(row.Projected),
-                edge=float(row['Edge %']), quoted=str(quote) if pd.notna(quote) else '', status='Review')
+                edge=float(row['Edge %']), quoted=str(quote) if pd.notna(quote) else '', status='Review', alt_choice='none')
     return dict(pick, id=prop_id(pick))
 
 
@@ -65,6 +65,13 @@ def clean_picks(day, picks, limit=MAX_PLAYS):
             p['confidence_edited'] = raw.get('confidence_edited', 'confidence_cents' in raw)
             p['alt_choice'] = valid_alt_choice({**p, 'alt_choice': raw.get('alt_choice', 'auto')})
             p['alt_edited'] = raw.get('alt_edited', False)
+            if raw.get('send_quote') is not None:
+                quote = raw['send_quote']
+                if (not isinstance(quote, dict) or type(quote.get('odds')) is not int
+                        or abs(quote['odds']) < 100 or not isinstance(quote.get('quoted'), str)
+                        or not 0 < len(quote['quoted']) <= 60):
+                    raise ValueError
+                p['send_quote'] = {k: quote[k] for k in ('odds', 'quoted')}
             if (p['day'] != day or p['book'] not in BOOKS or p['stat'] not in STATS
                     or type(p['confidence_edited']) is not bool
                     or type(p['alt_edited']) is not bool
@@ -250,6 +257,10 @@ def render_shortlist(ui):
                 reply['message'] = 'Alternate prices loaded. Prices are checked again when you send.'
             else:
                 raise ValueError('Unknown Jae card action.')
+        except QuoteReviewRequired as exc:
+            reply['error'] = str(exc)
+            reply['quote_changes'] = exc.changes
+            reply['skipped'] = exc.skipped
         except (KeyError, TypeError, ValueError) as exc:
             reply['error'] = str(exc) if isinstance(exc, ValueError) else 'Unable to confirm delivery. Retry to check the sheet.'
         st.session_state[key+'_jae_reply'] = reply

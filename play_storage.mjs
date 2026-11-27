@@ -25,7 +25,7 @@ function confidenceSelect(label, allowRemove) {
 
 export function saveConfidence(storage, pick, cents) {
     if (!CONFIDENCE_TIERS.has(cents)) throw new Error('Choose a valid confidence tier.');
-    const saved = savedPlay(storage, pick.id) || pick;
+    const saved = savedPlay(storage, pick.id) || {alt_choice:'none', ...pick};
     storage.setItem(PICK_PREFIX + pick.id, JSON.stringify({...saved, confidence_cents:cents, confidence_edited:true}));
 }
 export function acknowledgeConfidence(storage, synced) {
@@ -68,9 +68,24 @@ export function savedPlay(storage, id) {
     const raw = storage.getItem(PICK_PREFIX + id);
     return raw === null ? null : JSON.parse(raw);
 }
+export function acceptSendQuote(storage, change) {
+    const p=savedPlay(storage,change.id);
+    if (!p || p.status!=='Confirmed' || change.kind!=='price' || p.line!==change.current_line
+            || p.line!==change.line || p.odds!==change.saved_odds
+            || (p.send_quote?.odds ?? p.odds)!==change.previous_odds
+            || !Number.isInteger(change.odds) || Math.abs(change.odds)<100
+            || typeof change.quoted!=='string' || !change.quoted)
+        throw new Error('This saved play changed. Click Send again to recheck its price.');
+    // Keep the originally selected quote and edge for an honest audit trail.
+    storage.setItem(PICK_PREFIX+p.id,JSON.stringify({...p,send_quote:{odds:change.odds,quoted:change.quoted}}));
+}
+export function alternatesDue(picks, attempted, day, today, now=Date.now()) {
+    if(day<today) return [];
+    return picks.filter(p=>p.day===day && (attempted[p.id]===undefined || now-attempted[p.id]>=300000));
+}
 export function setPick(storage, pick, selected) {
     if (!selected) storage.removeItem(PICK_PREFIX + pick.id);
-    else if (!savedPlay(storage, pick.id)) storage.setItem(PICK_PREFIX + pick.id, JSON.stringify(pick));
+    else if (!savedPlay(storage, pick.id)) storage.setItem(PICK_PREFIX + pick.id, JSON.stringify({alt_choice:'none',...pick}));
 }
 export function setPickStatus(storage, id, status) {
     const pick = savedPlay(storage, id);

@@ -33,6 +33,9 @@ export function googleDocsTable(day, picks, tiers) {
 export default function({data, parentElement, setStateValue}) {
     const root = parentElement.querySelector('section');
     const ui = parentElement.playsUI ||= {day: data.today, pending: null};
+    ui.altAttempted ||= {};
+    let disposed=false;
+    const oddsText = n => (n>0?'+':'')+n;
     const make = (tag, text) => {
         const e = document.createElement(tag);
         if (text != null) e.textContent = text;
@@ -84,16 +87,28 @@ export default function({data, parentElement, setStateValue}) {
         if (jaeReply.synced) acknowledgeConfidence(localStorage,jaeReply.synced);
         if (jaeReply.alt_synced) acknowledgeAlternates(localStorage,jaeReply.alt_synced);
         if (jaeReply.alt_options) ui.altOptions={...(ui.altOptions || {}),...jaeReply.alt_options};
+        if (ui.jaeType==='alternates') ui.altFeedback=jaeReply;
+        else ui.jaeFeedback=jaeReply;
         ui.jaeCandidate = null;
         ui.jaePending = null;
-        ui.jaeFeedback = jaeReply;
+        ui.jaeType = null;
     }
     function requestJae(type, connection, picks) {
+        if(ui.jaePending) return;
         ui.jaePending = crypto.randomUUID();
-        ui.jaeFeedback = null;
+        ui.jaeType = type;
+        if(type==='alternates') {
+            for(const p of picks) ui.altAttempted[p.id]=Date.now();
+            ui.altFeedback=null;
+        } else ui.jaeFeedback = null;
         if (type === 'connect') ui.jaeCandidate = connection;
         setStateValue('jae', {type, nonce:ui.jaePending, day:ui.day, connection, picks});
         draw();
+    }
+    function maybeLoadAlts() {
+        if(disposed || ui.jaePending || !root.getClientRects().length) return;
+        const due=alternatesDue(allPicks(localStorage),ui.altAttempted,ui.day,data.today);
+        if(due.length) requestJae('alternates','',due);
     }
     function renderJae(confirmed, hasPicks) {
         const connection = localStorage.getItem(connectionKey);
@@ -121,17 +136,47 @@ export default function({data, parentElement, setStateValue}) {
                 const count = confirmed.length;
                 action = button(`Send ${count} confirmed ${count === 1 ? 'play' : 'plays'} to Jae`, () =>
                     requestJae('send', connection, confirmed));
-                action.title = 'Confidence updates the original play-to. Alternate selections replace the existing alternate.';
+                action.title = 'Checks FanDuel prices first. Changed prices must be reviewed before sending.';
                 action.className = 'jae-send';
                 bar.append(action);
             }
             action.disabled = !!ui.jaePending;
         }
         root.append(bar,settings);
-        if (ui.jaePending || ui.jaeFeedback?.day === ui.day) {
+        if ((ui.jaePending && ui.jaeType!=='alternates') || ui.jaeFeedback?.day === ui.day) {
             const info = make('div'); info.setAttribute('role','status');
-            info.append(make('p', ui.jaePending ? 'Checking Jae’s sheet…' : ui.jaeFeedback.error || ui.jaeFeedback.message));
-            for (const reason of ui.jaeFeedback?.skipped || []) info.append(make('p',reason));
+            const feedback=ui.jaeFeedback?.day===ui.day ? ui.jaeFeedback : {};
+            const changes=feedback.quote_changes || [];
+            const unresolved=changes.filter(c=>{
+                const p=savedPlay(localStorage,c.id);
+                return p?.status==='Confirmed' && (c.kind==='line' || p.send_quote?.odds!==c.odds);
+            });
+            info.append(make('p', ui.jaePending && ui.jaeType!=='alternates' ? 'Checking FanDuel prices and Jae’s sheet…'
+                : changes.length && !unresolved.length ? 'Changes reviewed. Click Send again to recheck prices and send.'
+                : feedback.error || feedback.message));
+            if(unresolved.length) {
+                const review=make('div');review.className='quote-review';
+                review.append(make('strong','Price / line changes — send paused'));
+                for(const c of unresolved) {
+                    const item=make('div');item.className='quote-change';
+                    item.append(make('p',`${c.player} · ${c.side} ${c.line} ${c.stat}`));
+                    item.append(make('p',c.kind==='line'
+                        ? `Saved: ${c.side} ${c.line} at ${oddsText(c.saved_odds)} → FanDuel now: ${c.side} ${c.current_line} at ${oddsText(c.odds)}. Select the new line from Edges if you still want it.`
+                        : `Saved: ${oddsText(c.saved_odds)} → FanDuel now: ${oddsText(c.odds)}. Play-to: ${oddsText(c.saved_worst)} → ${oddsText(c.worst)} if accepted.`));
+                    if(c.kind==='price') {
+                        const accept=button(`Use ${oddsText(c.odds)} for ${c.player}`,()=>{
+                            try { acceptSendQuote(localStorage,c);notifyPicks(ui.day); }
+                            catch(error) {ui.jaeFeedback={day:ui.day,error:error.message};draw();}
+                        });
+                        accept.disabled=!!ui.jaePending;item.append(accept);
+                    }
+                    const skip=button('Leave off this send',()=>{setPickStatus(localStorage,c.id,'Review');notifyPicks(ui.day);});
+                    skip.setAttribute('aria-label','Leave '+c.player+' '+c.side+' '+c.line+' '+c.stat+' off this send');
+                    skip.disabled=!!ui.jaePending;item.append(skip);review.append(item);
+                }
+                info.append(review);
+            }
+            for (const reason of feedback.skipped || []) info.append(make('p',reason));
             root.append(info);
         }
     }
@@ -171,12 +216,21 @@ export default function({data, parentElement, setStateValue}) {
             const altTools=make('div');altTools.className='tools';
             const loadAlts=button('Refresh alt prices',()=>requestJae('alternates','',rows));
             loadAlts.disabled=!!ui.jaePending;
-            altTools.append(loadAlts,make('span','Check one or more alts below, then Send to update Jae’s card. Main prices stay unchanged.'));
+            altTools.append(loadAlts,make('span','Alt prices load automatically. New plays start with No alt; check the alts you want.'));
             root.append(altTools);
+            if(ui.jaeType==='alternates') root.append(make('p','Loading FanDuel alt prices…'));
+            else if(ui.altFeedback?.day===ui.day) {
+                root.append(make('p',ui.altFeedback.error || ui.altFeedback.message));
+                if(ui.altFeedback.skipped?.length) {
+                    const details=make('details');details.append(make('summary','Unavailable alt prices'));
+                    for(const reason of ui.altFeedback.skipped) details.append(make('p',reason));
+                    root.append(details);
+                }
+            }
             const scroll=make('div'); scroll.className='play-table';
             const table=make('table'); table.setAttribute('aria-label','Saved player props');
             const header=table.createTHead().insertRow();
-            for (const title of ['For Jae','Confidence','Player','Game','Prop','Odds','Sportsbook','Projection','Edge','Alternate','Actions']) {
+            for (const title of ['For Jae','Confidence','Player','Game','Prop','Saved odds','Sportsbook','Projection','Saved edge','Alternate','Actions']) {
                 const th=make('th',title); th.scope='col'; header.append(th);
             }
             const body=table.createTBody();
@@ -212,6 +266,7 @@ export default function({data, parentElement, setStateValue}) {
                 for (const text of [p.player,p.game,prop,(p.odds>0?'+':'')+p.odds,p.book,p.projected.toFixed(2),p.edge.toFixed(2)+'%']) {
                     tr.insertCell().textContent=text;
                 }
+                if(p.send_quote) tr.cells[5].append(make('small','Reviewed: '+oddsText(p.send_quote.odds)));
                 tr.title=p.quoted ? 'Quote updated '+p.quoted : 'Saved sportsbook quote';
                 const alternate=make('div');alternate.className='alt-options';
                 alternate.setAttribute('role','group');
@@ -233,7 +288,7 @@ export default function({data, parentElement, setStateValue}) {
                     };
                     label.append(box,make('span',o.label));alternate.append(label);
                 }
-                alternate.title=ui.altOptions?.[p.id]?.quoted ? 'FanDuel quotes checked '+ui.altOptions[p.id].quoted : 'Use Refresh alt prices to see available lines.';
+                alternate.title=ui.altOptions?.[p.id]?.quoted ? 'FanDuel quotes checked '+ui.altOptions[p.id].quoted : 'Alt prices load automatically; Refresh retries unavailable prices.';
                 const altCell=tr.insertCell();altCell.append(alternate);
                 if(p.alt_edited) {const pending=make('small','Unsent change');pending.className='alt-pending';altCell.append(pending);}
                 const actions=tr.insertCell();
@@ -326,6 +381,9 @@ export default function({data, parentElement, setStateValue}) {
         if(ui.message || ui.pending) {
             const message=make('p',ui.message || 'Updating shared review…');message.setAttribute('role','status');root.append(message);
         }
+        // Mark attempts before requesting, so a rerender or unavailable feed
+        // cannot create an automatic retry loop. New picks still load promptly.
+        queueMicrotask(maybeLoadAlts);
     }
     const onPicks = e => {
         // Follow the slate just selected on Edges, including tomorrow's games.
@@ -336,7 +394,11 @@ export default function({data, parentElement, setStateValue}) {
     const cleanup=watchPicks(onPicks);
     const onConnection = e => { if (e.key === connectionKey) draw(); };
     window.addEventListener('storage', onConnection);
+    // Streamlit mounts inactive tabs too. Opening Today's Plays changes its
+    // size from zero, even when no Python or component rerun occurs.
+    const visible=new ResizeObserver(maybeLoadAlts);
+    visible.observe(root);
     draw();
     if (exportReady && workbook.base64) root.querySelector('a[download]')?.click();
-    return () => { cleanup(); window.removeEventListener('storage', onConnection); };
+    return () => { disposed=true;visible.disconnect();cleanup(); window.removeEventListener('storage', onConnection); };
 }

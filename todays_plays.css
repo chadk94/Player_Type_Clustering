@@ -18,3 +18,8 @@ a {color:var(--st-link-color,LinkText)}
 .alt-options label {display:flex;align-items:center;gap:.45rem;font-weight:400;cursor:pointer}
 .alt-options input {width:1.1rem;height:1.1rem;accent-color:#176944;flex-shrink:0}
 .alt-pending {display:block;margin-top:.2rem;color:var(--st-text-color);opacity:.8}
+.quote-review {border:2px solid #bd8418;border-radius:.5rem;padding:.8rem;margin:.7rem 0}
+.quote-change {padding:.6rem 0;border-top:1px solid var(--st-border-color,#8886)}
+.quote-change p {margin:.3rem 0}
+.quote-change button {margin:.25rem .5rem .1rem 0}
+td small {display:block;margin-top:.25rem}

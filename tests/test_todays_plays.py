@@ -55,6 +55,7 @@ class TodaysPlaysTests(unittest.TestCase):
 
     def test_identity_keeps_direction_book_and_line_while_quote_is_frozen(self):
         p=self.pick()
+        self.assertEqual(p['alt_choice'],'none')
         self.assertEqual((p['side'],p['odds']),('Under',107))
         changed=self.row.copy()
         changed['Under odds']=111
@@ -68,6 +69,15 @@ class TodaysPlaysTests(unittest.TestCase):
         self.assertNotEqual(self.pick(changed)['id'],p['id'])
         changed['Stat']='STL'; changed['Under odds']=-200
         self.assertIsNone(self.pick(changed))
+
+    def test_reviewed_send_price_preserves_original_quote_and_validates_input(self):
+        from todays_plays import clean_picks
+        p=dict(self.pick(),send_quote={'odds':-154,'quoted':'2026-11-27T23:00:00+00:00'})
+        result,=clean_picks(self.day,[p])
+        self.assertEqual(result['odds'],107)
+        self.assertEqual(result['send_quote'],p['send_quote'])
+        for quote in [True,{}, {'odds':0,'quoted':'x'}, {'odds':-150,'quoted':[]}, {'odds':-150,'quoted':''}]:
+            with self.assertRaises(ValueError): clean_picks(self.day,[dict(p,send_quote=quote)])
 
     def test_private_scopes_updates_feedback_and_expiry(self):
         p=self.pick()
