@@ -16,7 +16,7 @@ export default function({data, parentElement, setStateValue}) {
     const disconnect = document.createElement('button');
     disconnect.textContent = 'Disconnect';
     const note = document.createElement('p');
-    note.textContent = 'Approve minutes in the NBA model. This browser checks the private feed every minute.';
+    note.textContent = `Approve minutes in the NBA model. This page checks every ${data.refresh_seconds || 10} seconds and refreshes projections automatically when approvals change.`;
     const publish = (connection, error=null) => {
         parentElement.connectionValue = connection;
         setStateValue('connection', {ready:true, connection, error, revision:Date.now()});

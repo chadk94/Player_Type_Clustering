@@ -15,6 +15,7 @@ FEED_TIMEOUT = (4, 12)
 FEED_ATTEMPTS = 2
 RETRY_DELAY_SECONDS = .5
 RETRYABLE_HTTP = {408, 429, 500, 502, 503, 504}
+FEED_REFRESH_SECONDS = 10
 
 
 def _read_response(url, key):
@@ -122,7 +123,8 @@ def minutes_feed_worker(connection_digest):
 @st.fragment(run_every='5s')
 def render_sync(roster, season):
     state = st.session_state.setdefault('nba_minutes_link', {})
-    reply = connection_component()(data={'connected':bool(state.get('connection'))},
+    reply = connection_component()(data={'connected':bool(state.get('connection')),
+                                        'refresh_seconds':FEED_REFRESH_SECONDS},
         key='nba_minutes_connection', default={'connection':None}, height='content',
         on_connection_change=lambda: None).connection
     if not reply or not reply.get('ready'):
@@ -141,7 +143,7 @@ def render_sync(roster, season):
         st.caption(reply['error'])
     if connection:
         worker = minutes_feed_worker(sha256(connection.encode()).hexdigest())
-        snapshot = worker.read(lambda: read_feed(connection), refresh_after=55,
+        snapshot = worker.read(lambda: read_feed(connection), refresh_after=FEED_REFRESH_SECONDS,
                                force=changed or not state.get('checked'))
         state['pending'] = snapshot.pending
         state['checked'] = now.timestamp()
@@ -167,7 +169,7 @@ def render_sync(roster, season):
     if state.get('error'):
         note = (' Using the last verified approvals (last successful sync: '+state.get('success_at','unknown')+').'
                 if state.get('bundle') else ' No verified minutes are available in this session yet.')
-        st.warning('Automatic minutes sync needs attention. '+state['error']+note+' Retrying automatically each minute.')
+        st.warning('Automatic minutes sync needs attention. '+state['error']+note+' Retrying automatically.')
         st.button('Retry minutes sync now', key='retry_nba_minutes_sync', on_click=_request_sync_retry)
     blocked = (state.get('bundle') or {}).get('blocked_games', [])
     if blocked:
@@ -177,10 +179,14 @@ def render_sync(roster, season):
                 st.write(f"{game['game_date']}: {game['reason']}")
     if connection and state.get('bundle'):
         n = len(state['bundle']['approvals'])
-        st.caption(f"NBA model linked · {n} approved team rotations · Last checked {state.get('success_at')}.")
+        st.caption(f"NBA model linked · {n} approved team rotations · Auto-refresh every {FEED_REFRESH_SECONDS}s · Last checked {state.get('success_at')}.")
     elif connection and not state.get('error') and not state.get('pending'):
         st.info('NBA model linked. Approve both teams in a game to sync its minutes.')
     current_id = (state.get('bundle') or {}).get('bundle_id')
     if first_restore or changed or previous_id != current_id or (waiting_for_first_result and not state.get('pending')):
         # Only an actual rotation change refreshes projections. Timer checks stay in this panel.
+        from approved_minutes import apply_bundle_change
+        apply_bundle_change(st.session_state, state.get('bundle'))
+        if previous_id and current_id and previous_id != current_id and not changed:
+            st.toast('New approved minutes received. Refreshing projections.', icon='✅')
         st.rerun()

@@ -84,6 +84,81 @@ class FragmentStabilityTests(TestCase):
                 self.assertEqual(len(self.app.date_input), 1)
                 self.assertEqual(len(self.app.slider), 1)
 
+    def test_background_approval_refresh_updates_all_pages_without_user_interaction(self):
+        from copy import deepcopy
+        from background_feed import BackgroundFeed
+        from test_background_feed import ImmediateExecutor
+        from test_approved_minutes import example, reseal
+        import minutes_sync
+        import streamlit as st
+        first, _ = example()
+        def rotation(minutes, version):
+            raw=deepcopy(first)
+            record=raw['approvals'][0]
+            record['approval_version']=version
+            record['approved_at']=f'2026-10-21T12:0{version}:00+00:00'
+            for i, player in enumerate(record['players'][:6]):
+                player['minutes']=minutes if i==0 else (240-minutes)/5
+            return {'bundles':[reseal(raw)]}
+        feed=rotation(24.,1)
+        connection='https://script.google.com/macros/s/example/exec#'+'a'*64
+        def component(**kwargs):
+            # The real browser schedules this fragment's timer independently.
+            st.button('Sync panel',key='sync_panel')
+            return SimpleNamespace(connection={'ready':True,'connection':connection})
+        worker=BackgroundFeed(ImmediateExecutor())
+        self.storage=None
+        self.queue=[]
+        code='''
+import streamlit as st
+from approved_minutes import render_import, for_matchup
+from test_approved_minutes import example
+_, roster = example()
+@st.fragment(key='projection_dashboard')
+def dashboard():
+    st.session_state['model_runs']=st.session_state.get('model_runs',0)+1
+    bundle=render_import(st,roster,'2026-27')
+    minutes=for_matchup(bundle,roster,'BOS','DET','2026-10-21T23:00:00Z')[1]
+    st.selectbox('Selected game',['BOS-DET','POR-GSW'],key='selected_game')
+    for label in ['Player', 'Matchups', 'Sportsbook Edges', 'Team Projections']:
+        st.metric(label,minutes)
+    st.slider('Preview minutes',0.,48.,minutes,key='custom_minutes_1')
+    st.session_state['team_projection_snapshots']={'minutes':minutes}
+dashboard()
+'''
+        with patch.object(minutes_sync,'connection_component',return_value=component), \
+             patch.object(minutes_sync,'minutes_feed_worker',return_value=worker), \
+             patch.object(minutes_sync,'read_feed',return_value=feed) as read:
+            self.app=AppTest.from_string(code).run()
+            self.assertFalse(self.app.exception)
+            self.assertTrue(all(float(m.value)==24 for m in self.app.metric))
+            self.app.session_state['custom_minutes_1']=11.
+            self.app.session_state['selected_game']='POR-GSW'
+            runs=self.app.session_state['model_runs']
+            sync_id=self.fragment(self.app.button(key='sync_panel'))
+            self.queue=[sync_id]
+            read.return_value=rotation(30.,2)
+            worker.invalidate()
+            self.app.run()  # Timer only: no game, slider or refresh button click.
+            self.assertFalse(self.app.exception,[e.message for e in self.app.exception])
+            self.assertEqual(self.app.session_state['model_runs'],runs+1)
+            self.assertEqual(len(self.app.metric),4)
+            self.assertTrue(all(float(m.value)==30 for m in self.app.metric))
+            self.assertEqual(self.app.slider[0].value,30.)
+            self.assertEqual(self.app.selectbox[0].value,'POR-GSW')
+            self.assertEqual(self.app.session_state['team_projection_snapshots'],{'minutes':30.})
+            self.assertTrue(self.app.get('toast'))
+            # An unchanged poll must not rebuild the model or clear a new preview.
+            runs=self.app.session_state['model_runs']
+            self.app.session_state['custom_minutes_1']=35.
+            self.queue=[self.fragment(self.app.button(key='sync_panel'))]
+            worker.invalidate()
+            self.app.run()
+            self.assertFalse(self.app.exception)
+            self.assertEqual(self.app.session_state['model_runs'],runs)
+            self.assertEqual(self.app.session_state['custom_minutes_1'],35.)
+            self.assertFalse(self.app.metric)  # Timer emitted only its own panel.
+
     def test_player_and_slider_overlap_preserves_latest_values(self):
         player = self.fragment(self.app.selectbox(key='player'))
         preview = self.fragment(self.app.slider(key='minutes'))
